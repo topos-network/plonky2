@@ -39,10 +39,10 @@ const OPCODES: [(u8, usize, bool, usize); 17] = [
     (0x58, 0, false, COL_MAP.op.pc),
     (0x5b, 0, false, COL_MAP.op.jumpdest),
     (0x5f, 0, false, COL_MAP.op.push0),
-    (0x60, 5, false, COL_MAP.op.push), // 0x60-0x7f
-    (0x80, 4, false, COL_MAP.op.dup),  // 0x80-0x8f
-    (0x90, 4, false, COL_MAP.op.swap), // 0x90-0x9f
-    (0xee, 0, true, COL_MAP.op.mstore_32bytes),
+    (0x60, 5, false, COL_MAP.op.push),          // 0x60-0x7f
+    (0x80, 4, false, COL_MAP.op.dup),           // 0x80-0x8f
+    (0x90, 4, false, COL_MAP.op.swap),          // 0x90-0x9f
+    (0xc0, 5, true, COL_MAP.op.mstore_32bytes), // 0xc0-0xdf
     (0xf6, 0, true, COL_MAP.op.get_context),
     (0xf7, 0, true, COL_MAP.op.set_context),
     (0xf8, 0, true, COL_MAP.op.mload_32bytes),

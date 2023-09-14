@@ -9,7 +9,7 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::cpu::columns::CpuColumnsView;
 
 /// General-purpose memory channels; they can read and write to all contexts/segments/addresses.
-pub const NUM_GP_CHANNELS: usize = 5;
+pub const NUM_GP_CHANNELS: usize = 4;
 
 pub mod channel_indices {
     use std::ops::Range;
@@ -59,6 +59,19 @@ pub fn eval_packed<P: PackedField>(
     for channel in lv.mem_channels {
         yield_constr.constraint(channel.used * (channel.used - P::ONES));
     }
+
+    // Validate partial channel used flags. They should be binary.
+    yield_constr.constraint(
+        lv.partial_channel.is_push_write * (lv.partial_channel.is_push_write - P::ONES),
+    );
+    yield_constr.constraint(
+        lv.partial_channel.is_mstore_general * (lv.partial_channel.is_mstore_general - P::ONES),
+    );
+
+    // Make sure that `is_mstore_general` is zero for any instruction which isn't a memory op.
+    // `is_push_write` is checked in `stack.rs`.
+    let is_not_mstore_general = is_cpu_cycle - lv.op.m_op_general;
+    yield_constr.constraint(is_not_mstore_general * lv.partial_channel.is_mstore_general);
 }
 
 pub fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
@@ -79,6 +92,33 @@ pub fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     // Validate `channel.used`. It should be binary.
     for channel in lv.mem_channels {
         let constr = builder.mul_sub_extension(channel.used, channel.used, channel.used);
+        yield_constr.constraint(builder, constr);
+    }
+
+    // Validate partial channel used flags. They should be binary.
+    {
+        let constr = builder.mul_sub_extension(
+            lv.partial_channel.is_push_write,
+            lv.partial_channel.is_push_write,
+            lv.partial_channel.is_push_write,
+        );
+        yield_constr.constraint(builder, constr);
+    }
+    {
+        let constr = builder.mul_sub_extension(
+            lv.partial_channel.is_mstore_general,
+            lv.partial_channel.is_mstore_general,
+            lv.partial_channel.is_mstore_general,
+        );
+        yield_constr.constraint(builder, constr);
+    }
+
+    // Make sure that `is_mstore_general` is zero for any instruction which isn't a memory op.
+    // `is_push_write` is checked in `stack.rs`.
+    {
+        let is_not_mstore_general = builder.sub_extension(is_cpu_cycle, lv.op.m_op_general);
+        let constr =
+            builder.mul_extension(is_not_mstore_general, lv.partial_channel.is_mstore_general);
         yield_constr.constraint(builder, constr);
     }
 }
