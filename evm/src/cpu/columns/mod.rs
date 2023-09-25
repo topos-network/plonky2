@@ -33,6 +33,22 @@ pub struct MemoryChannelView<T: Copy> {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+// A more lightweight channel, sharing another channel's values.
+// It has two "used" fields to indicate which memory channel it shares its values with.
+// - If the instruction writes the top of the stack after a push, mem_channel[0].
+// - If the instruction is MSTORE_GENERAL, mem_channel[3].
+// We have to use dedicated columns since CTL filters must be of degree 1.
+pub struct PartialMemoryChannelView<T: Copy> {
+    pub is_push_write: T,
+    pub is_mstore_general: T,
+    pub is_read: T,
+    pub addr_context: T,
+    pub addr_segment: T,
+    pub addr_virtual: T,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct CpuColumnsView<T: Copy> {
     /// Filter. 1 if the row is part of bootstrapping the kernel code, 0 otherwise.
@@ -71,10 +87,14 @@ pub struct CpuColumnsView<T: Copy> {
     /// Filter. 1 iff a Keccak sponge lookup is performed on this row.
     pub is_keccak_sponge: T,
 
+    /// Filter. 1 iff the instruction pushes and the stack isn't empty.
+    pub push_and_write: T,
+
     pub(crate) general: CpuGeneralColumnsView<T>,
 
     pub(crate) clock: T,
     pub mem_channels: [MemoryChannelView<T>; NUM_GP_CHANNELS],
+    pub partial_channel: PartialMemoryChannelView<T>,
 }
 
 // `u8` is guaranteed to have a `size_of` of 1.

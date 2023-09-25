@@ -5,7 +5,7 @@ use super::memory::DUMMY_MEMOP;
 use crate::byte_packing::byte_packing_stark::BytePackingOp;
 use crate::cpu::columns::CpuColumnsView;
 use crate::cpu::kernel::keccak_util::keccakf_u8s;
-use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
+use crate::cpu::membus::NUM_CHANNELS;
 use crate::cpu::stack_bounds::MAX_USER_STACK_SIZE;
 use crate::generation::state::GenerationState;
 use crate::keccak_sponge::columns::{KECCAK_RATE_BYTES, KECCAK_WIDTH_BYTES};
@@ -109,18 +109,13 @@ pub(crate) fn push_with_write<F: Field>(
             Segment::Stack,
             state.registers.stack_len - 1,
         );
-        let res = mem_write_gp_log_and_fill(
-            NUM_GP_CHANNELS - 1,
-            address,
-            state,
-            row,
-            state.registers.stack_top,
-        );
+        let res = mem_write_partial_log_and_fill(address, state, row, state.registers.stack_top);
         Some(res)
     };
     push_no_write(state, row, val, None);
     if let Some(log) = write {
         state.traces.push_memory(log);
+        row.partial_channel.is_push_write = F::ONE;
     }
     Ok(())
 }
@@ -214,6 +209,26 @@ pub(crate) fn mem_write_gp_log_and_fill<F: Field>(
         channel.value[2 * i] = F::from_canonical_u32(limb as u32);
         channel.value[2 * i + 1] = F::from_canonical_u32((limb >> 32) as u32);
     }
+
+    op
+}
+
+pub(crate) fn mem_write_partial_log_and_fill<F: Field>(
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+    row: &mut CpuColumnsView<F>,
+    val: U256,
+) -> MemoryOp {
+    let op = mem_write_log(MemoryChannel::PartialChannel, address, state, val);
+
+    let channel = &mut row.partial_channel;
+    assert!(channel.is_push_write.is_zero() && channel.is_mstore_general.is_zero());
+    // channel.used = F::ONE;
+    // Flags set elsewhere.
+    channel.is_read = F::ZERO;
+    channel.addr_context = F::from_canonical_usize(address.context);
+    channel.addr_segment = F::from_canonical_usize(address.segment);
+    channel.addr_virtual = F::from_canonical_usize(address.virt);
 
     op
 }
@@ -388,6 +403,14 @@ pub(crate) fn byte_unpacking_log<F: Field>(
         is_read: false,
         base_address,
         timestamp: clock * NUM_CHANNELS,
-        bytes,
+        bytes: bytes.clone(),
     });
+    // println!(
+    //     "At clock {}...\nval: {:x}, base_virt: {}, new_offset: {}, written bytes: {:x?}",
+    //     state.traces.clock(),
+    //     val,
+    //     base_address.virt,
+    //     address.virt,
+    //     bytes
+    // );
 }
