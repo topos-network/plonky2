@@ -632,7 +632,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakSpongeS
         );
 
         // A dummy row is always followed by another dummy row, so the prover can't put dummy rows "in between" to avoid the above checks.
-        let is_dummy = P::ONES - is_full_input_block - is_final_block;
+        let is_dummy = is_full_input_block + is_final_block - P::ONES;
         let next_is_final_block: P = next_values.is_final_input_len.iter().copied().sum();
         yield_constr.constraint_transition(
             is_dummy * (next_values.is_full_input_block + next_is_final_block),
@@ -768,24 +768,32 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakSpongeS
         }
 
         // If this is a full-input block, the next row's already_absorbed_bytes should be ours plus `KECCAK_RATE_BYTES`.
-        let absorbed_bytes = builder.add_const_extension(
-            already_absorbed_bytes,
-            F::from_canonical_usize(KECCAK_RATE_BYTES),
-        );
-        let absorbed_diff =
-            builder.sub_extension(absorbed_bytes, next_values.already_absorbed_bytes);
-        let constraint = builder.mul_extension(is_full_input_block, absorbed_diff);
+        let constraint = {
+            // t = is_full_input_block * (already_absorbed_bytes + KECCAK_RATE_BYTES)
+            let t = builder.arithmetic_extension(
+                F::ONE,
+                F::from_canonical_usize(KECCAK_RATE_BYTES),
+                is_full_input_block,
+                already_absorbed_bytes,
+                is_full_input_block,
+            );
+            builder.arithmetic_extension(
+                F::NEG_ONE,
+                F::ONE,
+                is_full_input_block,
+                next_values.already_absorbed_bytes,
+                t,
+            )
+        };
         yield_constr.constraint_transition(builder, constraint);
 
         // A dummy row is always followed by another dummy row, so the prover can't put dummy rows "in between" to avoid the above checks.
-        let is_dummy = {
-            let tmp = builder.sub_extension(one, is_final_block);
-            builder.sub_extension(tmp, is_full_input_block)
-        };
+        let is_final_or_full_input_block =
+            builder.add_extension(is_final_block, is_full_input_block);
         let next_is_final_block = builder.add_many_extension(next_values.is_final_input_len);
         let constraint = {
             let tmp = builder.add_extension(next_is_final_block, next_values.is_full_input_block);
-            builder.mul_extension(is_dummy, tmp)
+            builder.mul_sub_extension(tmp, is_final_or_full_input_block, tmp)
         };
         yield_constr.constraint_transition(builder, constraint);
     }

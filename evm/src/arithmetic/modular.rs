@@ -725,9 +725,9 @@ pub(crate) fn submod_constr_poly_ext_circuit<F: RichField + Extendable<D>, const
     // sign must be 1 (negative) or 0 (positive)
     yield_constr.constraint(builder, t);
     let offset = F::from_canonical_u16(u16::max_value());
+    // c <- c - offset * sign
     for c in lo {
-        let t = builder.mul_const_extension(offset, sign);
-        *c = builder.sub_extension(*c, t);
+        *c = builder.mul_const_add_extension(offset.neg(), sign, *c);
     }
     hi[0] = builder.zero_extension();
     for d in hi {

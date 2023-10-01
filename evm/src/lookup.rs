@@ -235,12 +235,14 @@ pub(crate) fn eval_ext_lookups_circuit<
                 &lookup_vars.local_values[start..start + num_helper_columns - 1],
             );
 
-            y = builder.mul_extension(y, table_with_challenge);
-            y = builder.sub_extension(y, vars.get_local_values()[lookup.frequencies_column]);
+            y = builder.mul_sub_extension(
+                y,
+                table_with_challenge,
+                vars.get_local_values()[lookup.frequencies_column],
+            );
 
             let mut constraint = builder.sub_extension(next_z, z);
-            constraint = builder.mul_extension(constraint, table_with_challenge);
-            constraint = builder.sub_extension(constraint, y);
+            constraint = builder.mul_sub_extension(constraint, table_with_challenge, y);
             yield_constr.constraint(builder, constraint);
             start += num_helper_columns;
         }

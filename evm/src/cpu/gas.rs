@@ -144,6 +144,8 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
     nv: &CpuColumnsView<ExtensionTarget<D>>,
     yield_constr: &mut RecursiveConstraintConsumer<F, D>,
 ) {
+    let one = builder.one_extension();
+
     // Is it an instruction that we constrain here?
     // I.e., does it always cost a constant amount of gas?
     let filter = SIMPLE_OPCODES.into_iter().enumerate().fold(
@@ -176,9 +178,10 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
     let filtered_constr = builder.mul_extension(filter, constr);
     yield_constr.constraint_transition(builder, filtered_constr);
 
+    let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
+
     for (maybe_cost, op_flag) in izip!(SIMPLE_OPCODES.into_iter(), lv.op.into_iter()) {
         if let Some(cost) = maybe_cost {
-            let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
             let constr = builder.arithmetic_extension(
                 F::ONE,
                 -F::from_canonical_u32(cost),
@@ -192,34 +195,36 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
 
     // For jumps.
     let filter = lv.op.jumps;
-    let jump_gas_cost = builder.mul_const_extension(
-        F::from_canonical_u32(G_HIGH.unwrap() - G_MID.unwrap()),
-        lv.opcode_bits[0],
-    );
-    let jump_gas_cost =
-        builder.add_const_extension(jump_gas_cost, F::from_canonical_u32(G_MID.unwrap()));
+    let constr = {
+        // t = (G_HIGH  - G_MID) * filter * op_bit[0] + G_MID * filter
+        let t = builder.arithmetic_extension(
+            F::from_canonical_u32(G_HIGH.unwrap() - G_MID.unwrap()),
+            F::from_canonical_u32(G_MID.unwrap()),
+            lv.opcode_bits[0],
+            filter,
+            filter,
+        );
 
-    let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
-    let gas_diff = builder.sub_extension(nv_lv_diff, jump_gas_cost);
-    let constr = builder.mul_extension(filter, gas_diff);
+        // filter * nv_lv_diff - t
+        builder.arithmetic_extension(F::ONE, F::NEG_ONE, filter, nv_lv_diff, t)
+    };
     yield_constr.constraint_transition(builder, constr);
 
     // For binary_ops.
     // MUL, DIV and MOD are differentiated from ADD, SUB, LT, GT and BYTE by their first and fifth bits set to 0.
     let filter = lv.op.binary_op;
     let cost_filter = {
-        let a = builder.add_extension(lv.opcode_bits[0], lv.opcode_bits[4]);
-        let b = builder.mul_extension(lv.opcode_bits[0], lv.opcode_bits[4]);
-        builder.sub_extension(a, b)
+        let t = builder.mul_sub_extension(lv.opcode_bits[0], lv.opcode_bits[4], lv.opcode_bits[4]);
+        builder.sub_extension(lv.opcode_bits[0], t)
     };
-    let binary_op_cost = builder.mul_const_extension(
+    let binary_op_cost = builder.arithmetic_extension(
         F::from_canonical_u32(G_VERYLOW.unwrap()) - F::from_canonical_u32(G_LOW.unwrap()),
+        F::from_canonical_u32(G_LOW.unwrap()),
         cost_filter,
+        one,
+        one,
     );
-    let binary_op_cost =
-        builder.add_const_extension(binary_op_cost, F::from_canonical_u32(G_LOW.unwrap()));
 
-    let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
     let gas_diff = builder.sub_extension(nv_lv_diff, binary_op_cost);
     let constr = builder.mul_extension(filter, gas_diff);
     yield_constr.constraint_transition(builder, constr);
@@ -227,14 +232,14 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
     // For ternary_ops.
     // SUBMOD is differentiated by its second bit set to 1.
     let filter = lv.op.ternary_op;
-    let ternary_op_cost = builder.mul_const_extension(
+    let ternary_op_cost = builder.arithmetic_extension(
         F::from_canonical_u32(G_MID.unwrap()).neg(),
+        F::from_canonical_u32(G_MID.unwrap()),
         lv.opcode_bits[1],
+        one,
+        one,
     );
-    let ternary_op_cost =
-        builder.add_const_extension(ternary_op_cost, F::from_canonical_u32(G_MID.unwrap()));
 
-    let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
     let gas_diff = builder.sub_extension(nv_lv_diff, ternary_op_cost);
     let constr = builder.mul_extension(filter, gas_diff);
     yield_constr.constraint_transition(builder, constr);

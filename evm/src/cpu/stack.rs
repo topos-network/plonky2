@@ -580,13 +580,10 @@ pub(crate) fn eval_ext_circuit_one<F: RichField + Extendable<D>, const D: usize>
     }
 
     // Constrain new stack length.
-    let diff = builder.constant_extension(
-        F::Extension::from_canonical_usize(stack_behavior.num_pops)
-            - F::Extension::from_canonical_usize(stack_behavior.pushes as usize),
-    );
-    let diff = builder.sub_extension(lv.stack_len, diff);
-    let diff = builder.sub_extension(nv.stack_len, diff);
-    let constr = builder.mul_extension(filter, diff);
+    let diff = F::from_canonical_usize(stack_behavior.num_pops)
+        - F::from_canonical_usize(stack_behavior.pushes as usize);
+    let constr = builder.arithmetic_extension(F::ONE, diff, filter, nv.stack_len, filter);
+    let constr = builder.arithmetic_extension(F::NEG_ONE, F::ONE, filter, lv.stack_len, constr);
     yield_constr.constraint_transition(builder, constr);
 }
 

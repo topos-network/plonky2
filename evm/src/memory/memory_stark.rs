@@ -289,8 +289,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
 
         // If this is a dummy row (filter is off), it must be a read. This means the prover can
         // insert reads which never appear in the CPU trace (which are harmless), but not writes.
-        let is_dummy = P::ONES - filter;
-        let is_write = P::ONES - local_values[IS_READ];
+        let is_dummy = filter - P::ONES;
+        let is_write = local_values[IS_READ] - P::ONES;
         yield_constr.constraint(is_dummy * is_write);
 
         let context_first_change = local_values[CONTEXT_FIRST_CHANGE];
@@ -301,9 +301,9 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
 
         let range_check = local_values[RANGE_CHECK];
 
-        let not_context_first_change = one - context_first_change;
-        let not_segment_first_change = one - segment_first_change;
-        let not_virtual_first_change = one - virtual_first_change;
+        let not_context_first_change = context_first_change - one;
+        let not_segment_first_change = segment_first_change - one;
+        let not_virtual_first_change = virtual_first_change - one;
         let not_address_unchanged = one - address_unchanged;
 
         // First set of ordering constraint: first_change flags are boolean.
@@ -391,9 +391,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
 
         // If this is a dummy row (filter is off), it must be a read. This means the prover can
         // insert reads which never appear in the CPU trace (which are harmless), but not writes.
-        let is_dummy = builder.sub_extension(one, filter);
-        let is_write = builder.sub_extension(one, local_values[IS_READ]);
-        let is_dummy_write = builder.mul_extension(is_dummy, is_write);
+        let is_write = builder.sub_extension(local_values[IS_READ], one);
+        let is_dummy_write = builder.mul_sub_extension(is_write, filter, is_write);
         yield_constr.constraint(builder, is_dummy_write);
 
         let context_first_change = local_values[CONTEXT_FIRST_CHANGE];
@@ -404,30 +403,36 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
             cur = builder.sub_extension(cur, segment_first_change);
             builder.sub_extension(cur, virtual_first_change)
         };
+        let not_address_unchanged = builder.sub_extension(one, address_unchanged);
 
         let range_check = local_values[RANGE_CHECK];
 
-        let not_context_first_change = builder.sub_extension(one, context_first_change);
-        let not_segment_first_change = builder.sub_extension(one, segment_first_change);
-        let not_virtual_first_change = builder.sub_extension(one, virtual_first_change);
-        let not_address_unchanged = builder.sub_extension(one, address_unchanged);
         let addr_context_diff = builder.sub_extension(next_addr_context, addr_context);
         let addr_segment_diff = builder.sub_extension(next_addr_segment, addr_segment);
         let addr_virtual_diff = builder.sub_extension(next_addr_virtual, addr_virtual);
 
-        // First set of ordering constraint: traces are boolean.
-        let context_first_change_bool =
-            builder.mul_extension(context_first_change, not_context_first_change);
-        yield_constr.constraint(builder, context_first_change_bool);
-        let segment_first_change_bool =
-            builder.mul_extension(segment_first_change, not_segment_first_change);
-        yield_constr.constraint(builder, segment_first_change_bool);
-        let virtual_first_change_bool =
-            builder.mul_extension(virtual_first_change, not_virtual_first_change);
-        yield_constr.constraint(builder, virtual_first_change_bool);
-        let address_unchanged_bool =
-            builder.mul_extension(address_unchanged, not_address_unchanged);
-        yield_constr.constraint(builder, address_unchanged_bool);
+        // First set of ordering constraint: first_change flags are boolean.
+        let context_first_change_bool_const = builder.mul_sub_extension(
+            context_first_change,
+            context_first_change,
+            context_first_change,
+        );
+        yield_constr.constraint(builder, context_first_change_bool_const);
+        let segment_first_change_bool_const = builder.mul_sub_extension(
+            segment_first_change,
+            segment_first_change,
+            segment_first_change,
+        );
+        yield_constr.constraint(builder, segment_first_change_bool_const);
+        let virtual_first_change_bool_const = builder.mul_sub_extension(
+            virtual_first_change,
+            virtual_first_change,
+            virtual_first_change,
+        );
+        yield_constr.constraint(builder, virtual_first_change_bool_const);
+        let address_unchanged_bool_const =
+            builder.mul_sub_extension(address_unchanged, address_unchanged, address_unchanged);
+        yield_constr.constraint(builder, address_unchanged_bool_const);
 
         // Second set of ordering constraints: no change before the column corresponding to the nonzero first_change flag.
         let segment_first_change_check =
@@ -451,16 +456,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
             let diff = builder.sub_extension(next_addr_context, addr_context);
             builder.sub_extension(diff, one)
         };
-        let segment_diff = {
-            let diff = builder.sub_extension(next_addr_segment, addr_segment);
-            builder.sub_extension(diff, one)
-        };
-        let segment_range_check = builder.mul_extension(segment_first_change, segment_diff);
-        let virtual_diff = {
-            let diff = builder.sub_extension(next_addr_virtual, addr_virtual);
-            builder.sub_extension(diff, one)
-        };
-        let virtual_range_check = builder.mul_extension(virtual_first_change, virtual_diff);
+        let segment_diff = builder.sub_extension(next_addr_segment, addr_segment);
+        let segment_range_check =
+            builder.mul_sub_extension(segment_first_change, segment_diff, segment_first_change);
+        let virtual_diff = builder.sub_extension(next_addr_virtual, addr_virtual);
+        let virtual_range_check =
+            builder.mul_sub_extension(virtual_first_change, virtual_diff, virtual_first_change);
         let timestamp_diff = builder.sub_extension(next_timestamp, timestamp);
         let timestamp_range_check = builder.mul_extension(address_unchanged, timestamp_diff);
 

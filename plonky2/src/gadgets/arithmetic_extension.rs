@@ -355,6 +355,17 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         self.mul_add_extension(c, x, y)
     }
 
+    /// Like `mul_const_sub`, but for `ExtensionTarget`s.
+    pub fn mul_const_sub_extension(
+        &mut self,
+        c: F,
+        x: ExtensionTarget<D>,
+        y: ExtensionTarget<D>,
+    ) -> ExtensionTarget<D> {
+        let c = self.constant_extension(c.into());
+        self.mul_sub_extension(c, x, y)
+    }
+
     /// Like `mul_add`, but for `ExtensionTarget`s.
     pub fn scalar_mul_add_extension(
         &mut self,

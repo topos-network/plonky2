@@ -74,7 +74,7 @@ pub(crate) fn eval_packed_jump_jumpi<P: PackedField>(
     let cond = lv.mem_channels[1].value;
     let filter = lv.op.jumps; // `JUMP` or `JUMPI`
     let jumpdest_flag_channel = lv.mem_channels[NUM_GP_CHANNELS - 1];
-    let is_jump = filter * (P::ONES - lv.opcode_bits[0]);
+    let is_jump = filter * (lv.opcode_bits[0] - P::ONES);
     let is_jumpi = filter * lv.opcode_bits[0];
 
     // Stack constraints.
@@ -175,8 +175,7 @@ pub(crate) fn eval_ext_circuit_jump_jumpi<F: RichField + Extendable<D>, const D:
     let filter = lv.op.jumps; // `JUMP` or `JUMPI`
     let jumpdest_flag_channel = lv.mem_channels[NUM_GP_CHANNELS - 1];
     let one_extension = builder.one_extension();
-    let is_jump = builder.sub_extension(one_extension, lv.opcode_bits[0]);
-    let is_jump = builder.mul_extension(filter, is_jump);
+    let is_jump = builder.mul_sub_extension(filter, lv.opcode_bits[0], filter);
     let is_jumpi = builder.mul_extension(filter, lv.opcode_bits[0]);
 
     // Stack constraints.

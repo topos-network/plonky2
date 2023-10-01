@@ -54,9 +54,9 @@ pub(crate) fn eval_packed<P: PackedField>(
     let output = nv.mem_channels[0].value;
 
     // EQ (0x14) and ISZERO (0x15) are differentiated by their first opcode bit.
-    let eq_filter = lv.op.eq_iszero * (P::ONES - lv.opcode_bits[0]);
-    let iszero_filter = lv.op.eq_iszero * lv.opcode_bits[0];
     let eq_or_iszero_filter = lv.op.eq_iszero;
+    let iszero_filter = lv.op.eq_iszero * lv.opcode_bits[0];
+    let eq_filter = eq_or_iszero_filter - iszero_filter;
 
     let equal = output[0];
     let unequal = P::ONES - equal;
@@ -116,11 +116,9 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     let output = nv.mem_channels[0].value;
 
     // EQ (0x14) and ISZERO (0x15) are differentiated by their first opcode bit.
-    let eq_filter = builder.mul_extension(lv.op.eq_iszero, lv.opcode_bits[0]);
-    let eq_filter = builder.sub_extension(lv.op.eq_iszero, eq_filter);
-
-    let iszero_filter = builder.mul_extension(lv.op.eq_iszero, lv.opcode_bits[0]);
     let eq_or_iszero_filter = lv.op.eq_iszero;
+    let iszero_filter = builder.mul_extension(lv.op.eq_iszero, lv.opcode_bits[0]);
+    let eq_filter = builder.sub_extension(eq_or_iszero_filter, iszero_filter);
 
     let equal = output[0];
     let unequal = builder.sub_extension(one, equal);

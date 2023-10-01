@@ -112,7 +112,7 @@ pub(crate) fn eval_packed_generic<P: PackedField>(
         // 1 otherwise.
         let unavailable = match kernel_only {
             false => P::ZEROS,
-            true => P::ONES - kernel_mode,
+            true => kernel_mode - P::ONES,
         };
         // 0 if all the opcode bits match, and something in {1, ..., 8}, otherwise.
         let opcode_mismatch: P = lv
@@ -140,7 +140,7 @@ pub(crate) fn eval_packed_generic<P: PackedField>(
         .enumerate()
         .map(|(i, bit)| bit * P::Scalar::from_canonical_u64(1 << i))
         .sum();
-    yield_constr.constraint((P::ONES - kernel_mode) * lv.op.m_op_general);
+    yield_constr.constraint((kernel_mode - P::ONES) * lv.op.m_op_general);
 
     let m_op_constr = (opcode - P::Scalar::from_canonical_usize(0xfb_usize))
         * (opcode - P::Scalar::from_canonical_usize(0xfc_usize))
@@ -230,12 +230,6 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 
     // Finally, classify all opcodes, together with the kernel flag, into blocks
     for (oc, block_length, kernel_only, col) in OPCODES {
-        // 0 if the block/flag is available to us (is always available or we are in kernel mode) and
-        // 1 otherwise.
-        let unavailable = match kernel_only {
-            false => builder.zero_extension(),
-            true => builder.sub_extension(one, kernel_mode),
-        };
         // 0 if all the opcode bits match, and something in {1, ..., 8}, otherwise.
         let opcode_mismatch = lv
             .opcode_bits
@@ -253,8 +247,15 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 
         // If unavailable + opcode_mismatch is 0, then the opcode bits all match and we are in the
         // correct mode.
-        let constr = builder.add_extension(unavailable, opcode_mismatch);
-        let constr = builder.mul_extension(lv[col], constr);
+        // unavailable = 0 if the block/flag is available to us (is always available or we are in kernel mode),
+        // and 1 otherwise.
+        let constr = match kernel_only {
+            false => builder.mul_extension(opcode_mismatch, lv[col]),
+            true => {
+                let t = builder.add_extension(kernel_mode, opcode_mismatch);
+                builder.mul_sub_extension(lv[col], t, lv[col])
+            }
+        };
         yield_constr.constraint(builder, constr);
     }
 
@@ -267,18 +268,26 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
             builder.mul_const_add_extension(F::TWO, cumul, bit)
         });
 
-    let mload_opcode = builder.constant_extension(F::Extension::from_canonical_usize(0xfb_usize));
-    let mstore_opcode = builder.constant_extension(F::Extension::from_canonical_usize(0xfc_usize));
+    let mload_opcode = F::from_canonical_usize(0xfb_usize);
+    let mstore_opcode = F::from_canonical_usize(0xfc_usize);
 
-    let one_extension = builder.constant_extension(F::Extension::ONE);
-    let is_not_kernel_mode = builder.sub_extension(one_extension, kernel_mode);
-    let constr = builder.mul_extension(is_not_kernel_mode, lv.op.m_op_general);
+    let constr = builder.mul_sub_extension(lv.op.m_op_general, kernel_mode, lv.op.m_op_general);
     yield_constr.constraint(builder, constr);
 
-    let mload_constr = builder.sub_extension(opcode, mload_opcode);
-    let mstore_constr = builder.sub_extension(opcode, mstore_opcode);
-    let mut m_op_constr = builder.mul_extension(mload_constr, mstore_constr);
-    m_op_constr = builder.mul_extension(m_op_constr, lv.op.m_op_general);
+    let m_op_constr = builder.arithmetic_extension(
+        F::ONE,
+        -(mload_opcode + mstore_opcode),
+        opcode,
+        opcode,
+        opcode,
+    );
+    let m_op_constr = builder.arithmetic_extension(
+        F::ONE,
+        mload_opcode * mstore_opcode,
+        lv.op.m_op_general,
+        m_op_constr,
+        lv.op.m_op_general,
+    );
 
     yield_constr.constraint(builder, m_op_constr);
 
@@ -294,7 +303,8 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     let mut kernel_general_filter = builder.sub_extension(one, lv.opcode_bits[1]);
     kernel_general_filter =
         builder.mul_extension(lv.op.jumpdest_keccak_general, kernel_general_filter);
-    let constr = builder.mul_extension(is_not_kernel_mode, kernel_general_filter);
+    let constr =
+        builder.mul_sub_extension(kernel_general_filter, kernel_mode, kernel_general_filter);
     yield_constr.constraint(builder, constr);
 
     // Check the JUMPDEST and KERNEL_GENERAL opcodes.

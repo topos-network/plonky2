@@ -652,13 +652,11 @@ fn eval_l_0_and_l_last_circuit<F: RichField + Extendable<D>, const D: usize>(
     x: ExtensionTarget<D>,
     z_x: ExtensionTarget<D>,
 ) -> (ExtensionTarget<D>, ExtensionTarget<D>) {
-    let n = builder.constant_extension(F::Extension::from_canonical_usize(1 << log_n));
-    let g = builder.constant_extension(F::Extension::primitive_root_of_unity(log_n));
-    let one = builder.one_extension();
+    let n_field = F::from_canonical_usize(1 << log_n);
+    let g_field = F::primitive_root_of_unity(log_n);
+    let n = builder.constant_extension(n_field.into());
     let l_0_deno = builder.mul_sub_extension(n, x, n);
-    let l_last_deno = builder.mul_sub_extension(g, x, one);
-    let l_last_deno = builder.mul_extension(n, l_last_deno);
-
+    let l_last_deno = builder.mul_const_sub_extension(n_field * g_field, x, n);
     (
         builder.div_extension(z_x, l_0_deno),
         builder.div_extension(z_x, l_last_deno),

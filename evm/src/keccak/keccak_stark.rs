@@ -279,7 +279,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
 
         // If this is not the final step, the filter must be off.
         let final_step = local_values[reg_step(NUM_ROUNDS - 1)];
-        let not_final_step = P::ONES - final_step;
+        let not_final_step = final_step - P::ONES;
         yield_constr.constraint(not_final_step * filter);
 
         // If this is not the final step or a padding row,
@@ -434,10 +434,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
         vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     ) {
-        let one_ext = builder.one_extension();
         let two = builder.two();
-        let two_ext = builder.two_extension();
-        let four_ext = builder.constant_extension(F::Extension::from_canonical_u8(4));
 
         eval_round_flags_recursively(builder, vars, yield_constr);
 
@@ -451,8 +448,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
 
         // If this is not the final step, the filter must be off.
         let final_step = local_values[reg_step(NUM_ROUNDS - 1)];
-        let not_final_step = builder.sub_extension(one_ext, final_step);
-        let constraint = builder.mul_extension(not_final_step, filter);
+        let constraint = builder.mul_sub_extension(filter, final_step, filter);
         yield_constr.constraint(builder, constraint);
 
         // If this is not the final step or a padding row,
@@ -460,7 +456,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
         let sum_round_flags =
             builder.add_many_extension((0..NUM_ROUNDS).map(|i| local_values[reg_step(i)]));
         let diff = builder.sub_extension(next_values[TIMESTAMP], local_values[TIMESTAMP]);
-        let constr = builder.mul_many_extension([sum_round_flags, not_final_step, diff]);
+        let constr = builder.mul_sub_extension(diff, final_step, diff);
+        let constr = builder.mul_extension(sum_round_flags, constr);
         yield_constr.constraint(builder, constr);
 
         // C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
@@ -514,10 +511,15 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                     [0, 1, 2, 3, 4].map(|i| local_values[reg_a_prime(x, i, z)]),
                 );
                 let diff = builder.sub_extension(sum, local_values[reg_c_prime(x, z)]);
-                let diff_minus_two = builder.sub_extension(diff, two_ext);
-                let diff_minus_four = builder.sub_extension(diff, four_ext);
-                let constraint =
-                    builder.mul_many_extension([diff, diff_minus_two, diff_minus_four]);
+                let diff_times_diff_minus_two =
+                    builder.arithmetic_extension(F::ONE, F::TWO.neg(), diff, diff, diff);
+                let constraint = builder.arithmetic_extension(
+                    F::ONE,
+                    F::from_canonical_u8(4).neg(),
+                    diff_times_diff_minus_two,
+                    diff,
+                    diff_times_diff_minus_two,
+                );
                 yield_constr.constraint(builder, constraint);
             }
         }
