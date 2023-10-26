@@ -403,6 +403,8 @@ impl<'a> Interpreter<'a> {
             0x59 => self.run_msize(),                                   // "MSIZE",
             0x5a => todo!(),                                            // "GAS",
             0x5b => self.run_jumpdest(),                                // "JUMPDEST",
+            0x5c => todo!(),                                            // "TLOAD",
+            0x5d => todo!(),                                            // "TSTORE",
             x if (0x5f..0x80).contains(&x) => self.run_push(x - 0x5f),  // "PUSH"
             x if (0x80..0x90).contains(&x) => self.run_dup(x - 0x7f),   // "DUP"
             x if (0x90..0xa0).contains(&x) => self.run_swap(x - 0x8f)?, // "SWAP"
@@ -1304,6 +1306,8 @@ fn get_mnemonic(opcode: u8) -> &'static str {
         0x59 => "MSIZE",
         0x5a => "GAS",
         0x5b => "JUMPDEST",
+        0x5c => "TLOAD",
+        0x5d => "TSTORE",
         0x5f => "PUSH0",
         0x60 => "PUSH1",
         0x61 => "PUSH2",
