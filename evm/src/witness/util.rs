@@ -58,6 +58,7 @@ pub(crate) fn current_context_peek<F: Field>(
     state.memory.get(MemoryAddress::new(context, segment, virt))
 }
 
+/// Fills a memory channel with a given value, without adding a memory operation.
 pub(crate) fn fill_channel_with_value<F: Field>(row: &mut CpuColumnsView<F>, n: usize, val: U256) {
     let channel = &mut row.mem_channels[n];
     let val_limbs: [u64; 4] = val.0;
@@ -129,6 +130,8 @@ pub(crate) fn push_with_write<F: Field>(
     Ok(())
 }
 
+/// Reads a value from memory at a given address and returns the value
+/// along with a new memory read operation for it.
 pub(crate) fn mem_read_with_log<F: Field>(
     channel: MemoryChannel,
     address: MemoryAddress,
@@ -145,6 +148,7 @@ pub(crate) fn mem_read_with_log<F: Field>(
     (val, op)
 }
 
+/// Returns a new memory write operation for a given value and address.
 pub(crate) fn mem_write_log<F: Field>(
     channel: MemoryChannel,
     address: MemoryAddress,
@@ -160,6 +164,11 @@ pub(crate) fn mem_write_log<F: Field>(
     )
 }
 
+/// Given an address:
+/// - reads an opcode from memory,
+/// - creates a new memory read operation for it,
+/// - fills the opcode bits of the current CPU row,
+/// - returns the opcode byte and operation.
 pub(crate) fn mem_read_code_with_log_and_fill<F: Field>(
     address: MemoryAddress,
     state: &GenerationState<F>,
@@ -173,6 +182,8 @@ pub(crate) fn mem_read_code_with_log_and_fill<F: Field>(
     (val_u8, op)
 }
 
+/// Reads a value in memory at a given address, fills the given memory channel
+/// and returns the read value along with the memory read operation.
 pub(crate) fn mem_read_gp_with_log_and_fill<F: Field>(
     n: usize,
     address: MemoryAddress,
@@ -197,6 +208,8 @@ pub(crate) fn mem_read_gp_with_log_and_fill<F: Field>(
     (val, op)
 }
 
+/// Writes a value to memory at a given address, fills the given memory channel
+/// and returns the associated memory write operation.
 pub(crate) fn mem_write_gp_log_and_fill<F: Field>(
     n: usize,
     address: MemoryAddress,
@@ -222,9 +235,12 @@ pub(crate) fn mem_write_gp_log_and_fill<F: Field>(
     op
 }
 
-// Channel 0 already contains the top of the stack. You only need to read
-// from the second popped element.
-// If the resulting stack isn't empty, update `stack_top`.
+/// Reads `N - 1` values from memory, and the top of the stack from `CpuStark`.
+/// Updates the top of the stack and the stack len.
+/// If `N > 1`, returns a memory read operation.
+///
+/// Channel 0 already contains the top of the stack. You only need to read
+/// from the second popped element.
 pub(crate) fn stack_pop_with_log_and_fill<const N: usize, F: Field>(
     state: &mut GenerationState<F>,
     row: &mut CpuColumnsView<F>,
@@ -280,6 +296,10 @@ fn xor_into_sponge<F: Field>(
     }
 }
 
+/// Reads the input bytes of a Keccak operation from memory, and adds
+/// the associated memory read operations to `MemoryStark`.
+/// Adds the necessary operations to `KeccakStark` and
+/// `KeccakSpongeStark`.
 pub(crate) fn keccak_sponge_log<F: Field>(
     state: &mut GenerationState<F>,
     base_address: MemoryAddress,
@@ -340,6 +360,9 @@ pub(crate) fn keccak_sponge_log<F: Field>(
     });
 }
 
+/// Reads input bytes from memory and adds the associated read operations
+/// to `MemoryStark`.
+/// Adds one memory read operation to `BytePackingStark`.
 pub(crate) fn byte_packing_log<F: Field>(
     state: &mut GenerationState<F>,
     base_address: MemoryAddress,
@@ -367,6 +390,9 @@ pub(crate) fn byte_packing_log<F: Field>(
     });
 }
 
+/// Writes a given value's bytes into memory and adds the associated
+/// memory write operations to `MemoryStark`.
+/// Adds one memory write operation to `BytePackingStark`.
 pub(crate) fn byte_unpacking_log<F: Field>(
     state: &mut GenerationState<F>,
     base_address: MemoryAddress,

@@ -18,29 +18,47 @@ use crate::util::trace_rows_to_poly_values;
 use crate::witness::memory::MemoryOp;
 use crate::{arithmetic, keccak, keccak_sponge, logic};
 
+/// Structure storing the length of each STARK at the current checkpoint.
 #[derive(Clone, Copy, Debug)]
 pub struct TraceCheckpoint {
+    /// Length of `ArithmeticStark`.
     pub(self) arithmetic_len: usize,
+    /// Length of `BytePackingStark`.
     pub(self) byte_packing_len: usize,
+    /// Length of `CpuStark`.
     pub(self) cpu_len: usize,
+    /// Length of `KeccakStark`.
     pub(self) keccak_len: usize,
+    /// Length of `KeccakSpongeStark`.
     pub(self) keccak_sponge_len: usize,
+    /// Length of `LogicStark`.
     pub(self) logic_len: usize,
+    /// Length of `MemoryStark`.
     pub(self) memory_len: usize,
 }
 
+/// Structure constaining all the operations, inputs or rows
+/// for each STARK. They are used to generated the traces.
 #[derive(Debug)]
 pub(crate) struct Traces<T: Copy> {
+    /// Vector of operations for `ArithmeticStark`.
     pub(crate) arithmetic_ops: Vec<arithmetic::Operation>,
+    /// Vector of operations for `BytePackingStark`.
     pub(crate) byte_packing_ops: Vec<BytePackingOp>,
+    /// Vector of rows for `CpuStark`.
     pub(crate) cpu: Vec<CpuColumnsView<T>>,
+    /// Vector of operations for `LogicStark`.
     pub(crate) logic_ops: Vec<logic::Operation>,
+    /// Vector of operations for `MemoryStark`.
     pub(crate) memory_ops: Vec<MemoryOp>,
+    /// Vector of inputs for `KeccakStark`.
     pub(crate) keccak_inputs: Vec<([u64; keccak::keccak_stark::NUM_INPUTS], usize)>,
+    /// Vector of operations for `SpongeStark`.
     pub(crate) keccak_sponge_ops: Vec<KeccakSpongeOp>,
 }
 
 impl<T: Copy> Traces<T> {
+    /// Returns an empty set of traces for all STARKs.
     pub fn new() -> Self {
         Traces {
             arithmetic_ops: vec![],
@@ -96,6 +114,7 @@ impl<T: Copy> Traces<T> {
         }
     }
 
+    /// Sets the STARK traces back to their length at a given checkpoint.
     pub fn rollback(&mut self, checkpoint: TraceCheckpoint) {
         self.arithmetic_ops.truncate(checkpoint.arithmetic_len);
         self.byte_packing_ops.truncate(checkpoint.byte_packing_len);
@@ -107,34 +126,42 @@ impl<T: Copy> Traces<T> {
         self.memory_ops.truncate(checkpoint.memory_len);
     }
 
+    /// Returns the operations added to `MemoryStark` since a given checkpoint.
     pub fn mem_ops_since(&self, checkpoint: TraceCheckpoint) -> &[MemoryOp] {
         &self.memory_ops[checkpoint.memory_len..]
     }
 
+    /// Returns the rows added to `CpuStark` since a given checkpoint.
     pub fn push_cpu(&mut self, val: CpuColumnsView<T>) {
         self.cpu.push(val);
     }
 
+    /// Returns the operations added to `LogicStark` since a given checkpoint.
     pub fn push_logic(&mut self, op: logic::Operation) {
         self.logic_ops.push(op);
     }
 
+    /// Returns the operations added to `ArithmeticStark` since a given checkpoint.
     pub fn push_arithmetic(&mut self, op: arithmetic::Operation) {
         self.arithmetic_ops.push(op);
     }
 
+    /// Adds an operation to `MemoryStark`.
     pub fn push_memory(&mut self, op: MemoryOp) {
         self.memory_ops.push(op);
     }
 
+    /// Adds an operation to `BytePackingStark`.
     pub fn push_byte_packing(&mut self, op: BytePackingOp) {
         self.byte_packing_ops.push(op);
     }
 
+    /// Adds an operation to `KeccakStark` by providing the inputs as u64s.
     pub fn push_keccak(&mut self, input: [u64; keccak::keccak_stark::NUM_INPUTS], clock: usize) {
         self.keccak_inputs.push((input, clock));
     }
 
+    /// Adds an operation to `KeccakStark` by providing the input bytes.
     pub fn push_keccak_bytes(&mut self, input: [u8; KECCAK_WIDTH_BYTES], clock: usize) {
         let chunks = input
             .chunks(size_of::<u64>())
@@ -145,14 +172,18 @@ impl<T: Copy> Traces<T> {
         self.push_keccak(chunks, clock);
     }
 
+    /// Adds an operation to `KeccakSpongeStark`.
     pub fn push_keccak_sponge(&mut self, op: KeccakSpongeOp) {
         self.keccak_sponge_ops.push(op);
     }
 
+    /// Returns the current clock value.
     pub fn clock(&self) -> usize {
         self.cpu.len()
     }
 
+    /// Turns all operations/inputs into a trace for each STARK,
+    /// and returns all the generated traces.
     pub fn into_tables<const D: usize>(
         self,
         all_stark: &AllStark<T, D>,

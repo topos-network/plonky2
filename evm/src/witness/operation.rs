@@ -27,6 +27,8 @@ use crate::witness::util::{
 };
 use crate::{arithmetic, logic};
 
+/// CPU operations that are not directly implemented in the kernel,
+/// and shoiuld therefore be generated here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Operation {
     Iszero,
@@ -56,8 +58,9 @@ pub(crate) enum Operation {
 }
 
 /// Adds a CPU row filled with the two inputs and the output of a logic operation.
-/// Generates a new logic operation and adds it to the vector of operation in `LogicStark`.
-/// Adds three memory read operations to `MemoryStark`: for the two inputs and the output.
+/// Generates a new logic operation and adds it to the vector of operations in `LogicStark`.
+/// Adds one memory read operation to `MemoryStark` for the second input.
+/// The first input and the output are stored in the top of the stack, in `CpuStark`.
 pub(crate) fn generate_binary_logic_op<F: Field>(
     op: logic::Op,
     state: &mut GenerationState<F>,
@@ -74,6 +77,10 @@ pub(crate) fn generate_binary_logic_op<F: Field>(
     Ok(())
 }
 
+/// Adds a CPU row filled with the two inputs and the output of a binary arithmetic operation.
+/// Generates a new arithmetic operation and adds it to the vector of operations in `ArithmeticStark`.
+/// Adds one memory read operation to `MemoryStark` for the second input.
+/// The first input and the output are stored in the top of the stack, in `CpuStark`.
 pub(crate) fn generate_binary_arithmetic_op<F: Field>(
     operator: arithmetic::BinaryOperator,
     state: &mut GenerationState<F>,
@@ -108,6 +115,10 @@ pub(crate) fn generate_binary_arithmetic_op<F: Field>(
     Ok(())
 }
 
+/// Adds a CPU row filled with the three inputs and the output of a ternary arithmetic operation.
+/// Generates a new arithmetic operation and adds it to the vector of operations in `ArithmeticStark`.
+/// Adds two memory read operations to `MemoryStark` for the second and third inputs.
+/// The first input and the output are stored in the top of the stack, in `CpuStark`.
 pub(crate) fn generate_ternary_arithmetic_op<F: Field>(
     operator: arithmetic::TernaryOperator,
     state: &mut GenerationState<F>,
@@ -131,6 +142,13 @@ pub(crate) fn generate_ternary_arithmetic_op<F: Field>(
     Ok(())
 }
 
+/// Adds a CPU row filled with the address and length of the Keccak input, as well as the output hash.
+/// Generates a new `KeccakSponge` operation. Adds memory read operations for:
+/// - the segment and the virtual address,
+/// - the length of the input,
+/// - the input bytes.
+/// The context and the hash are stored in the top of the stack, in `CpuStark`.
+/// The hash is also written in the last memory channel.
 pub(crate) fn generate_keccak_general<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -165,6 +183,9 @@ pub(crate) fn generate_keccak_general<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the output of the `prover_input` function.
+/// If the stack was not previously empty, adds a memory write operation to `MemoryStark`,
+/// for the output.
 pub(crate) fn generate_prover_input<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -177,6 +198,9 @@ pub(crate) fn generate_prover_input<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the top of the stack.
+/// Since we are only performing one pop, we are only reading from and writing
+/// to the top of the stack, so no memory operation is necessary.
 pub(crate) fn generate_pop<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -188,6 +212,11 @@ pub(crate) fn generate_pop<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row containing `jumpdest_bit` as well as some auxiliary values
+/// used in the stack constraints. `jumpdest_bit` indicates whether a given
+/// destination address is valid.
+/// Adds a memory operation to `MemoryStark` if `dst` is valid and we are not
+/// in kernel mode.
 pub(crate) fn generate_jump<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -237,6 +266,11 @@ pub(crate) fn generate_jump<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the destination and condition of
+/// a JUMPI instruction, along with `jumpdest_bit` and some elements required
+/// for stack constraints.
+/// If a JUMP should be performed and we are not in kernel mode,
+/// adds a memory operation to `MemoryStark` for `jumpdest_bits`.
 pub(crate) fn generate_jumpi<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -286,6 +320,7 @@ pub(crate) fn generate_jumpi<F: Field>(
         state.traces.push_memory(jumpdest_bit_log);
     }
 
+    // Necessary fields for stack constraints.
     let diff = row.stack_len - F::TWO;
     if let Some(inv) = diff.try_inverse() {
         row.general.stack_mut().stack_inv = inv;
@@ -300,6 +335,9 @@ pub(crate) fn generate_jumpi<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the program counter.
+/// If the stack is not empty, adds a memory write operation to `MemoryStark`
+/// for the program counter.
 pub(crate) fn generate_pc<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -309,6 +347,7 @@ pub(crate) fn generate_pc<F: Field>(
     Ok(())
 }
 
+/// Pushes the input CPU row to `CpuStark`.
 pub(crate) fn generate_jumpdest<F: Field>(
     state: &mut GenerationState<F>,
     row: CpuColumnsView<F>,
@@ -317,6 +356,9 @@ pub(crate) fn generate_jumpdest<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the current context.
+/// If the stack is not empty prior to the operation, adds a memory write operation
+/// to `MemoryStark`.
 pub(crate) fn generate_get_context<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -326,6 +368,10 @@ pub(crate) fn generate_get_context<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the current context, old stack pointer and new stack pointer.
+/// Adds two or three memeory operations to `MemoryStark`: the first writes the old stack pointer,
+/// the second reads the new stack pointer, and the third reads the new stack top if the new stack
+/// is not empty.
 pub(crate) fn generate_set_context<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -400,6 +446,10 @@ pub(crate) fn generate_set_context<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with `n` bytes read from memory.
+/// Adds a memory read operation to `MemoryStark` for the `n` bytes packed
+/// into one `U256` word.
+/// `n` should be less than 32.
 pub(crate) fn generate_push<F: Field>(
     n: u8,
     state: &mut GenerationState<F>,
@@ -503,6 +553,11 @@ pub(crate) fn generate_dup<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the two elements to be swapped.
+/// Adds two memory stark operations: a read for the second element to be swapped,
+/// and an operation to write the first element into the second element's address.
+/// The first element is read from the top of the stack in `CpuStark`, and the
+/// second element is then stored in the top of the stack in `CpuStark`.
 pub(crate) fn generate_swap<F: Field>(
     n: u8,
     state: &mut GenerationState<F>,
@@ -526,6 +581,9 @@ pub(crate) fn generate_swap<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the input and output of the NOT operation.
+/// Does not add memory operations since only the top of the stack -- stored in
+/// `CpuStark` -- is affected by the changes.
 pub(crate) fn generate_not<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -538,6 +596,10 @@ pub(crate) fn generate_not<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the input and output of the ISZERO operation, along
+/// with auxiliary values necessary to the equality check.
+/// Does not add memory operations since only the top of the stack -- stored in
+/// `CpuStark` -- is affected by the changes.
 pub(crate) fn generate_iszero<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -596,6 +658,12 @@ fn append_shift<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with:
+/// - the number of bits to be shifted `s`,
+/// - the input of the shift `inp`,
+/// - `inp >> s`.
+/// Adds one or two memory read operations: the first for `inp` and the second for `inp >> s` if
+/// `s` is less than 32-bits long.
 pub(crate) fn generate_shl<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -610,6 +678,12 @@ pub(crate) fn generate_shl<F: Field>(
     append_shift(state, row, true, input0, input1, log_in1, result)
 }
 
+/// Generates a CPU row filled with:
+/// - the number of bits to be shifted `s`,
+/// - the input of the shift `inp`,
+/// - `inp << s`.
+/// Adds one or two memory read operations: the first for `inp` and the second for `inp << s` if
+/// `s` is less than 32-bits long.
 pub(crate) fn generate_shr<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -624,6 +698,9 @@ pub(crate) fn generate_shr<F: Field>(
     append_shift(state, row, false, input0, input1, log_in1, result)
 }
 
+/// Generates a CPU row filled with the handler address for the syscall and the syscall information.
+/// Adds four memory operations to `MemoryStark`: three reads for the three elements comprising the
+/// handler address, and a write for the syscall information.
 pub(crate) fn generate_syscall<F: Field>(
     opcode: u8,
     stack_values_read: usize,
@@ -694,6 +771,10 @@ pub(crate) fn generate_syscall<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the input and output of the EQ operation, along
+/// with auxiliary values necessary to the equality check.
+/// Does not add memory operations since only the top of the stack -- stored in
+/// `CpuStark` -- is affected by the changes.
 pub(crate) fn generate_eq<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -710,6 +791,9 @@ pub(crate) fn generate_eq<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with `kexit_info`.
+/// Does not add a memory operation since `kexit_info` is read from the top
+/// of the stack, in `CpuStark`.
 pub(crate) fn generate_exit_kernel<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -739,6 +823,11 @@ pub(crate) fn generate_exit_kernel<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the context, segment, virtual address of the value to load,
+/// the value to write and auxiliary values used for stack constraints.
+/// Adds three memory read operations: for the segment, virtual address, and
+/// the loaded value. The context does not require a memory read because it was stored in the
+/// top of the stack, in `CpuStark`.
 pub(crate) fn generate_mload_general<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -770,6 +859,14 @@ pub(crate) fn generate_mload_general<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the context, segment, virtual address of the value to load,
+/// its length and the packed value as a `U256`.
+/// Adds multiple memory read operations to `MemoryStark`:
+/// - three for the segment, the virtual offset and the length (the context is stored in
+/// the top of the stack, in `CpuStark`),
+/// - one for each loaded byte.
+/// The loaded value is stored in the top of the stack, in `CpuStark`.
+/// Adds a read operation to `BytePackingStark`.
 pub(crate) fn generate_mload_32bytes<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -811,6 +908,11 @@ pub(crate) fn generate_mload_32bytes<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the context, segment, virtual address of the value to store,
+/// the value to write and auxiliary values used for stack constraints.
+/// Adds four memory operations: three reads for the segment, virtual address and the value, and one write
+/// for the loaded value. The context does not require a memory read because it was stored in the
+/// top of the stack, in `CpuStark`.
 pub(crate) fn generate_mstore_general<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -851,6 +953,14 @@ pub(crate) fn generate_mstore_general<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the context, segment, virtual address of the value to load,
+/// its length and the packed value as a `U256`.
+/// Adds multiple memory operations to `MemoryStark`:
+/// - four reads for the segment, the virtual offset, the value to store and its length
+/// (the context is stored in the top of the stack, in `CpuStark`),
+/// - one write for each loaded byte.
+/// The loaded value is stored in the top of the stack, in `CpuStark`.
+/// Adds a write operation to `BytePackingStark`.
 pub(crate) fn generate_mstore_32bytes<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
@@ -871,6 +981,10 @@ pub(crate) fn generate_mstore_32bytes<F: Field>(
     Ok(())
 }
 
+/// Generates a CPU row filled with the handler address for the exception and the exception information.
+/// Adds four memory operations to `MemoryStark`: three reads for the three elements comprising the
+/// handler address, and a write for the exception information. If necessary, an additional read operation
+/// is added to read the top of the stack.
 pub(crate) fn generate_exception<F: Field>(
     exc_code: u8,
     state: &mut GenerationState<F>,

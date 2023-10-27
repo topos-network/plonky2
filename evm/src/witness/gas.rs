@@ -8,6 +8,7 @@ const G_LOW: u64 = 5;
 const G_MID: u64 = 8;
 const G_HIGH: u64 = 10;
 
+/// Enumerates the gas to charge for each operation.
 pub(crate) fn gas_to_charge(op: Operation) -> u64 {
     use crate::arithmetic::BinaryOperator::*;
     use crate::witness::operation::Operation::*;

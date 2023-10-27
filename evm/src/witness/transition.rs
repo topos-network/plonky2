@@ -304,6 +304,7 @@ fn base_row<F: Field>(state: &mut GenerationState<F>) -> (CpuColumnsView<F>, u8)
     (row, opcode)
 }
 
+/// Initializes a new row for the current opcode and tries to perform the corresponding instruction.
 fn try_perform_instruction<F: Field>(state: &mut GenerationState<F>) -> Result<(), ProgramError> {
     let (mut row, opcode) = base_row(state);
     let op = decode(state.registers, opcode)?;
@@ -424,6 +425,9 @@ fn handle_error<F: Field>(state: &mut GenerationState<F>, err: ProgramError) -> 
     Ok(())
 }
 
+/// Tries to perform a single instruction and to update the current state accordingly.
+/// If an error occurs in the kernel, the program bails. Otherwise, the traces and registers
+/// are set back to the latest checkpoint and the error is handled by generating an exception.
 pub(crate) fn transition<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
     let checkpoint = state.checkpoint();
     let result = try_perform_instruction(state);
