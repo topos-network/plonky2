@@ -1,4 +1,5 @@
 use ethereum_types::U256;
+use itertools::Itertools;
 use plonky2::field::types::Field;
 
 use super::memory::DUMMY_MEMOP;
@@ -8,6 +9,7 @@ use crate::cpu::kernel::keccak_util::keccakf_u8s;
 use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
 use crate::cpu::stack_bounds::MAX_USER_STACK_SIZE;
 use crate::generation::state::GenerationState;
+use crate::keccak::columns::R;
 use crate::keccak_sponge::columns::{KECCAK_RATE_BYTES, KECCAK_WIDTH_BYTES};
 use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeOp;
 use crate::logic;
@@ -258,6 +260,82 @@ fn xor_into_sponge<F: Field>(
     }
 }
 
+/// For each permutation, we update the state after each round and
+/// add the necessary Logic operations to `LogicStark` so that we can
+/// check: C[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4]
+/// (see `KeccakStark` for more details).
+fn add_all_keccak_logic_ops<F: Field>(
+    state: &mut GenerationState<F>,
+    input: [u8; KECCAK_WIDTH_BYTES],
+) {
+    let input_u64s: [u64; 25] =
+        core::array::from_fn(|i| u64::from_le_bytes(input[i * 8..][..8].try_into().unwrap()));
+    let mut a = input_u64s;
+    add_keccak_logic_ops(state, a);
+    // Update a
+    perform_round(&mut a, 0);
+    for i in 1..24 {
+        add_keccak_logic_ops(state, a);
+        perform_round(&mut a, i);
+    }
+}
+
+fn add_keccak_logic_ops<F: Field>(
+    state: &mut GenerationState<F>,
+    a: [u64; crate::keccak::keccak_stark::NUM_INPUTS],
+) {
+    let mut inps1_to_xor = Vec::with_capacity(20);
+    let mut inps2_to_xor = Vec::with_capacity(20);
+    // A[x, 0].
+    inps1_to_xor.extend((0..5).map(|x| a[x]));
+    // A[x, 2].
+    inps1_to_xor.extend((0..5).map(|x| a[2 * 5 + x]));
+
+    // AUX1[x] = A[x, 0] ^ A[x, 1].
+    inps1_to_xor.extend((0..5).map(|x| a[x] ^ a[5 + x]));
+    // AUX3[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3].
+    inps1_to_xor.extend((0..5).map(|x| a[x] ^ a[5 + x] ^ a[2 * 5 + x] ^ a[3 * 5 + x]));
+
+    // A[x, 1].
+    inps2_to_xor.extend((0..5).map(|x| a[5 + x]));
+    // A[x, 3].
+    inps2_to_xor.extend((0..5).map(|x| a[3 * 5 + x]));
+    // AUX2 = A[x, 2] ^ A[x, 3].
+    inps2_to_xor.extend((0..5).map(|x| a[2 * 5 + x] ^ a[3 * 5 + x]));
+    // A[x, 4].
+    inps2_to_xor.extend((0..5).map(|x| a[4 * 5 + x]));
+    for (lhs, rhs) in inps1_to_xor
+        .chunks_exact(4)
+        .zip_eq(inps2_to_xor.chunks_exact(4))
+    {
+        state.traces.push_logic(logic::Operation::new(
+            logic::Op::Xor,
+            U256(lhs.try_into().unwrap()),
+            U256(rhs.try_into().unwrap()),
+        ));
+    }
+}
+
+fn perform_round(a: &mut [u64; crate::keccak::keccak_stark::NUM_INPUTS], r: usize) {
+    let mut b = vec![0u64; crate::keccak::keccak_stark::NUM_INPUTS];
+    let c: Vec<_> = (0..5)
+        .map(|x| a[x] ^ a[x + 5] ^ a[x + 2 * 5] ^ a[x + 3 * 5] ^ a[x + 4 * 5])
+        .collect();
+
+    for index in 0..25 {
+        let x = index % 5;
+        let y: usize = index / 5;
+        a[index] ^= c[(x + 4) % 5] ^ c[(x + 1) % 5].rotate_left(1);
+        b[y + ((2 * x + 3 * y) % 5) * 5] = a[index].rotate_left(R[x][y] as u32);
+    }
+
+    for index in 0..25 {
+        let x = index % 5;
+        let y = index / 5;
+        a[index] = b[index] ^ (!b[((x + 1) % 5) + y * 5] & b[y * 5 + (x + 2) % 5]);
+    }
+    a[0] ^= crate::keccak::constants::RC[r];
+}
 pub(crate) fn keccak_sponge_log<F: Field>(
     state: &mut GenerationState<F>,
     base_address: MemoryAddress,
@@ -280,9 +358,12 @@ pub(crate) fn keccak_sponge_log<F: Field>(
             address.increment();
         }
         xor_into_sponge(state, &mut sponge_state, block.try_into().unwrap());
+        // Add XORs related to `KeccakStark`.`
+        add_all_keccak_logic_ops(state, sponge_state);
         state
             .traces
             .push_keccak_bytes(sponge_state, clock * NUM_CHANNELS);
+
         keccakf_u8s(&mut sponge_state);
     }
 
@@ -307,6 +388,8 @@ pub(crate) fn keccak_sponge_log<F: Field>(
         final_block[KECCAK_RATE_BYTES - 1] = 0b10000000;
     }
     xor_into_sponge(state, &mut sponge_state, &final_block);
+    // Add XORs related to `KeccakStark`.
+    add_all_keccak_logic_ops(state, sponge_state);
     state
         .traces
         .push_keccak_bytes(sponge_state, clock * NUM_CHANNELS);

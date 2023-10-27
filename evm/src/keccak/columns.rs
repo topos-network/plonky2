@@ -40,7 +40,7 @@ pub const fn reg_output_limb(i: usize) -> usize {
     reg_a_prime_prime_prime(x, y) + is_high_limb
 }
 
-const R: [[u8; 5]; 5] = [
+pub const R: [[u8; 5]; 5] = [
     [0, 36, 3, 41, 18],
     [1, 44, 10, 45, 2],
     [62, 6, 43, 15, 61],
@@ -67,19 +67,32 @@ pub(crate) const fn reg_c(x: usize, z: usize) -> usize {
     START_C + x * 64 + z
 }
 
-// C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1])
-const START_C_PRIME: usize = START_C + 5 * 64;
-pub(crate) const fn reg_c_prime(x: usize, z: usize) -> usize {
+// AUX1_A_C[x] = A[x, 0] ^ A[x, 1]
+const START_AUX1_A_C: usize = START_C + 5 * 64;
+pub(crate) const fn reg_aux1_a_c(x: usize) -> usize {
     debug_assert!(x < 5);
-    debug_assert!(z < 64);
-    START_C_PRIME + x * 64 + z
+    START_AUX1_A_C + x * 2
+}
+
+// AUX1_A_C[x] = A[x, 2] ^ A[x, 3]
+const START_AUX2_A_C: usize = START_AUX1_A_C + 5 * 2;
+pub(crate) const fn reg_aux2_a_c(x: usize) -> usize {
+    debug_assert!(x < 5);
+    START_AUX2_A_C + x * 2
+}
+
+// AUX3_A_C[x] = AUX1_A_C[x] ^ AUX2_A_C[x]
+const START_AUX3_A_C: usize = START_AUX2_A_C + 5 * 2;
+pub(crate) const fn reg_aux3_a_c(x: usize) -> usize {
+    debug_assert!(x < 5);
+    START_AUX3_A_C + x * 2
 }
 
 // Note: D is inlined, not stored in the witness.
 
 // A'[x, y] = xor(A[x, y], D[x])
 //          = xor(A[x, y], C[x - 1], ROT(C[x + 1], 1))
-const START_A_PRIME: usize = START_C_PRIME + 5 * 64;
+const START_A_PRIME: usize = START_AUX3_A_C + 5 * 2;
 pub(crate) const fn reg_a_prime(x: usize, y: usize, z: usize) -> usize {
     debug_assert!(x < 5);
     debug_assert!(y < 5);

@@ -192,6 +192,14 @@ fn ctl_logic<F: Field>() -> CrossTableLookup<F> {
         );
         all_lookers.push(keccak_sponge_looking);
     }
+    for i in 0..keccak_stark::num_ctl_logic() {
+        let keccak_logic_looking = TableWithColumns::new(
+            Table::Keccak,
+            keccak_stark::ctl_logic(i),
+            Some(keccak_stark::ctl_logic_filter()),
+        );
+        all_lookers.push(keccak_logic_looking);
+    }
     let logic_looked =
         TableWithColumns::new(Table::Logic, logic::ctl_data(), Some(logic::ctl_filter()));
     CrossTableLookup::new(all_lookers, logic_looked)

@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::marker::PhantomData;
 
 use itertools::Itertools;
@@ -11,13 +12,13 @@ use plonky2::plonk::plonk_common::reduce_with_powers_ext_circuit;
 use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 
-use super::columns::reg_input_limb;
+use super::columns::{reg_aux1_a_c, reg_aux2_a_c, reg_aux3_a_c, reg_input_limb};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::cross_table_lookup::Column;
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::keccak::columns::{
     reg_a, reg_a_prime, reg_a_prime_prime, reg_a_prime_prime_0_0_bit, reg_a_prime_prime_prime,
-    reg_b, reg_c, reg_c_prime, reg_output_limb, reg_step, NUM_COLUMNS, TIMESTAMP,
+    reg_b, reg_c, reg_output_limb, reg_step, NUM_COLUMNS, TIMESTAMP,
 };
 use crate::keccak::constants::{rc_value, rc_value_bit};
 use crate::keccak::logic::{
@@ -49,8 +50,114 @@ pub fn ctl_filter_inputs<F: Field>() -> Column<F> {
     Column::single(reg_step(0))
 }
 
+pub fn num_ctl_logic() -> usize {
+    5
+}
+
+/// We check that C[x] = A[x, 0] ^ A[x, 1] ^ A[x, 2] ^ A[x, 3] ^ A[x, 4] using `LogicStark``,
+/// for x in {0, ..., 4}.
+/// We stack all those XORs so that we fill all columns when calling XOR.
+/// The operation we check are, in order:
+/// - A[x, 0] ^ A[x, 1] = AUX1[x]
+/// - A[x, 2] ^ A[x, 3] = AUX2[x]
+/// - AUX1[x] ^ AUX2[x] = AUX3[x]
+/// - AUX3[x] ^ A[x, 4] = C[x]
+/// Since each input/output has 10 32-bit limbs, we have 40 32-bit limbs XORs to carry out,
+/// which corresponds to exactly 5 rows in `LogicStark`.`
+pub fn ctl_logic<F: Field>(i: usize) -> Vec<Column<F>> {
+    let inps1_funcs = [|x| reg_a(x, 0), |x| reg_a(x, 2), reg_aux1_a_c, reg_aux3_a_c];
+    let inps2_funcs = [
+        |x| reg_a(x, 1),
+        |x| reg_a(x, 3),
+        reg_aux2_a_c,
+        |x| reg_a(x, 4),
+    ];
+    let get_c_limb_lo = |x| {
+        Column::linear_combination((0..32).map(|z| (reg_c(x, z), F::from_canonical_u64(1 << z))))
+    };
+    let get_c_limb_hi = |x| {
+        Column::linear_combination(
+            (32..64).map(|z| (reg_c(x, z), F::from_canonical_u64(1 << (z - 32)))),
+        )
+    };
+    let outs_funcs = [reg_aux1_a_c, reg_aux2_a_c, reg_aux3_a_c];
+    // We only need 5 logic rows for one permutation.
+    debug_assert!(i < 5);
+    let inp = 8 * i / 10;
+    // Number we still need to read in the input.
+    let rem = 10 - 8 * i % 10;
+    let (first_inp, second_inp) = (inps1_funcs[inp], inps2_funcs[inp]);
+
+    // In each Logic row, the inputs and output generally comprise parts from two different vectors
+    // (such as A[x, 0] and A[x, 2]) in the permutation row. This is for optimization
+    // purposes: we stack XORs as much as we can.
+    let mut res = vec![Column::constant(F::from_canonical_u64(0x18))];
+    res.extend(Column::singles((0..min(rem, 8)).map(|j| {
+        let index = j + 10 - rem;
+        let is_high_limb = index % 2;
+        let cur = index / 2;
+        first_inp(cur) + is_high_limb
+    })));
+
+    // If the remaining number of values in the input is greater than 8,
+    // then we are at the first row, and there is only one type of
+    // input to consider.
+    let rem_nb = if rem > 8 { 0 } else { 8 - rem };
+    res.extend(Column::singles((0..rem_nb).map(|j| {
+        let second_func = inps1_funcs[inp + 1];
+        let is_high_limb = j % 2;
+        let cur = j / 2;
+        second_func(cur) + is_high_limb
+    })));
+    // Second inputs.
+    res.extend(Column::singles((0..min(rem, 8)).map(|j| {
+        let index = j + 10 - rem;
+        let is_high_limb = index % 2;
+        let cur = index / 2;
+        second_inp(cur) + is_high_limb
+    })));
+    res.extend(Column::singles((0..rem_nb).map(|j| {
+        let second_func = inps2_funcs[inp + 1];
+        let is_high_limb = j % 2;
+        let cur = j / 2;
+        second_func(cur) + is_high_limb
+    })));
+    // Outputs.
+    if i == 4 {
+        for j in 0..4 {
+            let index = j + 1;
+            res.push(get_c_limb_lo(index));
+            res.push(get_c_limb_hi(index));
+        }
+    } else {
+        res.extend(Column::singles((0..min(rem, 8)).map(|j| {
+            let index = j + 10 - rem;
+            let is_high_limb = index % 2;
+            let cur = index / 2;
+            outs_funcs[inp](cur) + is_high_limb
+        })));
+    }
+    if i == 3 {
+        res.push(get_c_limb_lo(0));
+        res.push(get_c_limb_hi(0));
+    } else {
+        res.extend(Column::singles((0..rem_nb).map(|j| {
+            let second_func = outs_funcs[inp + 1];
+            let is_high_limb = j % 2;
+            let cur = j / 2;
+            second_func(cur) + is_high_limb
+        })));
+    }
+
+    res
+}
+
 pub fn ctl_filter_outputs<F: Field>() -> Column<F> {
     Column::single(reg_step(NUM_ROUNDS - 1))
+}
+
+pub fn ctl_logic_filter<F: Field>() -> Column<F> {
+    Column::linear_combination((0..NUM_ROUNDS).map(|i| (reg_step(i), F::ONE)))
 }
 
 #[derive(Copy, Clone, Default)]
@@ -147,15 +254,31 @@ impl<F: RichField + Extendable<D>, const D: usize> KeccakStark<F, D> {
             }
         }
 
-        // Populate C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
+        // Populate the auxiliary values necessary to carry out the four XORs for C
+        // using `LogicStark`.
         for x in 0..5 {
-            for z in 0..64 {
-                row[reg_c_prime(x, z)] = xor([
-                    row[reg_c(x, z)],
-                    row[reg_c((x + 4) % 5, z)],
-                    row[reg_c((x + 1) % 5, (z + 63) % 64)],
-                ]);
-            }
+            // Generate low limbs.
+            row[reg_aux1_a_c(x)] = F::from_canonical_u64(
+                row[reg_a(x, 0)].to_canonical_u64() ^ row[reg_a(x, 1)].to_canonical_u64(),
+            );
+            row[reg_aux2_a_c(x)] = F::from_canonical_u64(
+                row[reg_a(x, 2)].to_canonical_u64() ^ row[reg_a(x, 3)].to_canonical_u64(),
+            );
+            row[reg_aux3_a_c(x)] = F::from_canonical_u64(
+                row[reg_aux1_a_c(x)].to_canonical_u64() ^ row[reg_aux2_a_c(x)].to_canonical_u64(),
+            );
+
+            // Generate high limbs.
+            row[reg_aux1_a_c(x) + 1] = F::from_canonical_u64(
+                row[reg_a(x, 0) + 1].to_canonical_u64() ^ row[reg_a(x, 1) + 1].to_canonical_u64(),
+            );
+            row[reg_aux2_a_c(x) + 1] = F::from_canonical_u64(
+                row[reg_a(x, 2) + 1].to_canonical_u64() ^ row[reg_a(x, 3) + 1].to_canonical_u64(),
+            );
+            row[reg_aux3_a_c(x) + 1] = F::from_canonical_u64(
+                row[reg_aux1_a_c(x) + 1].to_canonical_u64()
+                    ^ row[reg_aux2_a_c(x) + 1].to_canonical_u64(),
+            );
         }
 
         // Populate A'. To avoid shifting indices, we rewrite
@@ -170,8 +293,11 @@ impl<F: RichField + Extendable<D>, const D: usize> KeccakStark<F, D> {
                     let reg_a_limb = reg_a(x, y) + is_high_limb;
                     let a_limb = row[reg_a_limb].to_canonical_u64() as u32;
                     let a_bit = F::from_bool(((a_limb >> bit_in_limb) & 1) != 0);
-                    row[reg_a_prime(x, y, z)] =
-                        xor([a_bit, row[reg_c(x, z)], row[reg_c_prime(x, z)]]);
+                    row[reg_a_prime(x, y, z)] = xor([
+                        a_bit,
+                        row[reg_c((x + 4) % 5, z)],
+                        row[reg_c((x + 1) % 5, (z + 63) % 64)],
+                    ]);
                 }
             }
         }
@@ -287,19 +413,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
             sum_round_flags * not_final_step * (next_values[TIMESTAMP] - local_values[TIMESTAMP]),
         );
 
-        // C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
-        for x in 0..5 {
-            for z in 0..64 {
-                let xor = xor3_gen(
-                    local_values[reg_c(x, z)],
-                    local_values[reg_c((x + 4) % 5, z)],
-                    local_values[reg_c((x + 1) % 5, (z + 63) % 64)],
-                );
-                let c_prime = local_values[reg_c_prime(x, z)];
-                yield_constr.constraint(c_prime - xor);
-            }
-        }
-
+        // We check that C[x] = A[x, 0]^A[x, 1]^A[x, 2]^A[x, 3]^A[x, 4] with the Logic STARK.
         // Check that the input limbs are consistent with A' and D.
         // A[x, y, z] = xor(A'[x, y, z], D[x, y, z])
         //            = xor(A'[x, y, z], C[x - 1, z], C[x + 1, z - 1])
@@ -312,8 +426,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                 let a_hi = local_values[reg_a(x, y) + 1];
                 let get_bit = |z| {
                     let a_prime = local_values[reg_a_prime(x, y, z)];
-                    let c = local_values[reg_c(x, z)];
-                    let c_prime = local_values[reg_c_prime(x, z)];
+                    let c = local_values[reg_c((x + 4) % 5, z)];
+                    let c_prime = local_values[reg_c((x + 1) % 5, (z + 63) % 64)];
                     xor3_gen(a_prime, c, c_prime)
                 };
                 let computed_lo = (0..32)
@@ -324,21 +438,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                     .fold(P::ZEROS, |acc, z| acc.doubles() + get_bit(z));
                 yield_constr.constraint(computed_lo - a_lo);
                 yield_constr.constraint(computed_hi - a_hi);
-            }
-        }
-
-        // xor_{i=0}^4 A'[x, i, z] = C'[x, z], so for each x, z,
-        // diff * (diff - 2) * (diff - 4) = 0, where
-        // diff = sum_{i=0}^4 A'[x, i, z] - C'[x, z]
-        for x in 0..5 {
-            for z in 0..64 {
-                let sum: P = [0, 1, 2, 3, 4]
-                    .map(|i| local_values[reg_a_prime(x, i, z)])
-                    .into_iter()
-                    .sum();
-                let diff = sum - local_values[reg_c_prime(x, z)];
-                yield_constr
-                    .constraint(diff * (diff - FE::TWO) * (diff - FE::from_canonical_u8(4)));
             }
         }
 
@@ -432,8 +531,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
     ) {
         let one_ext = builder.one_extension();
         let two = builder.two();
-        let two_ext = builder.two_extension();
-        let four_ext = builder.constant_extension(F::Extension::from_canonical_u8(4));
+        // let two_ext = builder.two_extension();
+        // let four_ext = builder.constant_extension(F::Extension::from_canonical_u8(4));
 
         eval_round_flags_recursively(builder, vars, yield_constr);
 
@@ -459,21 +558,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
         let constr = builder.mul_many_extension([sum_round_flags, not_final_step, diff]);
         yield_constr.constraint(builder, constr);
 
-        // C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
-        for x in 0..5 {
-            for z in 0..64 {
-                let xor = xor3_gen_circuit(
-                    builder,
-                    local_values[reg_c(x, z)],
-                    local_values[reg_c((x + 4) % 5, z)],
-                    local_values[reg_c((x + 1) % 5, (z + 63) % 64)],
-                );
-                let c_prime = local_values[reg_c_prime(x, z)];
-                let diff = builder.sub_extension(c_prime, xor);
-                yield_constr.constraint(builder, diff);
-            }
-        }
-
+        // We check that C[x] = A[x, 0]^A[x, 1]^A[x, 2]^A[x, 3]^A[x, 4] with the Logic STARK.
         // Check that the input limbs are consistent with A' and D.
         // A[x, y, z] = xor(A'[x, y, z], D[x, y, z])
         //            = xor(A'[x, y, z], C[x - 1, z], C[x + 1, z - 1])
@@ -486,8 +571,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                 let a_hi = local_values[reg_a(x, y) + 1];
                 let mut get_bit = |z| {
                     let a_prime = local_values[reg_a_prime(x, y, z)];
-                    let c = local_values[reg_c(x, z)];
-                    let c_prime = local_values[reg_c_prime(x, z)];
+                    let c = local_values[reg_c((x + 4) % 5, z)];
+                    let c_prime = local_values[reg_c((x + 1) % 5, (z + 63) % 64)];
                     xor3_gen_circuit(builder, a_prime, c, c_prime)
                 };
                 let bits_lo = (0..32).map(&mut get_bit).collect_vec();
@@ -498,23 +583,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                 yield_constr.constraint(builder, diff);
                 let diff = builder.sub_extension(computed_hi, a_hi);
                 yield_constr.constraint(builder, diff);
-            }
-        }
-
-        // xor_{i=0}^4 A'[x, i, z] = C'[x, z], so for each x, z,
-        // diff * (diff - 2) * (diff - 4) = 0, where
-        // diff = sum_{i=0}^4 A'[x, i, z] - C'[x, z]
-        for x in 0..5 {
-            for z in 0..64 {
-                let sum = builder.add_many_extension(
-                    [0, 1, 2, 3, 4].map(|i| local_values[reg_a_prime(x, i, z)]),
-                );
-                let diff = builder.sub_extension(sum, local_values[reg_c_prime(x, z)]);
-                let diff_minus_two = builder.sub_extension(diff, two_ext);
-                let diff_minus_four = builder.sub_extension(diff, four_ext);
-                let constraint =
-                    builder.mul_many_extension([diff, diff_minus_two, diff_minus_four]);
-                yield_constr.constraint(builder, constraint);
             }
         }
 
