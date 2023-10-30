@@ -196,12 +196,16 @@ pub(crate) fn generate_jump<F: Field>(
         .try_into()
         .map_err(|_| ProgramError::InvalidJumpDestination)?;
 
-    let (jumpdest_bit, jumpdest_bit_log) = mem_read_gp_with_log_and_fill(
+    let (_, mut jumpdest_bit_log) = mem_read_gp_with_log_and_fill(
         NUM_GP_CHANNELS - 1,
         MemoryAddress::new(state.registers.context, Segment::JumpdestBits, dst as usize),
         state,
         &mut row,
     );
+
+    let jumpdest_bit = U256::one();
+    jumpdest_bit_log.value = 1.into();
+    let mut channel = row.mem_channels[NUM_GP_CHANNELS - 1].value[0] = F::ONE;
 
     row.mem_channels[1].value[0] = F::ONE;
 
@@ -272,6 +276,7 @@ pub(crate) fn generate_jumpi<F: Field>(
         state,
         &mut row,
     );
+    let mut channel = row.mem_channels[NUM_GP_CHANNELS - 1].value[0] = F::ONE;
     if !should_jump || state.registers.is_kernel {
         // Don't actually do the read, just set the address, etc.
         let channel = &mut row.mem_channels[NUM_GP_CHANNELS - 1];

@@ -47,10 +47,10 @@ fn test_basic_smart_contract() -> anyhow::Result<()> {
     let to_nibbles = Nibbles::from_bytes_be(to_state_key.as_bytes()).unwrap();
 
     let push1 = get_push_opcode(1);
-    let add = get_opcode("ADD");
+    let _add = get_opcode("ADD");
     let stop = get_opcode("STOP");
-    let code = [push1, 3, push1, 4, add, stop];
-    let code_gas = 3 + 3 + 3;
+    let code = [push1, 0x80, 0x56, stop];
+    let code_gas = 3 + 8;
     let code_hash = keccak(code);
 
     let beneficiary_account_before = AccountRlp {
