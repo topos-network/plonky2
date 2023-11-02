@@ -55,6 +55,9 @@ pub(crate) enum Operation {
     MstoreGeneral,
 }
 
+/// Adds a CPU row filled with the two inputs and the output of a logic operation.
+/// Generates a new logic operation and adds it to the vector of operation in `LogicStark`.
+/// Adds three memory read operations to `MemoryStark`: for the two inputs and the output.
 pub(crate) fn generate_binary_logic_op<F: Field>(
     op: logic::Op,
     state: &mut GenerationState<F>,
@@ -169,6 +172,17 @@ pub(crate) fn generate_pop<F: Field>(
     mut row: CpuColumnsView<F>,
 ) -> Result<(), ProgramError> {
     let [(_, _)] = stack_pop_with_log_and_fill::<1, _>(state, &mut row)?;
+
+    let diff = row.stack_len - F::from_canonical_usize(1);
+    if let Some(inv) = diff.try_inverse() {
+        row.general.stack_mut().stack_inv = inv;
+        row.general.stack_mut().stack_inv_aux = F::ONE;
+        row.general.stack_mut().stack_inv_aux_2 = F::ONE;
+        state.registers.is_stack_top_read = true;
+    } else {
+        row.general.stack_mut().stack_inv = F::ZERO;
+        row.general.stack_mut().stack_inv_aux = F::ZERO;
+    }
 
     state.traces.push_cpu(row);
 
@@ -308,7 +322,22 @@ pub(crate) fn generate_get_context<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
 ) -> Result<(), ProgramError> {
-    push_with_write(state, &mut row, state.registers.context.into())?;
+    // Same logic as push_with_write, but we have to use channel 3 for stack constraint reasons.
+    let write = if state.registers.stack_len == 0 {
+        None
+    } else {
+        let address = MemoryAddress::new(
+            state.registers.context,
+            Segment::Stack,
+            state.registers.stack_len - 1,
+        );
+        let res = mem_write_gp_log_and_fill(3, address, state, &mut row, state.registers.stack_top);
+        Some(res)
+    };
+    push_no_write(state, state.registers.context.into());
+    if let Some(log) = write {
+        state.traces.push_memory(log);
+    }
     state.traces.push_cpu(row);
     Ok(())
 }
@@ -364,9 +393,11 @@ pub(crate) fn generate_set_context<F: Field>(
         if let Some(inv) = new_sp_field.try_inverse() {
             row.general.stack_mut().stack_inv = inv;
             row.general.stack_mut().stack_inv_aux = F::ONE;
+            row.general.stack_mut().stack_inv_aux_2 = F::ONE;
         } else {
             row.general.stack_mut().stack_inv = F::ZERO;
             row.general.stack_mut().stack_inv_aux = F::ZERO;
+            row.general.stack_mut().stack_inv_aux_2 = F::ZERO;
         }
 
         let new_top_addr = MemoryAddress::new(new_ctx, Segment::Stack, new_sp - 1);
@@ -520,6 +551,17 @@ pub(crate) fn generate_not<F: Field>(
     let [(x, _)] = stack_pop_with_log_and_fill::<1, _>(state, &mut row)?;
     let result = !x;
     push_no_write(state, result);
+
+    // This is necessary for the stack constraints for POP,
+    // since the two flags are combined.
+    let diff = row.stack_len - F::from_canonical_usize(1);
+    if let Some(inv) = diff.try_inverse() {
+        row.general.stack_mut().stack_inv = inv;
+        row.general.stack_mut().stack_inv_aux = F::ONE;
+    } else {
+        row.general.stack_mut().stack_inv = F::ZERO;
+        row.general.stack_mut().stack_inv_aux = F::ZERO;
+    }
 
     state.traces.push_cpu(row);
     Ok(())
@@ -833,6 +875,7 @@ pub(crate) fn generate_mstore_general<F: Field>(
     state.traces.push_memory(log_in2);
     state.traces.push_memory(log_in3);
     state.traces.push_memory(log_write);
+
     state.traces.push_cpu(row);
 
     Ok(())
