@@ -136,7 +136,7 @@ fn test_add11_yml() {
         block_base_fee: 0xa.into(),
         block_gas_used: gas_used,
         block_blob_base_fee: 0x2.into(),
-        block_bloom: [0.into(); 8],
+        ..Default::default()
     };
 
     let tries_inputs = GenerationInputs {
@@ -281,7 +281,7 @@ fn test_add11_yml_with_exception() {
         block_base_fee: 0xa.into(),
         block_gas_used: txn_gas_limit.into(),
         block_blob_base_fee: 0x2.into(),
-        block_bloom: [0.into(); 8],
+        ..Default::default()
     };
 
     let tries_inputs = GenerationInputs {
