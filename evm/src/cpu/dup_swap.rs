@@ -121,26 +121,21 @@ fn eval_packed_dup<P: PackedField>(
     let filter = lv.op.dup_swap * (P::ONES - lv.opcode_bits[4]);
 
     let write_channel = &lv.mem_channels[1];
-    let read_channel = &lv.mem_channels[2];
+    let read_channel = &nv.mem_channels[0];
 
-    // Constrain the input and top of the stack channels to have the same value.
+    // Constrain the write and top of the stack channels to have the same value.
     channels_equal_packed(filter, write_channel, &lv.mem_channels[0], yield_constr);
-    // Constrain the output channel's addresses, `is_read` and `used` fields.
+    // Constrain the write channel's addresses, `is_read` and `used` fields.
     constrain_channel_packed(false, filter, P::ZEROS, write_channel, lv, yield_constr);
 
-    // Constrain the output and top of the stack channels to have the same value.
-    channels_equal_packed(filter, read_channel, &nv.mem_channels[0], yield_constr);
-    // Constrain the input channel's addresses, `is_read` and `used` fields.
+    // Constrain the read channel's addresses, `is_read` and `used` fields.
     constrain_channel_packed(true, filter, n, read_channel, lv, yield_constr);
 
     // Constrain nv.stack_len.
     yield_constr.constraint_transition(filter * (nv.stack_len - lv.stack_len - P::ONES));
 
-    // Disable next top.
-    yield_constr.constraint(filter * nv.mem_channels[0].used);
-
     // Constrain unused channels.
-    for i in 3..NUM_GP_CHANNELS {
+    for i in 2..NUM_GP_CHANNELS {
         yield_constr.constraint(filter * lv.mem_channels[i].used);
     }
 }
@@ -161,9 +156,9 @@ fn eval_ext_circuit_dup<F: RichField + Extendable<D>, const D: usize>(
     filter = builder.mul_extension(lv.op.dup_swap, filter);
 
     let write_channel = &lv.mem_channels[1];
-    let read_channel = &lv.mem_channels[2];
+    let read_channel = &nv.mem_channels[0];
 
-    // Constrain the input and top of the stack channels to have the same value.
+    // Constrain the write and top of the stack channels to have the same value.
     channels_equal_ext_circuit(
         builder,
         filter,
@@ -171,7 +166,7 @@ fn eval_ext_circuit_dup<F: RichField + Extendable<D>, const D: usize>(
         &lv.mem_channels[0],
         yield_constr,
     );
-    // Constrain the output channel's addresses, `is_read` and `used` fields.
+    // Constrain the write channel's addresses, `is_read` and `used` fields.
     constrain_channel_ext_circuit(
         builder,
         false,
@@ -182,15 +177,7 @@ fn eval_ext_circuit_dup<F: RichField + Extendable<D>, const D: usize>(
         yield_constr,
     );
 
-    // Constrain the output and top of the stack channels to have the same value.
-    channels_equal_ext_circuit(
-        builder,
-        filter,
-        read_channel,
-        &nv.mem_channels[0],
-        yield_constr,
-    );
-    // Constrain the input channel's addresses, `is_read` and `used` fields.
+    // Constrain the read channel's addresses, `is_read` and `used` fields.
     constrain_channel_ext_circuit(builder, true, filter, n, read_channel, lv, yield_constr);
 
     // Constrain nv.stack_len.
@@ -200,14 +187,8 @@ fn eval_ext_circuit_dup<F: RichField + Extendable<D>, const D: usize>(
         yield_constr.constraint_transition(builder, constr);
     }
 
-    // Disable next top.
-    {
-        let constr = builder.mul_extension(filter, nv.mem_channels[0].used);
-        yield_constr.constraint(builder, constr);
-    }
-
     // Constrain unused channels.
-    for i in 3..NUM_GP_CHANNELS {
+    for i in 2..NUM_GP_CHANNELS {
         let constr = builder.mul_extension(filter, lv.mem_channels[i].used);
         yield_constr.constraint(builder, constr);
     }

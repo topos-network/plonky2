@@ -193,7 +193,7 @@ pub(crate) fn generate_pop<F: Field>(
         row.general.stack_mut().stack_inv = inv;
         row.general.stack_mut().stack_inv_aux = F::ONE;
         row.general.stack_mut().stack_inv_aux_2 = F::ONE;
-        state.registers.is_stack_top_read = true;
+        state.registers.is_stack_top_read = Some(0);
     } else {
         row.general.stack_mut().stack_inv = F::ZERO;
         row.general.stack_mut().stack_inv_aux = F::ZERO;
@@ -469,9 +469,9 @@ pub(crate) fn generate_push<F: Field>(
 }
 
 // This instruction is special. The order of the operations are:
-// - Write `stack_top` at `stack[stack_len - 1]`
-// - Read `val` at `stack[stack_len - 1 - n]`
-// - Update `stack_top` with `val` and add 1 to `stack_len`
+// - Write `stack_top` at `stack[stack_len - 1]` in channel 1
+// - Read `val` at `stack[stack_len - 1 - n]` in next row's channel 0
+// - Update the top of the stack with `val` and add 1 to `stack_len`
 // Since the write must happen before the read, the normal way of assigning
 // GP channels doesn't work and we must handle them manually.
 pub(crate) fn generate_dup<F: Field>(
@@ -501,37 +501,14 @@ pub(crate) fn generate_dup<F: Field>(
         state.registers.stack_len - 1 - n as usize,
     );
 
-    // If n = 0, we read a value that hasn't been written to memory: the corresponding write
-    // is buffered in the mem_ops queue, but hasn't been applied yet.
-    let (val, log_read) = if n == 0 {
-        let op = MemoryOp::new(
-            MemoryChannel::GeneralPurpose(2),
-            state.traces.clock(),
-            other_addr,
-            MemoryOpKind::Read,
-            stack_top,
-        );
-
-        let channel = &mut row.mem_channels[2];
-        assert_eq!(channel.used, F::ZERO);
-        channel.used = F::ONE;
-        channel.is_read = F::ONE;
-        channel.addr_context = F::from_canonical_usize(other_addr.context);
-        channel.addr_segment = F::from_canonical_usize(other_addr.segment);
-        channel.addr_virtual = F::from_canonical_usize(other_addr.virt);
-        let val_limbs: [u64; 4] = state.registers.stack_top.0;
-        for (i, limb) in val_limbs.into_iter().enumerate() {
-            channel.value[2 * i] = F::from_canonical_u32(limb as u32);
-            channel.value[2 * i + 1] = F::from_canonical_u32((limb >> 32) as u32);
-        }
-
-        (stack_top, op)
+    let val = if n == 0 {
+        stack_top
     } else {
-        mem_read_gp_with_log_and_fill(2, other_addr, state, &mut row)
+        state.memory.get(other_addr)
     };
     push_no_write(state, val);
+    state.registers.is_stack_top_read = Some(n as usize + 1);
 
-    state.traces.push_memory(log_read);
     state.traces.push_cpu(row);
     Ok(())
 }
@@ -895,7 +872,7 @@ pub(crate) fn generate_mstore_general<F: Field>(
         row.general.stack_mut().stack_inv = inv;
         row.general.stack_mut().stack_inv_aux = F::ONE;
         row.general.stack_mut().stack_inv_aux_2 = F::ONE;
-        state.registers.is_stack_top_read = true;
+        state.registers.is_stack_top_read = Some(0);
     } else {
         row.general.stack_mut().stack_inv = F::ZERO;
         row.general.stack_mut().stack_inv_aux = F::ZERO;
@@ -956,18 +933,18 @@ pub(crate) fn generate_exception<F: Field>(
         row.general.stack_mut().stack_inv_aux = F::ONE;
     }
 
-    if state.registers.is_stack_top_read {
+    if let Some(index) = state.registers.is_stack_top_read {
         let channel = &mut row.mem_channels[0];
         channel.used = F::ONE;
         channel.is_read = F::ONE;
         channel.addr_context = F::from_canonical_usize(state.registers.context);
         channel.addr_segment = F::from_canonical_usize(Segment::Stack as usize);
-        channel.addr_virtual = F::from_canonical_usize(state.registers.stack_len - 1);
+        channel.addr_virtual = F::from_canonical_usize(state.registers.stack_len - 1 - index);
 
         let address = MemoryAddress {
             context: state.registers.context,
             segment: Segment::Stack as usize,
-            virt: state.registers.stack_len - 1,
+            virt: state.registers.stack_len - 1 - index,
         };
 
         let mem_op = MemoryOp::new(
@@ -978,7 +955,7 @@ pub(crate) fn generate_exception<F: Field>(
             state.registers.stack_top,
         );
         state.traces.push_memory(mem_op);
-        state.registers.is_stack_top_read = false;
+        state.registers.is_stack_top_read = None;
     }
 
     row.general.exception_mut().exc_code_bits = [

@@ -308,18 +308,18 @@ fn try_perform_instruction<F: Field>(state: &mut GenerationState<F>) -> Result<(
 
     fill_op_flag(op, &mut row);
 
-    if state.registers.is_stack_top_read {
+    if let Some(index) = state.registers.is_stack_top_read {
         let channel = &mut row.mem_channels[0];
         channel.used = F::ONE;
         channel.is_read = F::ONE;
         channel.addr_context = F::from_canonical_usize(state.registers.context);
         channel.addr_segment = F::from_canonical_usize(Segment::Stack as usize);
-        channel.addr_virtual = F::from_canonical_usize(state.registers.stack_len - 1);
+        channel.addr_virtual = F::from_canonical_usize(state.registers.stack_len - 1 - index);
 
         let address = MemoryAddress {
             context: state.registers.context,
             segment: Segment::Stack as usize,
-            virt: state.registers.stack_len - 1,
+            virt: state.registers.stack_len - 1 - index,
         };
 
         let mem_op = MemoryOp::new(
@@ -330,7 +330,7 @@ fn try_perform_instruction<F: Field>(state: &mut GenerationState<F>) -> Result<(
             state.registers.stack_top,
         );
         state.traces.push_memory(mem_op);
-        state.registers.is_stack_top_read = false;
+        state.registers.is_stack_top_read = None;
     }
 
     if state.registers.is_kernel {
@@ -354,7 +354,7 @@ fn try_perform_instruction<F: Field>(state: &mut GenerationState<F>) -> Result<(
         if let Some(inv) = diff.try_inverse() {
             row.general.stack_mut().stack_inv = inv;
             row.general.stack_mut().stack_inv_aux = F::ONE;
-            state.registers.is_stack_top_read = true;
+            state.registers.is_stack_top_read = Some(0);
         }
     } else if let Some(inv) = row.stack_len.try_inverse() {
         row.general.stack_mut().stack_inv = inv;
