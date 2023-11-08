@@ -30,6 +30,7 @@ fn test_withdrawals() -> anyhow::Result<()> {
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let block_metadata = BlockMetadata::default();
 
@@ -88,7 +89,7 @@ fn test_withdrawals() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)

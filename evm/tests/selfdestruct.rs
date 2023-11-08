@@ -30,6 +30,7 @@ fn test_selfdestruct() -> anyhow::Result<()> {
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let beneficiary = hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
     let sender = hex!("5eb96AA102a29fAB267E12A40a5bc6E9aC088759");
@@ -142,7 +143,7 @@ fn test_selfdestruct() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)

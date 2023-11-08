@@ -30,6 +30,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let block_metadata = BlockMetadata::default();
 
@@ -74,8 +75,9 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
-        &[16..17, 10..11, 15..16, 14..15, 9..10, 12..13, 18..19], // Minimal ranges to prove an empty list
+        &[16..17, 10..11, 15..16, 14..17, 9..10, 12..13, 18..19], // Minimal ranges to prove an empty list
         &config,
+        &keccak_config,
     );
 
     {
@@ -108,7 +110,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     let mut timing = TimingTree::new("prove", log::Level::Info);
     let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing)?;
+        all_circuits.prove_root(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 

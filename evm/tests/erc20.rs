@@ -49,6 +49,7 @@ fn test_erc20() -> anyhow::Result<()> {
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let beneficiary = hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
     let sender = hex!("70997970C51812dc3A010C7d01b50e0d17dc79C8");
@@ -179,7 +180,7 @@ fn test_erc20() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)

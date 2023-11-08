@@ -37,6 +37,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let beneficiary = hex!("2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
     let sender = hex!("af1276cbb260bb13deddb4209ae99ae6e497f446");
@@ -250,7 +251,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
 
     // Assert that the proof leads to the correct state and receipt roots.
@@ -293,6 +294,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     // First transaction.
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let beneficiary = hex!("2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
     let sender_first = hex!("af1276cbb260bb13deddb4209ae99ae6e497f446");
@@ -464,8 +466,13 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     );
 
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
-    let (root_proof_first, first_public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs_first, &mut timing)?;
+    let (root_proof_first, first_public_values) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        &keccak_config,
+        inputs_first,
+        &mut timing,
+    )?;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
@@ -603,7 +610,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
     let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing)?;
+        all_circuits.prove_root(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof.clone())?;
@@ -760,6 +767,7 @@ fn test_two_txn() -> anyhow::Result<()> {
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
+    let keccak_config = StarkConfig::keccak_large_config();
 
     let beneficiary = hex!("2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
     let sender = hex!("af1276cbb260bb13deddb4209ae99ae6e497f446");
@@ -914,7 +922,7 @@ fn test_two_txn() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, &keccak_config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
 
     // Assert trie roots.

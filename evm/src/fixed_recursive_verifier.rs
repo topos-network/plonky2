@@ -359,6 +359,7 @@ where
         all_stark: &AllStark<F, D>,
         degree_bits_ranges: &[Range<usize>; NUM_TABLES],
         stark_config: &StarkConfig,
+        keccak_config: &StarkConfig,
     ) -> Self {
         let arithmetic = RecursiveCircuitsForTable::new(
             Table::Arithmetic,
@@ -386,7 +387,7 @@ where
             &all_stark.keccak_stark,
             degree_bits_ranges[Table::Keccak as usize].clone(),
             &all_stark.cross_table_lookups,
-            stark_config,
+            keccak_config,
         );
         let keccak_sponge = RecursiveCircuitsForTable::new(
             Table::KeccakSponge,
@@ -419,7 +420,7 @@ where
             logic,
             memory,
         ];
-        let root = Self::create_root_circuit(&by_table, stark_config);
+        let root = Self::create_root_circuit(&by_table, stark_config, keccak_config);
         let aggregation = Self::create_aggregation_circuit(&root);
         let block = Self::create_block_circuit(&aggregation);
         Self {
@@ -433,6 +434,7 @@ where
     fn create_root_circuit(
         by_table: &[RecursiveCircuitsForTable<F, C, D>; NUM_TABLES],
         stark_config: &StarkConfig,
+        keccak_config: &StarkConfig,
     ) -> RootCircuitData<F, C, D> {
         let inner_common_data: [_; NUM_TABLES] =
             core::array::from_fn(|i| &by_table[i].final_circuits()[0].common);
@@ -444,10 +446,17 @@ where
         let recursive_proofs =
             core::array::from_fn(|i| builder.add_virtual_proof_with_pis(inner_common_data[i]));
         let pis: [_; NUM_TABLES] = core::array::from_fn(|i| {
-            PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation>::from_vec(
+            if Table::all()[i] == Table::Keccak {
+                PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation>::from_vec(
+                &recursive_proofs[i].public_inputs,
+                keccak_config,
+            )
+            } else {
+                PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation>::from_vec(
                 &recursive_proofs[i].public_inputs,
                 stark_config,
             )
+            }
         });
         let index_verifier_data = core::array::from_fn(|_i| builder.add_virtual_target());
 
@@ -463,7 +472,7 @@ where
         let ctl_challenges = get_grand_product_challenge_set_target(
             &mut builder,
             &mut challenger,
-            stark_config.num_challenges,
+            stark_config.num_challenges, // same for keccak_config
         );
         // Check that the correct CTL challenges are used in every proof.
         for pi in &pis {
@@ -903,15 +912,21 @@ where
         &self,
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
+        keccak_config: &StarkConfig,
         generation_inputs: GenerationInputs,
         timing: &mut TimingTree,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
-        let all_proof = prove::<F, C, D>(all_stark, config, generation_inputs, timing)?;
+        let all_proof =
+            prove::<F, C, D>(all_stark, config, keccak_config, generation_inputs, timing)?;
         let mut root_inputs = PartialWitness::new();
 
         for table in 0..NUM_TABLES {
             let stark_proof = &all_proof.stark_proofs[table];
-            let original_degree_bits = stark_proof.proof.recover_degree_bits(config);
+            let original_degree_bits = if Table::all()[table] == Table::Keccak {
+                stark_proof.proof.recover_degree_bits(keccak_config)
+            } else {
+                stark_proof.proof.recover_degree_bits(config)
+            };
             let table_circuits = &self.by_table[table];
             let shrunk_proof = table_circuits
                 .by_stark_size

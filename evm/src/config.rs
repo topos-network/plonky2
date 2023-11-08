@@ -28,6 +28,22 @@ impl StarkConfig {
         }
     }
 
+    /// A typical configuration with a rate of 4, resulting in slower base proofs but faster to verify.
+    /// Targets ~100 bit conjectured security.
+    pub fn keccak_large_config() -> Self {
+        Self {
+            security_bits: 100,
+            num_challenges: 2,
+            fri_config: FriConfig {
+                rate_bits: 2,
+                cap_height: 4,
+                proof_of_work_bits: 16,
+                reduction_strategy: FriReductionStrategy::ConstantArityBits(4, 5),
+                num_query_rounds: 42,
+            },
+        }
+    }
+
     pub(crate) fn fri_params(&self, degree_bits: usize) -> FriParams {
         self.fri_config.fri_params(degree_bits, false)
     }

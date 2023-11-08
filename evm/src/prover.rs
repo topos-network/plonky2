@@ -42,6 +42,7 @@ use crate::{
 pub fn prove<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
+    keccak_config: &StarkConfig,
     inputs: GenerationInputs,
     timing: &mut TimingTree,
 ) -> Result<AllProof<F, C, D>>
@@ -49,7 +50,7 @@ where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
-    let (proof, _outputs) = prove_with_outputs(all_stark, config, inputs, timing)?;
+    let (proof, _outputs) = prove_with_outputs(all_stark, config, keccak_config, inputs, timing)?;
     Ok(proof)
 }
 
@@ -58,6 +59,7 @@ where
 pub fn prove_with_outputs<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
+    keccak_config: &StarkConfig,
     inputs: GenerationInputs,
     timing: &mut TimingTree,
 ) -> Result<(AllProof<F, C, D>, GenerationOutputs)>
@@ -71,7 +73,14 @@ where
         "generate all traces",
         generate_traces(all_stark, inputs, config, timing)?
     );
-    let proof = prove_with_traces(all_stark, config, traces, public_values, timing)?;
+    let proof = prove_with_traces(
+        all_stark,
+        config,
+        keccak_config,
+        traces,
+        public_values,
+        timing,
+    )?;
     Ok((proof, outputs))
 }
 
@@ -79,6 +88,7 @@ where
 pub(crate) fn prove_with_traces<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
+    keccak_config: &StarkConfig,
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
     public_values: PublicValues,
     timing: &mut TimingTree,
@@ -98,20 +108,40 @@ where
             .iter()
             .zip_eq(Table::all())
             .map(|(trace, table)| {
-                timed!(
-                    timing,
-                    &format!("compute trace commitment for {:?}", table),
-                    PolynomialBatch::<F, C, D>::from_values(
-                        // TODO: Cloning this isn't great; consider having `from_values` accept a reference,
-                        // or having `compute_permutation_z_polys` read trace values from the `PolynomialBatch`.
-                        trace.clone(),
-                        rate_bits,
-                        false,
-                        cap_height,
-                        timing,
-                        None,
-                    )
-                )
+                match table {
+                    Table::Keccak => {
+                        timed!(
+                            timing,
+                            &format!("compute trace commitment for {:?}", table),
+                            PolynomialBatch::<F, C, D>::from_values(
+                                // TODO: Cloning this isn't great; consider having `from_values` accept a reference,
+                                // or having `compute_permutation_z_polys` read trace values from the `PolynomialBatch`.
+                                trace.clone(),
+                                keccak_config.fri_config.rate_bits,
+                                false,
+                                keccak_config.fri_config.cap_height,
+                                timing,
+                                None,
+                            )
+                        )
+                    }
+                    _ => {
+                        timed!(
+                            timing,
+                            &format!("compute trace commitment for {:?}", table),
+                            PolynomialBatch::<F, C, D>::from_values(
+                                // TODO: Cloning this isn't great; consider having `from_values` accept a reference,
+                                // or having `compute_permutation_z_polys` read trace values from the `PolynomialBatch`.
+                                trace.clone(),
+                                rate_bits,
+                                false,
+                                cap_height,
+                                timing,
+                                None,
+                            )
+                        )
+                    }
+                }
             })
             .collect::<Vec<_>>()
     );
@@ -148,6 +178,7 @@ where
         prove_with_commitments(
             all_stark,
             config,
+            keccak_config,
             &trace_poly_values,
             trace_commitments,
             ctl_data_per_table,
@@ -183,6 +214,7 @@ where
 fn prove_with_commitments<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
+    keccak_config: &StarkConfig,
     trace_poly_values: &[Vec<PolynomialValues<F>>; NUM_TABLES],
     trace_commitments: Vec<PolynomialBatch<F, C, D>>,
     ctl_data_per_table: [CtlData<F>; NUM_TABLES],
@@ -241,7 +273,7 @@ where
         "prove Keccak STARK",
         prove_single_table(
             &all_stark.keccak_stark,
-            config,
+            keccak_config,
             &trace_poly_values[Table::Keccak as usize],
             &trace_commitments[Table::Keccak as usize],
             &ctl_data_per_table[Table::Keccak as usize],
