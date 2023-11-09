@@ -1,0 +1,31 @@
+# Memory structure
+The CPU interacts with the EVM memory via memory channels. At each CPU row, a memory channel can execute a write, a read, or be disabled. A full memory channel is composed of:
+- 1 `used` flag. If it's set to `true`, a memory operation is executed in this channel at this row. If it's set to `false`, no operation is done but its columns might be reused for other purposes.
+- 1 `is_read` flag. It indicates if a memory operation is a read or a write.
+- 3 address columns. A memory address is made of three parts: `context`, `segment` and `virtual`.
+- 8 value columns. EVM words are 256 bits long, and they are broken down in 8 32-bit limbs.
+The last memory channel is `lv.partial_channel`: it doesn't have its own column values and shares them with the first memory channel `lv.mem_channels[0]`. This allows use to save eight columns.
+
+# Top of the stack
+The majority of memory operations involve the stack. The stack is a segment in memory, and stack operations (popping or pushing) use the memory channels. Every CPU instruction does between 0 and 4 pops, and between 0 and 1 push. However, for efficiency purposes, we hold the top of the stack in `lv.mem_channels[0]`, only writing it in memory if necessary.
+
+## Motivation
+See https://github.com/0xPolygonZero/plonky2/issues/1149.
+
+## Top reading and writing
+When a CPU instruction modifies the stack, it must update the top of the stack accordingly. There are three cases.
+
+- **The instruction pops and pushes:** The new top of the stack is calculated by the instruction and stored in `nv.mem_channels[0]`; it may  be a memory read, and the instruction is responsible for setting `nv.mem_channels[0].used` correctly. The previous top of the stack is discarded and doesn't need to be written in memory.
+
+- **The instruction pushes, but doesn't pop:** The new top of the stack is calculated by the instruction and stored in `nv.mem_channels[0]`; it may  be a memory read, and the instruction is responsible for setting `nv.mem_channels[0].used` correctly. If the stack wasn't empty (`lv.stack_len > 0`), the current top of the stack is stored with a memory read in `lv.partial_channel`, which shares its values with `lv.mem_channels[0]` (which holds the current top of the stack). If the stack was empty, `lv.partial_channel` is disabled.
+
+- **The instruction pops, but doesn't push:** The current top of the stack is discarded. If the stack isn't now empty (`lv.stack_len > num_pops`), the new top of the stack is set in `nv.mem_channels[0]` with a memory read from the stack segment. If the stack is now empty, `nv.mem_channels[0]` is disabled.
+
+In the last two cases, there is an edge case if `lv.stack_len` is equal to a `special_len`: `0` for a strictly pushing instruction, `num_pops` for a strictly popping instruction. Note that we do not need to check for values below `num_pops`, since this would be a stack underflow exception which is handled separately. We detect this edge case with the compound flag `1 - (lv.stack_len - special_len) * stack_inv_aux`, where `stack_inv_aux` is constrained to be the modular inverse of `(lv.stack_len - special_len)` if it's non-zero, or `0` otherwise. The flag is `1` if `stack_len` is equal to `special_len`, and `0` otherwise.
+
+This logic can be found in code in the `eval_packed_one` function of `stack.rs`, which multiplies all of the constraints with a degree 1 filter passed as argument.
+
+## Operation flag merging
+To reduce the total number of columns, many operation flags are merged together (for example DUP and SWAP). If the two instructions have different stack behaviors, this can be a problem: the filter for an individual operation is now of degree 2 (e.g. `lv.op.dup_swap * lv.opcode_bits[4]` for SWAP) and some constraints of `eval_packed_one` are already of degree 3.
+
+When this happens, stack constraints are defined manually in the operation's dedicated file (e.g. `dup_swap.rs`). Implementation details vary and can be found in the files; in general they make use of the `stack_inv_aux` and `stack_inv_aux_2` columns to lower the degree of the constraints.
