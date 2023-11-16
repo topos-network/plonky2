@@ -11,6 +11,9 @@ pub mod stack;
 mod utils;
 
 pub(crate) mod interpreter;
+
+pub use constants::{BEACON_ROOTS_CONTRACT, BEACON_ROOTS_CONTRACT_ADDRESS_HASHED};
+
 #[cfg(test)]
 mod tests;
 

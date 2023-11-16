@@ -11,6 +11,7 @@ use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::plonk::config::KeccakGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
+use plonky2_evm::cpu::kernel::{BEACON_ROOTS_CONTRACT, BEACON_ROOTS_CONTRACT_ADDRESS_HASHED};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
@@ -66,12 +67,22 @@ fn add11_yml() -> anyhow::Result<()> {
     );
     state_trie_before.insert(sender_nibbles, rlp::encode(&sender_account_before).to_vec());
     state_trie_before.insert(to_nibbles, rlp::encode(&to_account_before).to_vec());
+    state_trie_before.insert(
+        Nibbles::from_bytes_be(&BEACON_ROOTS_CONTRACT_ADDRESS_HASHED).unwrap(),
+        rlp::encode(&BEACON_ROOTS_CONTRACT).to_vec(),
+    );
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
         transactions_trie: Node::Empty.into(),
         receipts_trie: Node::Empty.into(),
-        storage_tries: vec![(to_hashed, Node::Empty.into())],
+        storage_tries: vec![
+            (to_hashed, Node::Empty.into()),
+            (
+                BEACON_ROOTS_CONTRACT_ADDRESS_HASHED.into(),
+                Node::Empty.into(),
+            ),
+        ],
     };
 
     let txn = hex!("f863800a83061a8094095e7baea6a6c7c4c2dfeb977efac326af552d87830186a0801ba0ffb600e63115a7362e7811894a91d8ba4330e526f22121c994c4692035dfdfd5a06198379fcac8de3dbfac48b165df4bf88e2088f294b61efb9a65fe2281c76e16");
