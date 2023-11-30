@@ -15,7 +15,6 @@ use crate::Node;
 fn mpt_hash_empty() -> Result<()> {
     let trie_inputs = TrieInputs {
         state_trie: Default::default(),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -33,7 +32,6 @@ fn mpt_hash_empty_branch() -> Result<()> {
     .into();
     let trie_inputs = TrieInputs {
         state_trie,
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -45,7 +43,6 @@ fn mpt_hash_hash() -> Result<()> {
     let hash = H256::random();
     let trie_inputs = TrieInputs {
         state_trie: Node::Hash(hash).into(),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -62,7 +59,6 @@ fn mpt_hash_leaf() -> Result<()> {
     .into();
     let trie_inputs = TrieInputs {
         state_trie,
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -74,7 +70,6 @@ fn mpt_hash_extension_to_leaf() -> Result<()> {
     let state_trie = extension_to_leaf(test_account_1_rlp());
     let trie_inputs = TrieInputs {
         state_trie,
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -99,7 +94,6 @@ fn mpt_hash_branch_to_leaf() -> Result<()> {
 
     let trie_inputs = TrieInputs {
         state_trie,
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };

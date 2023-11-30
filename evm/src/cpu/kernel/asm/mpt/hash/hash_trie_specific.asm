@@ -24,19 +24,6 @@ global mpt_hash_storage_trie:
 %%after:
 %endmacro
 
-global mpt_hash_txn_trie:
-    // stack: retdest
-    PUSH encode_txn
-    %mload_global_metadata(@GLOBAL_METADATA_TXN_TRIE_ROOT)
-    // stack: node_ptr, encode_txn, retdest
-    %jump(mpt_hash)
-
-%macro mpt_hash_txn_trie
-    PUSH %%after
-    %jump(mpt_hash_txn_trie)
-%%after:
-%endmacro
-
 global mpt_hash_receipt_trie:
     // stack: retdest
     PUSH encode_receipt

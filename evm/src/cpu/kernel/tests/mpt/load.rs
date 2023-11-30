@@ -14,7 +14,6 @@ use crate::Node;
 fn load_all_mpts_empty() -> Result<()> {
     let trie_inputs = TrieInputs {
         state_trie: Default::default(),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -36,10 +35,6 @@ fn load_all_mpts_empty() -> Result<()> {
         0.into()
     );
     assert_eq!(
-        interpreter.get_global_metadata_field(GlobalMetadata::TransactionTrieRoot),
-        0.into()
-    );
-    assert_eq!(
         interpreter.get_global_metadata_field(GlobalMetadata::ReceiptTrieRoot),
         0.into()
     );
@@ -55,7 +50,6 @@ fn load_all_mpts_leaf() -> Result<()> {
             value: test_account_1_rlp(),
         }
         .into(),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -90,10 +84,6 @@ fn load_all_mpts_leaf() -> Result<()> {
     );
 
     assert_eq!(
-        interpreter.get_global_metadata_field(GlobalMetadata::TransactionTrieRoot),
-        0.into()
-    );
-    assert_eq!(
         interpreter.get_global_metadata_field(GlobalMetadata::ReceiptTrieRoot),
         0.into()
     );
@@ -106,7 +96,6 @@ fn load_all_mpts_hash() -> Result<()> {
     let hash = H256::random();
     let trie_inputs = TrieInputs {
         state_trie: Node::Hash(hash).into(),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -128,10 +117,6 @@ fn load_all_mpts_hash() -> Result<()> {
     );
 
     assert_eq!(
-        interpreter.get_global_metadata_field(GlobalMetadata::TransactionTrieRoot),
-        0.into()
-    );
-    assert_eq!(
         interpreter.get_global_metadata_field(GlobalMetadata::ReceiptTrieRoot),
         0.into()
     );
@@ -149,7 +134,6 @@ fn load_all_mpts_empty_branch() -> Result<()> {
     .into();
     let trie_inputs = TrieInputs {
         state_trie,
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };
@@ -191,10 +175,6 @@ fn load_all_mpts_empty_branch() -> Result<()> {
     );
 
     assert_eq!(
-        interpreter.get_global_metadata_field(GlobalMetadata::TransactionTrieRoot),
-        0.into()
-    );
-    assert_eq!(
         interpreter.get_global_metadata_field(GlobalMetadata::ReceiptTrieRoot),
         0.into()
     );
@@ -206,7 +186,6 @@ fn load_all_mpts_empty_branch() -> Result<()> {
 fn load_all_mpts_ext_to_leaf() -> Result<()> {
     let trie_inputs = TrieInputs {
         state_trie: extension_to_leaf(test_account_1_rlp()),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };

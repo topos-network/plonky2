@@ -54,10 +54,6 @@ impl<F: Field> GenerationState<F> {
     pub(crate) fn new(inputs: GenerationInputs, kernel_code: &[u8]) -> Result<Self, ProgramError> {
         log::debug!("Input signed_txn: {:?}", &inputs.signed_txn);
         log::debug!("Input state_trie: {:?}", &inputs.tries.state_trie);
-        log::debug!(
-            "Input transactions_trie: {:?}",
-            &inputs.tries.transactions_trie
-        );
         log::debug!("Input receipts_trie: {:?}", &inputs.tries.receipts_trie);
         log::debug!("Input storage_tries: {:?}", &inputs.tries.storage_tries);
         log::debug!("Input contract_code: {:?}", &inputs.contract_code);

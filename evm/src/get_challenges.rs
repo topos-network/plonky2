@@ -27,7 +27,6 @@ fn observe_trie_roots<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, 
     trie_roots: &TrieRoots,
 ) {
     observe_root::<F, C, D>(challenger, trie_roots.state_root);
-    observe_root::<F, C, D>(challenger, trie_roots.transactions_root);
     observe_root::<F, C, D>(challenger, trie_roots.receipts_root);
 }
 
@@ -42,7 +41,6 @@ fn observe_trie_roots_target<
     C::Hasher: AlgebraicHasher<F>,
 {
     challenger.observe_elements(&trie_roots.state_root);
-    challenger.observe_elements(&trie_roots.transactions_root);
     challenger.observe_elements(&trie_roots.receipts_root);
 }
 

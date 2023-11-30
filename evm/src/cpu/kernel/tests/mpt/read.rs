@@ -12,7 +12,6 @@ use crate::generation::TrieInputs;
 fn mpt_read() -> Result<()> {
     let trie_inputs = TrieInputs {
         state_trie: extension_to_leaf(test_account_1_rlp()),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };

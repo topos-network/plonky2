@@ -64,7 +64,6 @@ fn test_selfdestruct() -> anyhow::Result<()> {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: HashedPartialTrie::from(Node::Empty),
         receipts_trie: HashedPartialTrie::from(Node::Empty),
         storage_tries: vec![],
     };
@@ -110,15 +109,9 @@ fn test_selfdestruct() -> anyhow::Result<()> {
         Nibbles::from_str("0x80").unwrap(),
         rlp::encode(&receipt_0).to_vec(),
     );
-    let transactions_trie: HashedPartialTrie = Node::Leaf {
-        nibbles: Nibbles::from_str("0x80").unwrap(),
-        value: txn.to_vec(),
-    }
-    .into();
 
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
     let inputs = GenerationInputs {

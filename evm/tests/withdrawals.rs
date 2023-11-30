@@ -34,7 +34,6 @@ fn test_withdrawals() -> anyhow::Result<()> {
     let block_metadata = BlockMetadata::default();
 
     let state_trie_before = HashedPartialTrie::from(Node::Empty);
-    let transactions_trie = HashedPartialTrie::from(Node::Empty);
     let receipts_trie = HashedPartialTrie::from(Node::Empty);
     let storage_tries = vec![];
 
@@ -58,7 +57,6 @@ fn test_withdrawals() -> anyhow::Result<()> {
 
     let trie_roots_after = TrieRoots {
         state_root: state_trie_after.hash(),
-        transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
 
@@ -67,7 +65,6 @@ fn test_withdrawals() -> anyhow::Result<()> {
         withdrawals,
         tries: TrieInputs {
             state_trie: state_trie_before,
-            transactions_trie,
             receipts_trie,
             storage_tries,
         },

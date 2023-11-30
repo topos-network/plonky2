@@ -85,7 +85,6 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: Node::Empty.into(),
         receipts_trie: Node::Empty.into(),
         storage_tries: vec![(to_hashed, Node::Empty.into())],
     };
@@ -160,7 +159,6 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
     );
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: tries_before.transactions_trie.hash(), // TODO: Fix this when we have transactions trie.
         receipts_root: receipts_trie.hash(),
     };
     let inputs = GenerationInputs {

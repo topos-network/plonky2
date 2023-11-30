@@ -926,12 +926,11 @@ where
         // The initial gas used is 0.
         builder.assert_zero(x.extra_block_data.gas_used_before);
 
-        // The transactions and receipts tries are empty at the beginning of the block.
+        // The receipts trie is empty at the beginning of the block.
         let initial_trie = HashedPartialTrie::from(Node::Empty).hash();
 
         for (i, limb) in h256_limbs::<F>(initial_trie).into_iter().enumerate() {
             let limb_target = builder.constant(limb);
-            builder.connect(x.trie_roots_before.transactions_root[i], limb_target);
             builder.connect(x.trie_roots_before.receipts_root[i], limb_target);
         }
     }

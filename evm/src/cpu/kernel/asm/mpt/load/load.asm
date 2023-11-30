@@ -7,7 +7,6 @@ global load_all_mpts:
     %set_trie_data_size
 
     %load_mpt(mpt_load_state_trie_value)   %mstore_global_metadata(@GLOBAL_METADATA_STATE_TRIE_ROOT)
-    %load_mpt(mpt_load_txn_trie_value)     %mstore_global_metadata(@GLOBAL_METADATA_TXN_TRIE_ROOT)
     %load_mpt(mpt_load_receipt_trie_value) %mstore_global_metadata(@GLOBAL_METADATA_RECEIPT_TRIE_ROOT)
 
     // stack: retdest

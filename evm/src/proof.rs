@@ -66,8 +66,6 @@ pub struct PublicValues {
 pub struct TrieRoots {
     /// State trie hash.
     pub state_root: H256,
-    /// Transaction trie hash.
-    pub transactions_root: H256,
     /// Receipts trie hash.
     pub receipts_root: H256,
 }
@@ -163,22 +161,18 @@ impl PublicValuesTarget {
     pub(crate) fn to_buffer(&self, buffer: &mut Vec<u8>) -> IoResult<()> {
         let TrieRootsTarget {
             state_root: state_root_before,
-            transactions_root: transactions_root_before,
             receipts_root: receipts_root_before,
         } = self.trie_roots_before;
 
         buffer.write_target_array(&state_root_before)?;
-        buffer.write_target_array(&transactions_root_before)?;
         buffer.write_target_array(&receipts_root_before)?;
 
         let TrieRootsTarget {
             state_root: state_root_after,
-            transactions_root: transactions_root_after,
             receipts_root: receipts_root_after,
         } = self.trie_roots_after;
 
         buffer.write_target_array(&state_root_after)?;
-        buffer.write_target_array(&transactions_root_after)?;
         buffer.write_target_array(&receipts_root_after)?;
 
         let BlockMetadataTarget {
@@ -232,13 +226,11 @@ impl PublicValuesTarget {
     pub(crate) fn from_buffer(buffer: &mut Buffer) -> IoResult<Self> {
         let trie_roots_before = TrieRootsTarget {
             state_root: buffer.read_target_array()?,
-            transactions_root: buffer.read_target_array()?,
             receipts_root: buffer.read_target_array()?,
         };
 
         let trie_roots_after = TrieRootsTarget {
             state_root: buffer.read_target_array()?,
-            transactions_root: buffer.read_target_array()?,
             receipts_root: buffer.read_target_array()?,
         };
 
@@ -365,8 +357,6 @@ impl PublicValuesTarget {
 pub(crate) struct TrieRootsTarget {
     /// Targets for the state trie hash.
     pub(crate) state_root: [Target; 8],
-    /// Targets for the transactions trie hash.
-    pub(crate) transactions_root: [Target; 8],
     /// Targets for the receipts trie hash.
     pub(crate) receipts_root: [Target; 8],
 }
@@ -374,18 +364,16 @@ pub(crate) struct TrieRootsTarget {
 impl TrieRootsTarget {
     /// Number of `Target`s required for all trie hashes.
     pub(crate) const HASH_SIZE: usize = 8;
-    pub(crate) const SIZE: usize = Self::HASH_SIZE * 3;
+    pub(crate) const SIZE: usize = Self::HASH_SIZE * 2;
 
     /// Extracts trie hash `Target`s for all tries from the provided public input `Target`s.
     /// The provided `pis` should start with the trie hashes.
     pub(crate) fn from_public_inputs(pis: &[Target]) -> Self {
         let state_root = pis[0..8].try_into().unwrap();
-        let transactions_root = pis[8..16].try_into().unwrap();
-        let receipts_root = pis[16..24].try_into().unwrap();
+        let receipts_root = pis[8..16].try_into().unwrap();
 
         Self {
             state_root,
-            transactions_root,
             receipts_root,
         }
     }
@@ -402,13 +390,6 @@ impl TrieRootsTarget {
             state_root: core::array::from_fn(|i| {
                 builder.select(condition, tr0.state_root[i], tr1.state_root[i])
             }),
-            transactions_root: core::array::from_fn(|i| {
-                builder.select(
-                    condition,
-                    tr0.transactions_root[i],
-                    tr1.transactions_root[i],
-                )
-            }),
             receipts_root: core::array::from_fn(|i| {
                 builder.select(condition, tr0.receipts_root[i], tr1.receipts_root[i])
             }),
@@ -423,7 +404,6 @@ impl TrieRootsTarget {
     ) {
         for i in 0..8 {
             builder.connect(tr0.state_root[i], tr1.state_root[i]);
-            builder.connect(tr0.transactions_root[i], tr1.transactions_root[i]);
             builder.connect(tr0.receipts_root[i], tr1.receipts_root[i]);
         }
     }

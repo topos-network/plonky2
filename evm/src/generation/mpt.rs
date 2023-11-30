@@ -132,10 +132,6 @@ pub(crate) fn all_mpt_prover_inputs(trie_inputs: &TrieInputs) -> Result<Vec<U256
         &storage_tries_by_state_key,
     )?;
 
-    mpt_prover_inputs(&trie_inputs.transactions_trie, &mut prover_inputs, &|rlp| {
-        Ok(rlp::decode_list(rlp))
-    })?;
-
     mpt_prover_inputs(
         &trie_inputs.receipts_trie,
         &mut prover_inputs,

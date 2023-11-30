@@ -37,7 +37,6 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     };
 
     let state_trie = HashedPartialTrie::from(Node::Empty);
-    let transactions_trie = HashedPartialTrie::from(Node::Empty);
     let receipts_trie = HashedPartialTrie::from(Node::Empty);
     let storage_tries = vec![];
 
@@ -47,7 +46,6 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     // No transactions, so no trie roots change.
     let trie_roots_after = TrieRoots {
         state_root: state_trie.hash(),
-        transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
     let mut initial_block_hashes = vec![H256::default(); 256];
@@ -57,7 +55,6 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         withdrawals: vec![],
         tries: TrieInputs {
             state_trie,
-            transactions_trie,
             receipts_trie,
             storage_tries,
         },
@@ -80,7 +77,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     // that is wrong for testing purposes, see below.
     let mut all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
-        &[16..17, 10..11, 11..12, 14..15, 9..11, 12..13, 17..18], // Minimal ranges to prove an empty list
+        &[16..17, 9..10, 11..12, 14..15, 9..11, 12..13, 17..18], // Minimal ranges to prove an empty list
         &config,
     );
 

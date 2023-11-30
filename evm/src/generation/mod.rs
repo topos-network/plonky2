@@ -12,7 +12,7 @@ use plonky2::util::timing::TimingTree;
 use serde::{Deserialize, Serialize};
 use GlobalMetadata::{
     ReceiptTrieRootDigestAfter, ReceiptTrieRootDigestBefore, StateTrieRootDigestAfter,
-    StateTrieRootDigestBefore, TransactionTrieRootDigestAfter, TransactionTrieRootDigestBefore,
+    StateTrieRootDigestBefore,
 };
 
 use crate::all_stark::{AllStark, NUM_TABLES};
@@ -76,10 +76,6 @@ pub struct TrieInputs {
     /// that will be accessed by these transactions.
     pub state_trie: HashedPartialTrie,
 
-    /// A partial version of the transaction trie prior to these transactions. It should include all
-    /// nodes that will be accessed by these transactions.
-    pub transactions_trie: HashedPartialTrie,
-
     /// A partial version of the receipt trie prior to these transactions. It should include all nodes
     /// that will be accessed by these transactions.
     pub receipts_trie: HashedPartialTrie,
@@ -128,20 +124,12 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
             h2u(tries.state_trie.hash()),
         ),
         (
-            GlobalMetadata::TransactionTrieRootDigestBefore,
-            h2u(tries.transactions_trie.hash()),
-        ),
-        (
             GlobalMetadata::ReceiptTrieRootDigestBefore,
             h2u(tries.receipts_trie.hash()),
         ),
         (
             GlobalMetadata::StateTrieRootDigestAfter,
             h2u(trie_roots_after.state_root),
-        ),
-        (
-            GlobalMetadata::TransactionTrieRootDigestAfter,
-            h2u(trie_roots_after.transactions_root),
         ),
         (
             GlobalMetadata::ReceiptTrieRootDigestAfter,
@@ -239,12 +227,10 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     let read_metadata = |field| state.memory.read_global_metadata(field);
     let trie_roots_before = TrieRoots {
         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
-        transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestBefore)),
         receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestBefore)),
     };
     let trie_roots_after = TrieRoots {
         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestAfter)),
-        transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestAfter)),
         receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestAfter)),
     };
 

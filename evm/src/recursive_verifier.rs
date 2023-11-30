@@ -551,20 +551,12 @@ pub(crate) fn get_memory_extra_looking_products_circuit<
             public_values.trie_roots_before.state_root,
         ),
         (
-            GlobalMetadata::TransactionTrieRootDigestBefore as usize,
-            public_values.trie_roots_before.transactions_root,
-        ),
-        (
             GlobalMetadata::ReceiptTrieRootDigestBefore as usize,
             public_values.trie_roots_before.receipts_root,
         ),
         (
             GlobalMetadata::StateTrieRootDigestAfter as usize,
             public_values.trie_roots_after.state_root,
-        ),
-        (
-            GlobalMetadata::TransactionTrieRootDigestAfter as usize,
-            public_values.trie_roots_after.transactions_root,
         ),
         (
             GlobalMetadata::ReceiptTrieRootDigestAfter as usize,
@@ -686,11 +678,9 @@ pub(crate) fn add_virtual_trie_roots<F: RichField + Extendable<D>, const D: usiz
     builder: &mut CircuitBuilder<F, D>,
 ) -> TrieRootsTarget {
     let state_root = builder.add_virtual_public_input_arr();
-    let transactions_root = builder.add_virtual_public_input_arr();
     let receipts_root = builder.add_virtual_public_input_arr();
     TrieRootsTarget {
         state_root,
-        transactions_root,
         receipts_root,
     }
 }
@@ -879,23 +869,6 @@ pub(crate) fn set_trie_roots_target<F, W, const D: usize>(
         );
         witness.set_target(
             trie_roots_target.state_root[2 * i + 1],
-            F::from_canonical_u32((limb >> 32) as u32),
-        );
-    }
-
-    for (i, limb) in trie_roots
-        .transactions_root
-        .into_uint()
-        .0
-        .into_iter()
-        .enumerate()
-    {
-        witness.set_target(
-            trie_roots_target.transactions_root[2 * i],
-            F::from_canonical_u32(limb as u32),
-        );
-        witness.set_target(
-            trie_roots_target.transactions_root[2 * i + 1],
             F::from_canonical_u32((limb >> 32) as u32),
         );
     }

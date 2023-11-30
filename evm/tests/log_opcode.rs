@@ -122,7 +122,6 @@ fn test_log_opcodes() -> anyhow::Result<()> {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: Node::Empty.into(),
         receipts_trie: receipts_trie.clone(),
         storage_tries: vec![(to_hashed, Node::Empty.into())],
     };
@@ -205,7 +204,6 @@ fn test_log_opcodes() -> anyhow::Result<()> {
 
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: HashedPartialTrie::from(Node::Empty).hash(),
         receipts_root: receipts_trie.hash(),
     };
 
@@ -323,7 +321,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: Node::Empty.into(),
         receipts_trie: Node::Empty.into(),
         storage_tries: vec![],
     };
@@ -405,7 +402,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let tries_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: HashedPartialTrie::from(Node::Empty).hash(),
         receipts_root: receipts_trie.clone().hash(),
     };
 
@@ -450,7 +446,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: Node::Empty.into(),
         receipts_trie: receipts_trie.clone(),
         storage_tries: vec![],
     };
@@ -529,7 +524,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: HashedPartialTrie::from(Node::Empty).hash(),
         receipts_root: receipts_trie.hash(),
     };
 
@@ -574,12 +568,11 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
 /// Values taken from the block 1000000 of Goerli: https://goerli.etherscan.io/txs?block=1000000
 #[test]
-fn test_txn_and_receipt_trie_hash() -> anyhow::Result<()> {
-    // This test checks that inserting into the transaction and receipt `HashedPartialTrie`s works as expected.
-    let mut example_txn_trie = HashedPartialTrie::from(Node::Empty);
+fn test_receipt_trie_hash() -> anyhow::Result<()> {
+    // This test checks that inserting into the receipt `HashedPartialTrie` works as expected.
 
     // We consider two transactions, with one log each.
-    let transaction_0 = LegacyTransactionRlp {
+    let _transaction_0 = LegacyTransactionRlp {
         nonce: 157823u64.into(),
         gas_price: 1000000000u64.into(),
         gas: 250000u64.into(),
@@ -593,13 +586,7 @@ fn test_txn_and_receipt_trie_hash() -> anyhow::Result<()> {
         s: hex!("740710eed9696c663510b7fb71a553112551121595a54ec6d2ec0afcec72a973").into(),
     };
 
-    // Insert the first transaction into the transaction trie.
-    example_txn_trie.insert(
-        Nibbles::from_str("0x80").unwrap(), // RLP(0) = 0x80
-        rlp::encode(&transaction_0).to_vec(),
-    );
-
-    let transaction_1 = LegacyTransactionRlp {
+    let _transaction_1 = LegacyTransactionRlp {
         nonce: 157824u64.into(),
         gas_price: 1000000000u64.into(),
         gas: 250000u64.into(),
@@ -612,12 +599,6 @@ fn test_txn_and_receipt_trie_hash() -> anyhow::Result<()> {
         r: hex!("a3ff39967683fc684dc7b857d6f62723e78804a14b091a058ad95cc1b8a0281f").into(),
         s: hex!("51b156e05f21f499fa1ae47ebf536b15a237208f1d4a62e33956b6b03cf47742").into(),
     };
-
-    // Insert the second transaction into the transaction trie.
-    example_txn_trie.insert(
-        Nibbles::from_str("0x01").unwrap(),
-        rlp::encode(&transaction_1).to_vec(),
-    );
 
     // Receipts:
     let mut example_receipt_trie = HashedPartialTrie::from(Node::Empty);
@@ -670,12 +651,6 @@ fn test_txn_and_receipt_trie_hash() -> anyhow::Result<()> {
     example_receipt_trie.insert(
         Nibbles::from_str("0x01").unwrap(),
         rlp::encode(&receipt_1).to_vec(),
-    );
-
-    // Check that the trie hashes are correct.
-    assert_eq!(
-        example_txn_trie.hash(),
-        hex!("3ab7120d12e1fc07303508542602beb7eecfe8f262b83fd71eefe7d6205242ce").into()
     );
 
     assert_eq!(

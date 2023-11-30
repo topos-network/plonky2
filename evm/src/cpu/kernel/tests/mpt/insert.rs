@@ -164,7 +164,6 @@ fn test_state_trie(
 
     let trie_inputs = TrieInputs {
         state_trie: state_trie.clone(),
-        transactions_trie: Default::default(),
         receipts_trie: Default::default(),
         storage_tries: vec![],
     };

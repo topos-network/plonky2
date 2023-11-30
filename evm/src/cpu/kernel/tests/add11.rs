@@ -45,10 +45,6 @@ fn prepare_interpreter(
             h2u(trie_inputs.state_trie.hash()),
         ),
         (
-            GlobalMetadata::TransactionTrieRootDigestBefore,
-            h2u(trie_inputs.transactions_trie.hash()),
-        ),
-        (
             GlobalMetadata::ReceiptTrieRootDigestBefore,
             h2u(trie_inputs.receipts_trie.hash()),
         ),
@@ -119,7 +115,6 @@ fn test_add11_yml() {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: Node::Empty.into(),
         receipts_trie: Node::Empty.into(),
         storage_tries: vec![(to_hashed, Node::Empty.into())],
     };
@@ -173,15 +168,9 @@ fn test_add11_yml() {
         Nibbles::from_str("0x80").unwrap(),
         rlp::encode(&receipt_0).to_vec(),
     );
-    let transactions_trie: HashedPartialTrie = Node::Leaf {
-        nibbles: Nibbles::from_str("0x80").unwrap(),
-        value: txn.to_vec(),
-    }
-    .into();
 
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
 
@@ -190,10 +179,6 @@ fn test_add11_yml() {
         (
             GlobalMetadata::StateTrieRootDigestAfter,
             h2u(trie_roots_after.state_root),
-        ),
-        (
-            GlobalMetadata::TransactionTrieRootDigestAfter,
-            h2u(trie_roots_after.transactions_root),
         ),
         (
             GlobalMetadata::ReceiptTrieRootDigestAfter,

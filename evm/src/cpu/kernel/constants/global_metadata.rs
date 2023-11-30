@@ -15,83 +15,79 @@ pub(crate) enum GlobalMetadata {
     RlpDataSize = 3,
     /// A pointer to the root of the state trie within the `TrieData` buffer.
     StateTrieRoot = 4,
-    /// A pointer to the root of the transaction trie within the `TrieData` buffer.
-    TransactionTrieRoot = 5,
     /// A pointer to the root of the receipt trie within the `TrieData` buffer.
-    ReceiptTrieRoot = 6,
+    ReceiptTrieRoot = 5,
 
     // The root digests of each Merkle trie before these transactions.
-    StateTrieRootDigestBefore = 7,
-    TransactionTrieRootDigestBefore = 8,
-    ReceiptTrieRootDigestBefore = 9,
+    StateTrieRootDigestBefore = 6,
+    ReceiptTrieRootDigestBefore = 7,
 
     // The root digests of each Merkle trie after these transactions.
-    StateTrieRootDigestAfter = 10,
-    TransactionTrieRootDigestAfter = 11,
-    ReceiptTrieRootDigestAfter = 12,
+    StateTrieRootDigestAfter = 8,
+    ReceiptTrieRootDigestAfter = 9,
 
     /// The sizes of the `TrieEncodedChild` and `TrieEncodedChildLen` buffers. In other words, the
     /// next available offset in these buffers.
-    TrieEncodedChildSize = 13,
+    TrieEncodedChildSize = 10,
 
     // Block metadata.
-    BlockBeneficiary = 14,
-    BlockTimestamp = 15,
-    BlockNumber = 16,
-    BlockDifficulty = 17,
-    BlockRandom = 18,
-    BlockGasLimit = 19,
-    BlockChainId = 20,
-    BlockBaseFee = 21,
-    BlockGasUsed = 22,
+    BlockBeneficiary = 11,
+    BlockTimestamp = 12,
+    BlockNumber = 13,
+    BlockDifficulty = 14,
+    BlockRandom = 15,
+    BlockGasLimit = 16,
+    BlockChainId = 17,
+    BlockBaseFee = 18,
+    BlockGasUsed = 19,
     /// Before current transactions block values.
-    BlockGasUsedBefore = 23,
+    BlockGasUsedBefore = 20,
     /// After current transactions block values.
-    BlockGasUsedAfter = 24,
+    BlockGasUsedAfter = 21,
     /// Current block header hash
-    BlockCurrentHash = 25,
+    BlockCurrentHash = 22,
 
     /// Gas to refund at the end of the transaction.
-    RefundCounter = 26,
+    RefundCounter = 23,
     /// Length of the addresses access list.
-    AccessedAddressesLen = 27,
+    AccessedAddressesLen = 24,
     /// Length of the storage keys access list.
-    AccessedStorageKeysLen = 28,
+    AccessedStorageKeysLen = 25,
     /// Length of the self-destruct list.
-    SelfDestructListLen = 29,
+    SelfDestructListLen = 26,
     /// Length of the bloom entry buffer.
-    BloomEntryLen = 30,
+    BloomEntryLen = 27,
 
     /// Length of the journal.
-    JournalLen = 31,
+    JournalLen = 28,
     /// Length of the `JournalData` segment.
-    JournalDataLen = 32,
+    JournalDataLen = 29,
     /// Current checkpoint.
-    CurrentCheckpoint = 33,
-    TouchedAddressesLen = 34,
+    CurrentCheckpoint = 30,
+    TouchedAddressesLen = 31,
     // Gas cost for the access list in type-1 txns. See EIP-2930.
-    AccessListDataCost = 35,
+    AccessListDataCost = 32,
     // Start of the access list in the RLP for type-1 txns.
-    AccessListRlpStart = 36,
+    AccessListRlpStart = 33,
     // Length of the access list in the RLP for type-1 txns.
-    AccessListRlpLen = 37,
+    AccessListRlpLen = 34,
     // Boolean flag indicating if the txn is a contract creation txn.
-    ContractCreation = 38,
-    IsPrecompileFromEoa = 39,
-    CallStackDepth = 40,
+    ContractCreation = 35,
+    IsPrecompileFromEoa = 36,
+    CallStackDepth = 37,
     /// Transaction logs list length
-    LogsLen = 41,
-    LogsDataLen = 42,
-    LogsPayloadLen = 43,
-    TxnNumberBefore = 44,
-    TxnNumberAfter = 45,
+    LogsLen = 38,
+    LogsDataLen = 39,
+    LogsPayloadLen = 40,
+    TxnNumberBefore = 41,
+    TxnNumberAfter = 42,
 
-    KernelHash = 46,
-    KernelLen = 47,
+    KernelHash = 43,
+    KernelLen = 44,
 }
 
 impl GlobalMetadata {
-    pub(crate) const COUNT: usize = 48;
+    pub(crate) const COUNT: usize = 45;
 
     pub(crate) fn all() -> [Self; Self::COUNT] {
         [
@@ -100,13 +96,10 @@ impl GlobalMetadata {
             Self::TrieDataSize,
             Self::RlpDataSize,
             Self::StateTrieRoot,
-            Self::TransactionTrieRoot,
             Self::ReceiptTrieRoot,
             Self::StateTrieRootDigestBefore,
-            Self::TransactionTrieRootDigestBefore,
             Self::ReceiptTrieRootDigestBefore,
             Self::StateTrieRootDigestAfter,
-            Self::TransactionTrieRootDigestAfter,
             Self::ReceiptTrieRootDigestAfter,
             Self::TrieEncodedChildSize,
             Self::BlockBeneficiary,
@@ -154,13 +147,10 @@ impl GlobalMetadata {
             Self::TrieDataSize => "GLOBAL_METADATA_TRIE_DATA_SIZE",
             Self::RlpDataSize => "GLOBAL_METADATA_RLP_DATA_SIZE",
             Self::StateTrieRoot => "GLOBAL_METADATA_STATE_TRIE_ROOT",
-            Self::TransactionTrieRoot => "GLOBAL_METADATA_TXN_TRIE_ROOT",
             Self::ReceiptTrieRoot => "GLOBAL_METADATA_RECEIPT_TRIE_ROOT",
             Self::StateTrieRootDigestBefore => "GLOBAL_METADATA_STATE_TRIE_DIGEST_BEFORE",
-            Self::TransactionTrieRootDigestBefore => "GLOBAL_METADATA_TXN_TRIE_DIGEST_BEFORE",
             Self::ReceiptTrieRootDigestBefore => "GLOBAL_METADATA_RECEIPT_TRIE_DIGEST_BEFORE",
             Self::StateTrieRootDigestAfter => "GLOBAL_METADATA_STATE_TRIE_DIGEST_AFTER",
-            Self::TransactionTrieRootDigestAfter => "GLOBAL_METADATA_TXN_TRIE_DIGEST_AFTER",
             Self::ReceiptTrieRootDigestAfter => "GLOBAL_METADATA_RECEIPT_TRIE_DIGEST_AFTER",
             Self::TrieEncodedChildSize => "GLOBAL_METADATA_TRIE_ENCODED_CHILD_SIZE",
             Self::BlockBeneficiary => "GLOBAL_METADATA_BLOCK_BENEFICIARY",

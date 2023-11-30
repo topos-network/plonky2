@@ -216,20 +216,12 @@ where
             h2u(public_values.trie_roots_before.state_root),
         ),
         (
-            GlobalMetadata::TransactionTrieRootDigestBefore,
-            h2u(public_values.trie_roots_before.transactions_root),
-        ),
-        (
             GlobalMetadata::ReceiptTrieRootDigestBefore,
             h2u(public_values.trie_roots_before.receipts_root),
         ),
         (
             GlobalMetadata::StateTrieRootDigestAfter,
             h2u(public_values.trie_roots_after.state_root),
-        ),
-        (
-            GlobalMetadata::TransactionTrieRootDigestAfter,
-            h2u(public_values.trie_roots_after.transactions_root),
         ),
         (
             GlobalMetadata::ReceiptTrieRootDigestAfter,
@@ -524,20 +516,12 @@ pub(crate) mod testutils {
                 h2u(public_values.trie_roots_before.state_root),
             ),
             (
-                GlobalMetadata::TransactionTrieRootDigestBefore,
-                h2u(public_values.trie_roots_before.transactions_root),
-            ),
-            (
                 GlobalMetadata::ReceiptTrieRootDigestBefore,
                 h2u(public_values.trie_roots_before.receipts_root),
             ),
             (
                 GlobalMetadata::StateTrieRootDigestAfter,
                 h2u(public_values.trie_roots_after.state_root),
-            ),
-            (
-                GlobalMetadata::TransactionTrieRootDigestAfter,
-                h2u(public_values.trie_roots_after.transactions_root),
             ),
             (
                 GlobalMetadata::ReceiptTrieRootDigestAfter,
