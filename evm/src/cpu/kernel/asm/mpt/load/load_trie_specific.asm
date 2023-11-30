@@ -29,23 +29,7 @@ global mpt_load_state_trie_value:
 
 global mpt_load_txn_trie_value:
     // stack: retdest
-    PROVER_INPUT(mpt)
-    // stack: rlp_len, retdest
-    // The first element is the rlp length
-    DUP1 %append_to_trie_data
-    PUSH 0
-
-mpt_load_loop:
-    // stack: i, rlp_len, retdest
-    DUP2 DUP2 EQ %jumpi(mpt_load_end)
-    PROVER_INPUT(mpt) %append_to_trie_data
-    %increment
-    %jump(mpt_load_loop)
-
-mpt_load_end:
-    // stack: i, rlp_len, retdest
-    %pop2
-    JUMP
+    PANIC // TODO
 
 global mpt_load_receipt_trie_value:
     // stack: retdest

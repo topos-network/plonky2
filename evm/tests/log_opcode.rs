@@ -203,15 +203,9 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     expected_state_trie_after.insert(sender_nibbles, rlp::encode(&sender_account_after).to_vec());
     expected_state_trie_after.insert(to_nibbles, rlp::encode(&to_account_after).to_vec());
 
-    let transactions_trie: HashedPartialTrie = Node::Leaf {
-        nibbles: Nibbles::from_str("0x80").unwrap(),
-        value: txn.to_vec(),
-    }
-    .into();
-
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: transactions_trie.hash(),
+        transactions_root: HashedPartialTrie::from(Node::Empty).hash(),
         receipts_root: receipts_trie.hash(),
     };
 
@@ -409,15 +403,9 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         rlp::encode(&receipt_0).to_vec(),
     );
 
-    let mut transactions_trie: HashedPartialTrie = Node::Leaf {
-        nibbles: Nibbles::from_str("0x80").unwrap(),
-        value: txn.to_vec(),
-    }
-    .into();
-
     let tries_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: transactions_trie.hash(),
+        transactions_root: HashedPartialTrie::from(Node::Empty).hash(),
         receipts_root: receipts_trie.clone().hash(),
     };
 
@@ -462,7 +450,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let tries_before = TrieInputs {
         state_trie: state_trie_before,
-        transactions_trie: transactions_trie.clone(),
+        transactions_trie: Node::Empty.into(),
         receipts_trie: receipts_trie.clone(),
         storage_tries: vec![],
     };
@@ -539,11 +527,9 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         rlp::encode(&to_account_second_after).to_vec(),
     );
 
-    transactions_trie.insert(Nibbles::from_str("0x01").unwrap(), txn_2.to_vec());
-
     let trie_roots_after = TrieRoots {
         state_root: expected_state_trie_after.hash(),
-        transactions_root: transactions_trie.hash(),
+        transactions_root: HashedPartialTrie::from(Node::Empty).hash(),
         receipts_root: receipts_trie.hash(),
     };
 
