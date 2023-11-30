@@ -17,7 +17,7 @@ in the kernel, execution halts. Constraints ensure that every subsequent row is 
 \end{itemize}
 
 In the CPU cycles phase, the CPU can switch between different contexts, which correspond to the different environments of the possible calls. Context 0 is the kernel itself, which
-handles initialization (input processing, transaction parsing, transaction trie updating...) and termination (receipt creation, final trie checks...) before and after executing the transaction. Subsequent contexts are created when
+handles initialization (input processing, transaction parsing, tries update...) and termination (receipt creation, final trie checks...) before and after executing the transaction. Subsequent contexts are created when
 executing user code (transaction or contract code). In a non-zero user context, syscalls may be executed, which are specific instructions written in the kernel. They don't change the context
 but change the code context, which is where the instructions are read from.
 
