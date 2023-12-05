@@ -129,10 +129,15 @@ fn ctl_byte_packing<F: Field>() -> CrossTableLookup<F> {
         cpu_stark::ctl_data_byte_unpacking(),
         Some(cpu_stark::ctl_filter_byte_unpacking()),
     );
-    let cpu_push_packing_looking = TableWithColumns::new(
+    let cpu_kernel_push_packing_looking = TableWithColumns::new(
         Table::Cpu,
-        cpu_stark::ctl_data_byte_packing_push(),
-        Some(cpu_stark::ctl_filter_byte_packing_push()),
+        cpu_stark::ctl_data_byte_packing_push(true),
+        Some(cpu_stark::ctl_filter_byte_packing_push_kernel_mode()),
+    );
+    let cpu_user_push_packing_looking = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_byte_packing_push(false),
+        Some(cpu_stark::ctl_filter_byte_packing_push_user_mode()),
     );
     let byte_packing_looked = TableWithColumns::new(
         Table::BytePacking,
@@ -143,7 +148,8 @@ fn ctl_byte_packing<F: Field>() -> CrossTableLookup<F> {
         vec![
             cpu_packing_looking,
             cpu_unpacking_looking,
-            cpu_push_packing_looking,
+            cpu_kernel_push_packing_looking,
+            cpu_user_push_packing_looking,
         ],
         byte_packing_looked,
     )
@@ -220,10 +226,15 @@ fn ctl_logic<F: Field>() -> CrossTableLookup<F> {
 
 /// `CrossTableLookup` for `MemoryStark` to connect it with all the modules which need memory accesses.
 fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
-    let cpu_memory_code_read = TableWithColumns::new(
+    let cpu_memory_code_read_kernel = TableWithColumns::new(
         Table::Cpu,
-        cpu_stark::ctl_data_code_memory(),
-        Some(cpu_stark::ctl_filter_code_memory()),
+        cpu_stark::ctl_data_code_memory::<F>(true),
+        Some(cpu_stark::ctl_filter_code_memory_kernel()),
+    );
+    let cpu_memory_code_read_user = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_code_memory(false),
+        Some(cpu_stark::ctl_filter_code_memory_user()),
     );
     let cpu_memory_gp_ops = (0..NUM_GP_CHANNELS).map(|channel| {
         TableWithColumns::new(
@@ -251,7 +262,8 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
             Some(byte_packing_stark::ctl_looking_memory_filter(i)),
         )
     });
-    let all_lookers = iter::once(cpu_memory_code_read)
+    let all_lookers = iter::once(cpu_memory_code_read_kernel)
+        .chain(iter::once(cpu_memory_code_read_user))
         .chain(cpu_memory_gp_ops)
         .chain(iter::once(cpu_push_write_ops))
         .chain(keccak_sponge_reads)

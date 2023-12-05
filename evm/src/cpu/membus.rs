@@ -37,10 +37,6 @@ pub(crate) fn eval_packed<P: PackedField>(
     lv: &CpuColumnsView<P>,
     yield_constr: &mut ConstraintConsumer<P>,
 ) {
-    // Validate `lv.code_context`.
-    // It should be 0 if in kernel mode and `lv.context` if in user mode.
-    yield_constr.constraint(lv.code_context - (P::ONES - lv.is_kernel_mode) * lv.context);
-
     // Validate `channel.used`. It should be binary.
     for channel in lv.mem_channels {
         yield_constr.constraint(channel.used * (channel.used - P::ONES));
@@ -57,12 +53,6 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     lv: &CpuColumnsView<ExtensionTarget<D>>,
     yield_constr: &mut RecursiveConstraintConsumer<F, D>,
 ) {
-    // Validate `lv.code_context`.
-    // It should be 0 if in kernel mode and `lv.context` if in user mode.
-    let diff = builder.sub_extension(lv.context, lv.code_context);
-    let constr = builder.mul_sub_extension(lv.is_kernel_mode, lv.context, diff);
-    yield_constr.constraint(builder, constr);
-
     // Validate `channel.used`. It should be binary.
     for channel in lv.mem_channels {
         let constr = builder.mul_sub_extension(channel.used, channel.used, channel.used);

@@ -56,9 +56,6 @@ pub(crate) struct CpuColumnsView<T: Copy> {
     /// If CPU cycle: Current context.
     pub context: T,
 
-    /// If CPU cycle: Context for code memory channel.
-    pub code_context: T,
-
     /// If CPU cycle: The program counter for the current instruction.
     pub program_counter: T,
 

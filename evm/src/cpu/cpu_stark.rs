@@ -24,6 +24,7 @@ use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::memory::segments::Segment;
 use crate::memory::{NUM_CHANNELS, VALUE_LIMBS};
 use crate::stark::Stark;
+use crate::witness::state::KERNEL_CONTEXT;
 
 /// Creates the vector of `Columns` corresponding to the General Purpose channels when calling the Keccak sponge:
 /// the CPU reads the output of the sponge directly from the `KeccakSpongeStark` table.
@@ -156,10 +157,14 @@ pub(crate) fn ctl_filter_byte_unpacking<F: Field>() -> Filter<F> {
     Filter::new_simple(Column::single(COL_MAP.op.mstore_32bytes))
 }
 
-/// Creates the vector of `Columns` corresponding to the contents of the CPU registers when performing a `PUSH`.
-/// `PUSH` internal reads are done by calling `BytePackingStark`.
-pub(crate) fn ctl_data_byte_packing_push<F: Field>() -> Vec<Column<F>> {
-    let context = Column::single(COL_MAP.code_context);
+/// Creates the vector of `Columns` corresponding to the contents of the CPU registers when performing a `PUSH`,
+/// in kernel mode. `PUSH` internal reads are done by calling `BytePackingStark`.
+pub(crate) fn ctl_data_byte_packing_push<F: Field>(is_kernel: bool) -> Vec<Column<F>> {
+    let context = if is_kernel {
+        Column::constant(F::from_canonical_usize(KERNEL_CONTEXT))
+    } else {
+        Column::single(COL_MAP.context)
+    };
     let segment = Column::constant(F::from_canonical_usize(Segment::Code as usize));
     // The initial offset if `pc + 1`.
     let virt =
@@ -178,9 +183,29 @@ pub(crate) fn ctl_data_byte_packing_push<F: Field>() -> Vec<Column<F>> {
     res
 }
 
-/// CTL filter for the `PUSH` operation.
-pub(crate) fn ctl_filter_byte_packing_push<F: Field>() -> Filter<F> {
-    Filter::new_simple(Column::single(COL_MAP.op.push))
+/// CTL filter for the `PUSH` operation in kernel mode.
+pub(crate) fn ctl_filter_byte_packing_push_kernel_mode<F: Field>() -> Filter<F> {
+    Filter::new(
+        vec![(
+            Column::single(COL_MAP.op.push),
+            Column::single(COL_MAP.is_kernel_mode),
+        )],
+        vec![],
+    )
+}
+
+/// CTL filter for the `PUSH` operation in user mode.
+pub(crate) fn ctl_filter_byte_packing_push_user_mode<F: Field>() -> Filter<F> {
+    Filter::new(
+        vec![(
+            Column::single(COL_MAP.op.push),
+            Column::linear_combination_with_constant(
+                vec![(COL_MAP.is_kernel_mode, F::NEG_ONE)],
+                F::ONE,
+            ),
+        )],
+        vec![],
+    )
 }
 
 /// Index of the memory channel storing code.
@@ -196,10 +221,15 @@ fn mem_time_and_channel<F: Field>(channel: usize) -> Column<F> {
 }
 
 /// Creates the vector of `Columns` corresponding to the contents of the code channel when reading code values.
-pub(crate) fn ctl_data_code_memory<F: Field>() -> Vec<Column<F>> {
+pub(crate) fn ctl_data_code_memory<F: Field>(is_kernel: bool) -> Vec<Column<F>> {
+    let context_col = if is_kernel {
+        Column::constant(F::from_canonical_usize(KERNEL_CONTEXT))
+    } else {
+        Column::single(COL_MAP.context)
+    };
     let mut cols = vec![
         Column::constant(F::ONE),                                      // is_read
-        Column::single(COL_MAP.code_context),                          // addr_context
+        context_col,                                                   // addr_context
         Column::constant(F::from_canonical_u64(Segment::Code as u64)), // addr_segment
         Column::single(COL_MAP.program_counter),                       // addr_virtual
     ];
@@ -254,8 +284,28 @@ pub(crate) fn ctl_data_partial_memory<F: Field>() -> Vec<Column<F>> {
 }
 
 /// CTL filter for code read and write operations.
-pub(crate) fn ctl_filter_code_memory<F: Field>() -> Filter<F> {
-    Filter::new_simple(Column::sum(COL_MAP.op.iter()))
+pub(crate) fn ctl_filter_code_memory_kernel<F: Field>() -> Filter<F> {
+    Filter::new(
+        vec![(
+            Column::sum(COL_MAP.op.iter()),
+            Column::single(COL_MAP.is_kernel_mode),
+        )],
+        vec![],
+    )
+}
+
+/// CTL filter for code read and write operations.
+pub(crate) fn ctl_filter_code_memory_user<F: Field>() -> Filter<F> {
+    Filter::new(
+        vec![(
+            Column::sum(COL_MAP.op.iter()),
+            Column::linear_combination_with_constant(
+                vec![(COL_MAP.is_kernel_mode, F::NEG_ONE)],
+                F::ONE,
+            ),
+        )],
+        vec![],
+    )
 }
 
 /// CTL filter for General Purpose memory read and write operations.
