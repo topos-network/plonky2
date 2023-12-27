@@ -7,15 +7,15 @@ use unroll::unroll_for_loops;
 use crate::packable::Packable;
 use crate::packed::PackedField;
 use crate::polynomial::{PolynomialCoeffs, PolynomialValues};
-use crate::types::Field;
-
+use crate::types::{Field, PrimeField64};
 pub type FftRootTable<F> = Vec<Vec<F>>;
 
+const GOLDILOCKS: u64 = 18446744069414584321;
 pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     let lg_n = log2_strict(n);
-    // bases[i] = g^2^i, for i = 0, ..., lg_n - 1
     let mut bases = Vec::with_capacity(lg_n);
     let mut base = F::primitive_root_of_unity(lg_n);
+
     bases.push(base);
     for _ in 1..lg_n {
         base = base.square(); // base = g^2^_
@@ -26,9 +26,10 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     for lg_m in 1..=lg_n {
         let half_m = 1 << (lg_m - 1);
         let base = bases[lg_n - lg_m];
-        let root_row = base.powers().take(half_m.max(2)).collect();
+        let root_row: Vec<F> = base.powers().take(half_m.max(2)).collect();
         root_table.push(root_row);
     }
+
     root_table
 }
 
@@ -45,7 +46,7 @@ fn fft_dispatch<F: Field>(
     };
     let used_root_table = root_table.or(computed_root_table.as_ref()).unwrap();
 
-    fft_classic(input, zero_factor.unwrap_or(0), used_root_table);
+    F::fft_classic(input, zero_factor.unwrap_or(0), used_root_table);
 }
 
 #[inline]
@@ -96,7 +97,7 @@ pub fn ifft_with_options<F: Field>(
 
 /// Generic FFT implementation that works with both scalar and packed inputs.
 #[unroll_for_loops]
-fn fft_classic_simd<P: PackedField>(
+pub(crate) fn fft_classic_simd<P: PackedField>(
     values: &mut [P::Scalar],
     r: usize,
     lg_n: usize,
@@ -148,13 +149,79 @@ fn fft_classic_simd<P: PackedField>(
 
         // omega values for this iteration, as slice of vectors
         let omega_table = P::pack_slice(&root_table[lg_half_m][..]);
+
         for k in (0..packed_n).step_by(packed_m) {
             for j in 0..half_packed_m {
                 let omega = omega_table[j];
+
                 let t = omega * packed_values[k + half_packed_m + j];
+
                 let u = packed_values[k + j];
                 packed_values[k + j] = u + t;
                 packed_values[k + half_packed_m + j] = u - t;
+            }
+        }
+    }
+}
+
+#[unroll_for_loops]
+pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
+    values: &mut [F],
+    r: usize,
+    lg_n: usize,
+    root_table: &FftRootTable<F>,
+) {
+    let n = values.len();
+
+    // We've already done the first lg_packed_width (if they were required) iterations.
+    let s = r;
+
+    let interm = min(6, lg_n);
+
+    let mut to_shift = 96 >> s;
+    for lg_half_m in s..interm {
+        let lg_m = lg_half_m + 1;
+        let m = 1 << lg_m; // Subarray size (in field elements).
+        let half_m = m / 2;
+        debug_assert!(half_m != 0);
+
+        // omega values for this iteration, as slice of vectors
+        for k in (0..n).step_by(m) {
+            for j in 0..half_m {
+                let mut val = values[k + half_m + j].to_canonical_u64() as u128;
+
+                let nb = j * to_shift / 64;
+                let remainder = j * to_shift % 64;
+                for _ in 0..nb {
+                    val = (val << 64) % (GOLDILOCKS as u128);
+                }
+
+                let t = F::from_canonical_u64(((val << remainder) % (GOLDILOCKS as u128)) as u64);
+
+                let u = values[k + j];
+                values[k + j] = u + t;
+                values[k + half_m + j] = u - t;
+            }
+        }
+        to_shift >>= 1;
+    }
+    for lg_half_m in interm..lg_n {
+        let lg_m = lg_half_m + 1;
+        let m = 1 << lg_m; // Subarray size (in field elements).
+        let half_m = m / 2;
+        debug_assert!(half_m != 0);
+
+        // omega values for this iteration, as slice of vectors
+        let omega_table = &root_table[lg_half_m][..];
+        for k in (0..n).step_by(m) {
+            for j in 0..half_m {
+                let omega = omega_table[j];
+
+                let t = omega * values[k + half_m + j];
+
+                let u = values[k + j];
+                values[k + j] = u + t;
+                values[k + half_m + j] = u - t;
             }
         }
     }

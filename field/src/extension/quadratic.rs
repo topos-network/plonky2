@@ -117,6 +117,14 @@ impl<F: Extendable<2>> Field for QuadraticExtension<F> {
     fn from_noncanonical_u64(n: u64) -> Self {
         F::from_noncanonical_u64(n).into()
     }
+
+    fn primitive_root_of_unity(n_log: usize) -> Self {
+        F::primitive_root_of_unity(n_log).into()
+    }
+
+    // fn fft_classic(values: &mut [Self], r: usize, root_table: &crate::fft::FftRootTable<Self>) {
+    //     F::fft_classic(values, r, root_table)
+    // }
 }
 
 impl<F: Extendable<2>> Display for QuadraticExtension<F> {

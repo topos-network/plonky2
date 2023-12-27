@@ -4,13 +4,17 @@ use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use num::{BigUint, Integer, ToPrimitive};
-use plonky2_util::{assume, branch_hint};
+use plonky2_util::{assume, branch_hint, log2_strict, reverse_index_bits_in_place};
 use serde::{Deserialize, Serialize};
 
+use crate::fft::{fft_classic_scalar_simd, fft_classic_simd};
 use crate::ops::Square;
+use crate::packable::Packable;
+use crate::packed::PackedField;
 use crate::types::{Field, Field64, PrimeField, PrimeField64, Sample};
 
 const EPSILON: u64 = (1 << 32) - 1;
+const FFT_GENERATOR: u64 = 2717;
 
 /// A field selected to have fast reduction.
 ///
@@ -185,6 +189,51 @@ impl Field for GoldilocksField {
     fn multiply_accumulate(&self, x: Self, y: Self) -> Self {
         // u64 + u64 * u64 cannot overflow.
         reduce128((self.0 as u128) + (x.0 as u128) * (y.0 as u128))
+    }
+
+    fn primitive_root_of_unity(n_log: usize) -> Self {
+        let base = Self::from_canonical_u64(FFT_GENERATOR);
+
+        base.exp_u64(Self::characteristic().to_u64().unwrap() / (1 << n_log))
+    }
+
+    fn fft_classic(values: &mut [Self], r: usize, root_table: &crate::fft::FftRootTable<Self>) {
+        reverse_index_bits_in_place(values);
+
+        let n = values.len();
+        let lg_n = log2_strict(n);
+
+        if root_table.len() != lg_n {
+            panic!(
+                "Expected root table of length {}, but it was {}.",
+                lg_n,
+                root_table.len()
+            );
+        }
+
+        // After reverse_index_bits, the only non-zero elements of values
+        // are at indices i*2^r for i = 0..n/2^r.  The loop below copies
+        // the value at i*2^r to the positions [i*2^r + 1, i*2^r + 2, ...,
+        // (i+1)*2^r - 1]; i.e. it replaces the 2^r - 1 zeros following
+        // element i*2^r with the value at i*2^r.  This corresponds to the
+        // first r rounds of the FFT when there are 2^r zeros at the end
+        // of the original input.
+        if r > 0 {
+            // if r == 0 then this loop is a noop.
+            let mask = !((1 << r) - 1);
+            for i in 0..n {
+                values[i] = values[i & mask];
+            }
+        }
+
+        let lg_packed_width = log2_strict(<Self as Packable>::Packing::WIDTH);
+        if lg_n <= lg_packed_width {
+            // Need the slice to be at least the width of two packed vectors for the vectorized version
+            // to work. Do this tiny problem in scalar.
+            fft_classic_simd::<<Self as Packable>::Packing>(values, r, lg_n, root_table);
+        } else {
+            fft_classic_scalar_simd::<Self>(values, r, lg_n, root_table);
+        }
     }
 }
 
