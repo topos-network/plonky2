@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+use core::cmp::min;
 use core::fmt::{self, Debug, Display, Formatter};
 use core::hash::{Hash, Hasher};
 use core::iter::{Product, Sum};
@@ -197,13 +199,37 @@ impl Field for GoldilocksField {
         base.exp_u64(Self::characteristic().to_u64().unwrap() / (1 << n_log))
     }
 
+    fn fft_root_table(n: usize) -> crate::fft::FftRootTable<Self> {
+        let lg_n = log2_strict(n);
+        let mut bases = Vec::with_capacity(lg_n);
+        let mut base = Self::primitive_root_of_unity(lg_n);
+
+        bases.push(base);
+        for _ in 1..lg_n {
+            base = base.square(); // base = g^2^_
+            bases.push(base);
+        }
+
+        let start = min(6, lg_n);
+        let mut root_table = Vec::with_capacity(lg_n - start);
+        for lg_m in start + 1..=lg_n {
+            let half_m = 1 << (lg_m - 1);
+            let base = bases[lg_n - lg_m];
+            let root_row = base.powers().take(half_m.max(2)).collect();
+            root_table.push(root_row);
+        }
+
+        root_table
+    }
+
     fn fft_classic(values: &mut [Self], r: usize, root_table: &crate::fft::FftRootTable<Self>) {
         reverse_index_bits_in_place(values);
 
         let n = values.len();
         let lg_n = log2_strict(n);
 
-        if root_table.len() != lg_n {
+        let interm = min(6, lg_n);
+        if root_table.len() != lg_n - interm {
             panic!(
                 "Expected root table of length {}, but it was {}.",
                 lg_n,

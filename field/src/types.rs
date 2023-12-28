@@ -13,7 +13,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::extension::Frobenius;
-use crate::fft::{fft_classic, FftRootTable};
+use crate::fft::{fft_classic, fft_root_table, FftRootTable};
 use crate::ops::Square;
 
 /// Sampling
@@ -270,6 +270,10 @@ pub trait Field:
         assert!(n_log <= Self::TWO_ADICITY);
         let base = Self::POWER_OF_TWO_GENERATOR;
         base.exp_power_of_2(Self::TWO_ADICITY - n_log)
+    }
+
+    fn fft_root_table(n: usize) -> FftRootTable<Self> {
+        fft_root_table(n)
     }
 
     fn fft_classic(values: &mut [Self], r: usize, root_table: &FftRootTable<Self>) {

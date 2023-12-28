@@ -42,7 +42,7 @@ fn fft_dispatch<F: Field>(
     let computed_root_table = if root_table.is_some() {
         None
     } else {
-        Some(fft_root_table(input.len()))
+        Some(F::fft_root_table(input.len()))
     };
     let used_root_table = root_table.or(computed_root_table.as_ref()).unwrap();
 
@@ -190,8 +190,9 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
             for j in 0..half_m {
                 let mut val = values[k + half_m + j].to_canonical_u64() as u128;
 
-                let nb = j * to_shift / 64;
-                let remainder = j * to_shift % 64;
+                let nb = (j * to_shift) >> 6;
+                let remainder = (j * to_shift) & 63;
+
                 for _ in 0..nb {
                     val = (val << 64) % (GOLDILOCKS as u128);
                 }
@@ -212,7 +213,7 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
         debug_assert!(half_m != 0);
 
         // omega values for this iteration, as slice of vectors
-        let omega_table = &root_table[lg_half_m][..];
+        let omega_table = &root_table[lg_half_m - interm][..];
         for k in (0..n).step_by(m) {
             for j in 0..half_m {
                 let omega = omega_table[j];
