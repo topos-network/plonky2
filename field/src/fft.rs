@@ -10,7 +10,6 @@ use crate::polynomial::{PolynomialCoeffs, PolynomialValues};
 use crate::types::{Field, PrimeField64};
 pub type FftRootTable<F> = Vec<Vec<F>>;
 
-const GOLDILOCKS: u64 = 18446744069414584321;
 pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     let lg_n = log2_strict(n);
     let mut bases = Vec::with_capacity(lg_n);
@@ -194,10 +193,10 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
                 let remainder = (j * to_shift) & 63;
 
                 for _ in 0..nb {
-                    val = (val << 64) % (GOLDILOCKS as u128);
+                    val = F::from_noncanonical_u128(val << 64).to_noncanonical_u64() as u128;
                 }
 
-                let t = F::from_canonical_u64(((val << remainder) % (GOLDILOCKS as u128)) as u64);
+                let t = F::from_noncanonical_u128(val << remainder);
 
                 let u = values[k + j];
                 values[k + j] = u + t;
