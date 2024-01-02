@@ -187,7 +187,7 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
         // omega values for this iteration, as slice of vectors
         for k in (0..n).step_by(m) {
             for j in 0..half_m {
-                let mut val = values[k + half_m + j].to_canonical_u64() as u128;
+                let mut val = values[k + half_m + j].to_noncanonical_u64() as u128;
 
                 let nb = (j * to_shift) >> 6;
                 let remainder = (j * to_shift) & 63;
