@@ -121,10 +121,6 @@ impl<F: Extendable<2>> Field for QuadraticExtension<F> {
     fn primitive_root_of_unity(n_log: usize) -> Self {
         F::primitive_root_of_unity(n_log).into()
     }
-
-    // fn fft_classic(values: &mut [Self], r: usize, root_table: &crate::fft::FftRootTable<Self>) {
-    //     F::fft_classic(values, r, root_table)
-    // }
 }
 
 impl<F: Extendable<2>> Display for QuadraticExtension<F> {

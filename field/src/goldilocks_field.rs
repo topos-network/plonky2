@@ -9,7 +9,7 @@ use num::{BigUint, Integer, ToPrimitive};
 use plonky2_util::{assume, branch_hint, log2_strict, reverse_index_bits_in_place};
 use serde::{Deserialize, Serialize};
 
-use crate::fft::{fft_classic_scalar_simd, fft_classic_simd};
+use crate::fft::{fft_classic_scalar_simd, fft_classic_simd, FftRootTable};
 use crate::ops::Square;
 use crate::packable::Packable;
 use crate::packed::PackedField;
@@ -226,20 +226,19 @@ impl Field for GoldilocksField {
         root_table
     }
 
-    fn fft_classic(values: &mut [Self], r: usize, root_table: &crate::fft::FftRootTable<Self>) {
+    fn fft_classic(values: &mut [Self], r: usize, root_table: &FftRootTable<Self>) {
         reverse_index_bits_in_place(values);
 
         let n = values.len();
         let lg_n = log2_strict(n);
 
         let interm = min(6, lg_n);
-        if root_table.len() != lg_n - interm {
-            panic!(
-                "Expected root table of length {}, but it was {}.",
-                lg_n,
-                root_table.len()
-            );
-        }
+        assert!(
+            root_table.len() == lg_n - interm,
+            "Expected root table of length {}, but it was {}.",
+            lg_n,
+            root_table.len()
+        );
 
         // After reverse_index_bits, the only non-zero elements of values
         // are at indices i*2^r for i = 0..n/2^r.  The loop below copies

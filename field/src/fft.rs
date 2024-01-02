@@ -25,7 +25,7 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     for lg_m in 1..=lg_n {
         let half_m = 1 << (lg_m - 1);
         let base = bases[lg_n - lg_m];
-        let root_row: Vec<F> = base.powers().take(half_m.max(2)).collect();
+        let root_row = base.powers().take(half_m.max(2)).collect();
         root_table.push(root_row);
     }
 
