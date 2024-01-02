@@ -16,7 +16,11 @@ use crate::packed::PackedField;
 use crate::types::{Field, Field64, PrimeField, PrimeField64, Sample};
 
 const EPSILON: u64 = (1 << 32) - 1;
-const FFT_GENERATOR: u64 = 2717;
+
+/// Root of unity for the two-adic subgroup of size 2^32, such that the
+/// generator for the domain of size 64 is 8, allowing fast computations
+/// for small-radix FFTs.
+const FFT_GENERATOR: u64 = 7277203076849721926;
 
 /// A field selected to have fast reduction.
 ///
@@ -194,9 +198,9 @@ impl Field for GoldilocksField {
     }
 
     fn primitive_root_of_unity(n_log: usize) -> Self {
-        let base = Self::from_canonical_u64(FFT_GENERATOR);
+        let power = 1 << (Self::TWO_ADICITY - n_log);
 
-        base.exp_u64(Self::characteristic().to_u64().unwrap() / (1 << n_log))
+        Self::from_canonical_u64(FFT_GENERATOR).exp_u64(power)
     }
 
     fn fft_root_table(n: usize) -> crate::fft::FftRootTable<Self> {
