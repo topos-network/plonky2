@@ -172,13 +172,10 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
 ) {
     let n = values.len();
 
-    // We've already done the first lg_packed_width (if they were required) iterations.
-    let s = r;
-
     let interm = min(6, lg_n);
 
-    let mut to_shift = 96 >> s;
-    for lg_half_m in s..interm {
+    let mut to_shift = 96 >> r;
+    for lg_half_m in r..interm {
         let lg_m = lg_half_m + 1;
         let m = 1 << lg_m; // Subarray size (in field elements).
         let half_m = m / 2;
@@ -187,16 +184,25 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
         // omega values for this iteration, as slice of vectors
         for k in (0..n).step_by(m) {
             for j in 0..half_m {
+                let exp = j * to_shift;
                 let mut val = values[k + half_m + j].to_noncanonical_u64() as u128;
 
-                let nb = (j * to_shift) >> 6;
-                let remainder = (j * to_shift) & 63;
+                let t = if exp > 32 {
+                    let nb = exp >> 6;
+                    let remainder = exp & 63;
 
-                for _ in 0..nb {
-                    val = F::from_noncanonical_u128(val << 64).to_noncanonical_u64() as u128;
-                }
+                    for _ in 0..nb {
+                        val = F::from_noncanonical_u128(val << 64).to_noncanonical_u64() as u128;
+                    }
 
-                let t = F::from_noncanonical_u128(val << remainder);
+                    F::from_noncanonical_u128(val << remainder)
+                } else {
+                    let cur = val << exp;
+                    let t_lo = cur as u64;
+                    let t_hi = (cur >> 64) as u32;
+
+                    F::from_noncanonical_u96((t_lo, t_hi))
+                };
 
                 let u = values[k + j];
                 values[k + j] = u + t;
