@@ -9,10 +9,8 @@ use num::{BigUint, Integer, ToPrimitive};
 use plonky2_util::{assume, branch_hint, log2_strict, reverse_index_bits_in_place};
 use serde::{Deserialize, Serialize};
 
-use crate::fft::{fft_classic_scalar_simd, fft_classic_simd, FftRootTable};
+use crate::fft::{fft_classic_scalar_simd, FftRootTable};
 use crate::ops::Square;
-use crate::packable::Packable;
-use crate::packed::PackedField;
 use crate::types::{Field, Field64, PrimeField, PrimeField64, Sample};
 
 const EPSILON: u64 = (1 << 32) - 1;
@@ -255,14 +253,11 @@ impl Field for GoldilocksField {
             }
         }
 
-        let lg_packed_width = log2_strict(<Self as Packable>::Packing::WIDTH);
-        if lg_n <= lg_packed_width {
-            // Need the slice to be at least the width of two packed vectors for the vectorized version
-            // to work. Do this tiny problem in scalar.
-            fft_classic_simd::<<Self as Packable>::Packing>(values, r, lg_n, root_table);
-        } else {
-            fft_classic_scalar_simd::<Self>(values, r, lg_n, root_table);
-        }
+        // let lg_packed_width = log2_strict(<Self as Packable>::Packing::WIDTH);
+        // Need the slice to be at least the width of two packed vectors for the vectorized version
+        // to work. Do this tiny problem in scalar.
+
+        fft_classic_scalar_simd::<Self>(values, r, lg_n, root_table);
     }
 }
 

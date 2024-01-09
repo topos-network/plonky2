@@ -198,10 +198,8 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
                     F::from_noncanonical_u128(val << remainder)
                 } else {
                     let cur = val << exp;
-                    let t_lo = cur as u64;
-                    let t_hi = (cur >> 64) as u32;
 
-                    F::from_noncanonical_u96((t_lo, t_hi))
+                    F::from_noncanonical_u96((cur as u64, (cur >> 64) as u32))
                 };
 
                 let u = values[k + j];
