@@ -164,6 +164,24 @@ pub(crate) fn fft_classic_simd<P: PackedField>(
 }
 
 #[unroll_for_loops]
+pub(crate) fn fft_init_shifts(n: usize) -> Vec<Vec<usize>> {
+    let lg_n = log2_strict(n);
+    let end = min(6, lg_n);
+
+    let mut shifts = Vec::with_capacity(end + 1);
+    let mut to_shift = 96;
+    for lg_m in 0..=end {
+        let half_m = 1 << lg_m;
+        let cur_shifts = (0..half_m).map(|j| j * to_shift).collect::<Vec<_>>();
+        shifts.push(cur_shifts);
+
+        to_shift >>= 1;
+    }
+
+    shifts
+}
+
+#[unroll_for_loops]
 pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
     values: &mut [F],
     r: usize,
@@ -172,9 +190,10 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
 ) {
     let n = values.len();
 
+    let all_shifts = fft_init_shifts(n);
+
     let interm = min(6, lg_n);
 
-    let mut to_shift = 96 >> r;
     for lg_half_m in r..interm {
         let lg_m = lg_half_m + 1;
         let m = 1 << lg_m; // Subarray size (in field elements).
@@ -184,7 +203,7 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
         // omega values for this iteration, as slice of vectors
         for k in (0..n).step_by(m) {
             for j in 0..half_m {
-                let exp = j * to_shift;
+                let exp = all_shifts[lg_half_m][j];
                 let mut val = values[k + half_m + j].to_noncanonical_u64() as u128;
 
                 let t = if exp > 32 {
@@ -207,7 +226,6 @@ pub(crate) fn fft_classic_scalar_simd<F: PrimeField64>(
                 values[k + half_m + j] = u - t;
             }
         }
-        to_shift >>= 1;
     }
     for lg_half_m in interm..lg_n {
         let lg_m = lg_half_m + 1;
