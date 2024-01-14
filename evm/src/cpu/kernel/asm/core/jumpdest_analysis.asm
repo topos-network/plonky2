@@ -42,7 +42,7 @@ continue:
 proof_ok:
     // stack: i, ctx, final_pos, retdest
     // We already know final_pos is a jumpdest
-    %stack (i, ctx, final_pos) -> (ctx, @SEGMENT_JUMPDEST_BITS, i)
+    %stack (i, ctx, final_pos) -> (ctx, @SEGMENT_JUMPDEST_BITS, final_pos)
     %build_address
     PUSH 1
     MSTORE_GENERAL
@@ -139,13 +139,13 @@ global write_table_if_jumpdest:
     // stack: proof_prefix_addr, ctx, jumpdest, retdest
     // If we are here we need to check that the next 32 bytes are less
     // than JUMPXX for XX < 32 - i <=> opcode < 0x7f - i = 127 - i, 0 <= i < 32,
-    // or larger than 127
+    // or larger than 127.
     
     %stack
         (proof_prefix_addr, ctx) ->
         (ctx, proof_prefix_addr, 32, proof_prefix_addr, ctx)
     ADD // combine context and offset to make an address (SEGMENT_CODE == 0)
-    %mload_packing
+    MLOAD_32BYTES
     // packed_opcodes, proof_prefix_addr, ctx, jumpdest, retdest
     DUP1 %shl_const(1)
     DUP2 %shl_const(2)
@@ -293,7 +293,7 @@ return:
 // For each jumpdest address we also non-deterministically guess
 // a proof, which is another address in the code such that 
 // is_jumpdest doesn't abort, when the proof is at the top of the stack
-// an the jumpdest address below. If that's the case we set the
+// and the jumpdest address is below. If that's the case we set the
 // corresponding bit in @SEGMENT_JUMPDEST_BITS to 1.
 // 
 // stack: ctx, code_len, retdest

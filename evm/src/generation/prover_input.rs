@@ -240,7 +240,7 @@ impl<F: Field> GenerationState<F> {
         }
     }
 
-    /// Generate either the next used jump address or the proof for the last jump address.
+    /// Generates either the next used jump address or the proof for the last jump address.
     fn run_jumpdest_table(&mut self, input_fn: &ProverInputFn) -> Result<U256, ProgramError> {
         match input_fn.0[1].as_str() {
             "next_address" => self.run_next_jumpdest_table_address(),
@@ -294,16 +294,12 @@ impl<F: Field> GenerationState<F> {
 }
 
 impl<F: Field> GenerationState<F> {
-    /// Simulate the user's code and store all the jump addresses with their respective contexts.
+    /// Simulates the user's code and store all the jump addresses with their respective contexts.
     fn generate_jumpdest_proofs(&mut self) -> Result<(), ProgramError> {
         let checkpoint = self.checkpoint();
         let memory = self.memory.clone();
 
-        let code = self.get_current_code()?;
-        // We need to set the simulated jumpdest bits to one as otherwise
-        // the simulation will fail.
-
-        // Simulate the user's code and (unnecessarily) part of the kernel code, skipping the validate table call
+        // Simulate the user's code and (unnecessarily) part of the kernel code, skipping the validate table call.
         let Some(jumpdest_table) = simulate_cpu_between_labels_and_get_user_jumps(
             "jumpdest_analysis_end",
             "terminate_common",
@@ -342,10 +338,6 @@ impl<F: Field> GenerationState<F> {
         )));
     }
 
-    fn get_current_code(&self) -> Result<Vec<u8>, ProgramError> {
-        self.get_code(self.registers.context)
-    }
-
     fn get_code(&self, context: usize) -> Result<Vec<u8>, ProgramError> {
         let code_len = self.get_code_len()?;
         let code = (0..code_len)
@@ -367,18 +359,6 @@ impl<F: Field> GenerationState<F> {
             ContextMetadata::CodeSize.unscale(),
         )))?;
         Ok(code_len)
-    }
-
-    fn set_jumpdest_bits(&mut self, code: &[u8]) {
-        const JUMPDEST_OPCODE: u8 = 0x5b;
-        for (pos, opcode) in CodeIterator::new(code) {
-            if opcode == JUMPDEST_OPCODE {
-                self.memory.set(
-                    MemoryAddress::new(self.registers.context, Segment::JumpdestBits, pos),
-                    U256::one(),
-                );
-            }
-        }
     }
 }
 
@@ -434,18 +414,19 @@ struct CodeIterator<'a> {
 }
 
 impl<'a> CodeIterator<'a> {
-    fn new(code: &'a [u8]) -> Self {
+    const fn new(code: &'a [u8]) -> Self {
         CodeIterator {
-            end: code.len(),
             code,
             pos: 0,
+            end: code.len(),
         }
     }
+
     fn until(code: &'a [u8], end: usize) -> Self {
         CodeIterator {
-            end: std::cmp::min(code.len(), end),
             code,
             pos: 0,
+            end: std::cmp::min(code.len(), end),
         }
     }
 }
