@@ -46,6 +46,15 @@ pub(crate) fn ctl_filter<F: Field>() -> Filter<F> {
     Filter::new_simple(Column::single(FILTER))
 }
 
+/// Creates the vector of `Columns` corresponding to:
+/// - the initilized address (context, segment, virt),
+/// - the value in u32 limbs.
+pub(crate) fn ctl_looking_mem_before<F: Field>() -> Vec<Column<F>> {
+    let mut res = Column::singles([ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL]).collect_vec();
+    res.extend(Column::singles((0..8).map(value_limb)));
+    res
+}
+
 /// CTL filter for initialization writes.
 /// Initialization operations have timestamp 0.
 /// The filter is `1 - timestamp * timestamp_inv`.
@@ -203,6 +212,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
     fn fill_gaps(memory_ops: &mut Vec<MemoryOp>) {
         let max_rc = memory_ops.len().next_power_of_two() - 1;
         for (mut curr, mut next) in memory_ops.clone().into_iter().tuple_windows() {
+            let current_timestamp = curr.timestamp;
             if curr.address.context != next.address.context
                 || curr.address.segment != next.address.segment
             {
@@ -217,7 +227,8 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                 while next.address.virt > max_rc {
                     let mut dummy_address = next.address;
                     dummy_address.virt -= max_rc;
-                    let dummy_read = MemoryOp::new_dummy_read(dummy_address, 0, U256::zero());
+                    let dummy_read =
+                        MemoryOp::new_dummy_read(dummy_address, current_timestamp, U256::zero());
                     memory_ops.push(dummy_read);
                     next = dummy_read;
                 }
@@ -225,14 +236,18 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                 while next.address.virt - curr.address.virt - 1 > max_rc {
                     let mut dummy_address = curr.address;
                     dummy_address.virt += max_rc + 1;
-                    let dummy_read = MemoryOp::new_dummy_read(dummy_address, 0, U256::zero());
+                    let dummy_read =
+                        MemoryOp::new_dummy_read(dummy_address, current_timestamp, U256::zero());
                     memory_ops.push(dummy_read);
                     curr = dummy_read;
                 }
             } else {
-                while next.timestamp - curr.timestamp > max_rc {
-                    let dummy_read =
-                        MemoryOp::new_dummy_read(curr.address, curr.timestamp + max_rc, curr.value);
+                while next.timestamp - current_timestamp > max_rc {
+                    let dummy_read = MemoryOp::new_dummy_read(
+                        curr.address,
+                        current_timestamp + max_rc,
+                        curr.value,
+                    );
                     memory_ops.push(dummy_read);
                     curr = dummy_read;
                 }

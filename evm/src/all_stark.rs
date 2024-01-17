@@ -301,7 +301,7 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
 fn ctl_mem_before<F: Field>() -> CrossTableLookup<F> {
     let memory_looking = TableWithColumns::new(
         Table::Memory,
-        mem_before_stark::ctl_data(),
+        memory_stark::ctl_looking_mem_before(),
         Some(memory_stark::ctl_filter_mem_before()),
     );
     let mut all_lookers = vec![memory_looking];
