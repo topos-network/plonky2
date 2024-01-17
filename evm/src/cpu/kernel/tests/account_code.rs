@@ -91,16 +91,16 @@ fn prepare_interpreter(
     if trie_data.is_empty() {
         // In the assembly we skip over 0, knowing trie_data[0] = 0 by default.
         // Since we don't explicitly set it to 0, we need to do so here.
-        trie_data.push(0.into());
+        trie_data.push(Some(0.into()));
     }
     let value_ptr = trie_data.len();
-    trie_data.push(account.nonce);
-    trie_data.push(account.balance);
+    trie_data.push(Some(account.nonce));
+    trie_data.push(Some(account.balance));
     // In memory, storage_root gets interpreted as a pointer to a storage trie,
     // so we have to ensure the pointer is valid. It's easiest to set it to 0,
     // which works as an empty node, since trie_data[0] = 0 = MPT_TYPE_EMPTY.
-    trie_data.push(H256::zero().into_uint());
-    trie_data.push(account.code_hash.into_uint());
+    trie_data.push(Some(H256::zero().into_uint()));
+    trie_data.push(Some(account.code_hash.into_uint()));
     let trie_data_len = trie_data.len().into();
     interpreter.set_global_metadata_field(GlobalMetadata::TrieDataSize, trie_data_len);
     interpreter
@@ -113,7 +113,7 @@ fn prepare_interpreter(
         .push(k.try_into_u256().unwrap())
         .expect("The stack should not overflow"); // key
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.stack().len(),
         0,
@@ -129,7 +129,7 @@ fn prepare_interpreter(
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),
@@ -171,7 +171,7 @@ fn test_extcodesize() -> Result<()> {
         .expect("The stack should not overflow");
     interpreter.generation_state.inputs.contract_code =
         HashMap::from([(keccak(&code), code.clone())]);
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(interpreter.stack(), vec![code.len().into()]);
 
@@ -233,7 +233,7 @@ fn test_extcodecopy() -> Result<()> {
         .expect("The stack should not overflow"); // kexit_info
     interpreter.generation_state.inputs.contract_code =
         HashMap::from([(keccak(&code), code.clone())]);
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert!(interpreter.stack().is_empty());
     // Check that the code was correctly copied to memory.
@@ -323,7 +323,7 @@ fn sstore() -> Result<()> {
     // Prepare the interpreter by inserting the account in the state trie.
     prepare_interpreter_all_accounts(&mut interpreter, trie_inputs, addr, &code)?;
 
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     // The first two elements in the stack are `success` and `leftover_gas`,
     // returned by the `sys_stop` opcode.
@@ -353,7 +353,7 @@ fn sstore() -> Result<()> {
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),
@@ -411,7 +411,7 @@ fn sload() -> Result<()> {
 
     // Prepare the interpreter by inserting the account in the state trie.
     prepare_interpreter_all_accounts(&mut interpreter, trie_inputs, addr, &code)?;
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     // The first two elements in the stack are `success` and `leftover_gas`,
     // returned by the `sys_stop` opcode.
@@ -443,7 +443,7 @@ fn sload() -> Result<()> {
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow.");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),

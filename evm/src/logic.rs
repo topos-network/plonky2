@@ -16,7 +16,7 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::cross_table_lookup::{Column, Filter};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::logic::columns::NUM_COLUMNS;
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::{limb_from_bits_le, limb_from_bits_le_recursive, trace_rows_to_poly_values};
 
 /// Total number of bits per input/output.
@@ -171,6 +171,7 @@ impl<F: RichField, const D: usize> LogicStark<F, D> {
         timing: &mut TimingTree,
     ) -> Vec<PolynomialValues<F>> {
         // First, turn all provided operations into rows in `LogicStark`, and pad if necessary.
+        let min_rows = min_rows.max(16);
         let trace_rows = timed!(
             timing,
             "generate trace rows",

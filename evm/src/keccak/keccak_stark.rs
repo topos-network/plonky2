@@ -24,7 +24,7 @@ use crate::keccak::logic::{
     andn, andn_gen, andn_gen_circuit, xor, xor3_gen, xor3_gen_circuit, xor_gen, xor_gen_circuit,
 };
 use crate::keccak::round_flags::{eval_round_flags, eval_round_flags_recursively};
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::trace_rows_to_poly_values;
 
 /// Number of rounds in a Keccak permutation.
@@ -634,6 +634,7 @@ mod tests {
         CtlData, CtlZData, GrandProductChallenge, GrandProductChallengeSet,
     };
     use crate::prover::prove_single_table;
+    use crate::stark::PublicRegisterStates;
     use crate::stark_testing::{test_stark_circuit_constraints, test_stark_low_degree};
 
     #[test]
@@ -759,6 +760,7 @@ mod tests {
                 challenges: vec![ctl_z_data.challenge; config.num_challenges],
             },
             &mut Challenger::new(),
+            false,
             &mut timing,
             None,
         )?;

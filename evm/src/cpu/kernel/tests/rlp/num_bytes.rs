@@ -12,7 +12,7 @@ fn test_num_bytes_0() -> Result<()> {
     let initial_stack = vec![retdest, x];
     let mut interpreter = Interpreter::new_with_kernel(num_bytes, initial_stack);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(interpreter.stack(), vec![1.into()]);
     Ok(())
 }
@@ -26,7 +26,7 @@ fn test_num_bytes_small() -> Result<()> {
     let initial_stack = vec![retdest, x];
     let mut interpreter = Interpreter::new_with_kernel(num_bytes, initial_stack);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(interpreter.stack(), vec![1.into()]);
     Ok(())
 }
@@ -40,7 +40,7 @@ fn test_num_bytes_medium() -> Result<()> {
     let initial_stack = vec![retdest, x];
     let mut interpreter = Interpreter::new_with_kernel(num_bytes, initial_stack);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(interpreter.stack(), vec![4.into()]);
     Ok(())
 }

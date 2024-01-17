@@ -12,7 +12,7 @@ use crate::lookup::{
     eval_ext_lookups_circuit, eval_packed_lookups_generic, Lookup, LookupCheckVars,
     LookupCheckVarsTarget,
 };
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 
 /// Evaluates all constraint, permutation and cross-table lookup polynomials
 /// of the current STARK at the local and next values.

@@ -24,7 +24,7 @@ use crate::cross_table_lookup::{Column, Filter, TableWithColumns};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::memory::segments::Segment;
 use crate::memory::{NUM_CHANNELS, VALUE_LIMBS};
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 
 /// Creates the vector of `Columns` corresponding to the General Purpose channels when calling the Keccak sponge:
 /// the CPU reads the output of the sponge directly from the `KeccakSpongeStark` table.
@@ -39,9 +39,13 @@ pub(crate) fn ctl_data_keccak_sponge<F: Field>() -> Vec<Column<F>> {
     let virt = Column::single(virt);
     let len = Column::single(COL_MAP.mem_channels[1].value[0]);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
-    let timestamp = Column::linear_combination([(COL_MAP.clock, num_channels)]);
-
+    let timestamp = Column::linear_combination_with_constant(
+        [(COL_MAP.clock, num_channels)],
+        F::ONE - num_channels,
+    );
     let mut cols = vec![context, segment, virt, len, timestamp];
     cols.extend(Column::singles_next_row(COL_MAP.mem_channels[0].value));
     cols
@@ -168,8 +172,13 @@ pub(crate) fn ctl_data_byte_unpacking<F: Field>() -> Vec<Column<F>> {
     );
     res.push(len);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
-    let timestamp = Column::linear_combination([(COL_MAP.clock, num_channels)]);
+    let timestamp = Column::linear_combination_with_constant(
+        [(COL_MAP.clock, num_channels)],
+        F::ONE - num_channels,
+    );
     res.push(timestamp);
 
     let val = Column::singles(COL_MAP.mem_channels[1].value);
@@ -210,8 +219,13 @@ pub(crate) fn ctl_data_jumptable_read<F: Field>() -> Vec<Column<F>> {
     let len = Column::constant(F::from_canonical_usize(3));
     res.push(len);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
-    let timestamp = Column::linear_combination([(COL_MAP.clock, num_channels)]);
+    let timestamp = Column::linear_combination_with_constant(
+        [(COL_MAP.clock, num_channels)],
+        F::ONE - num_channels,
+    );
     res.push(timestamp);
 
     res.extend(val);
@@ -238,8 +252,13 @@ pub(crate) fn ctl_data_byte_packing_push<F: Field>() -> Vec<Column<F>> {
     // We fetch the length from the `PUSH` opcode lower bits, that indicate `len - 1`.
     let len = Column::le_bits_with_constant(&COL_MAP.opcode_bits[0..5], F::ONE);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
-    let timestamp = Column::linear_combination([(COL_MAP.clock, num_channels)]);
+    let timestamp = Column::linear_combination_with_constant(
+        [(COL_MAP.clock, num_channels)],
+        F::ONE - num_channels,
+    );
 
     let mut res = vec![is_read, context, segment, virt, len, timestamp];
     res.extend(val);
@@ -278,7 +297,7 @@ pub(crate) const fn get_addr<T: Copy>(lv: &CpuColumnsView<T>, mem_channel: usize
 /// Make the time/channel column for memory lookups.
 fn mem_time_and_channel<F: Field>(channel: usize) -> Column<F> {
     let scalar = F::from_canonical_usize(NUM_CHANNELS);
-    let addend = F::from_canonical_usize(channel);
+    let addend = F::from_canonical_usize(channel) - scalar + F::ONE;
     Column::linear_combination_with_constant([(COL_MAP.clock, scalar)], addend)
 }
 
