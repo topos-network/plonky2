@@ -73,6 +73,11 @@ impl MemoryOp {
         let mut row = [F::ZERO; NUM_COLUMNS];
         row[FILTER] = F::from_bool(self.filter);
         row[TIMESTAMP] = F::from_canonical_usize(self.timestamp);
+        if self.timestamp != 0 {
+            row[TIMESTAMP_INV] = row[TIMESTAMP].inverse();
+        } else {
+            row[TIMESTAMP_INV] = F::ZERO;
+        }
         row[IS_READ] = F::from_bool(self.kind == Read);
         let MemoryAddress {
             context,

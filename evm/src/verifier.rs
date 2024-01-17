@@ -480,7 +480,7 @@ fn eval_l_0_and_l_last<F: Field>(log_n: usize, x: F) -> (F, F) {
     (z_x * invs[0], z_x * invs[1])
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 pub(crate) mod testutils {
     use super::*;
 

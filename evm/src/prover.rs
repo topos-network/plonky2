@@ -36,7 +36,7 @@ use crate::proof::{AllProof, PublicValues, StarkOpeningSet, StarkProof, StarkPro
 use crate::stark::Stark;
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
-#[cfg(test)]
+// #[cfg(test)]
 use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
 };
@@ -155,7 +155,7 @@ where
         )?
     );
 
-    #[cfg(test)]
+    // #[cfg(test)]
     {
         check_ctls(
             &trace_poly_values,

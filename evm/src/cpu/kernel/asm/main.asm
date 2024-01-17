@@ -1,7 +1,11 @@
 global main:
     // First, hash the kernel code
-    %mload_global_metadata(@GLOBAL_METADATA_KERNEL_LEN)
+    // Start with PUSH0 to avoid having a BytePacking operation at timestamp 0.
+    // Timestamp 0 is reserved for memory initialization.
     PUSH 0
+    %mload_global_metadata(@GLOBAL_METADATA_KERNEL_LEN)
+    // stack: len, addr
+    SWAP1
     // stack: addr, len
     KECCAK_GENERAL
     // stack: hash

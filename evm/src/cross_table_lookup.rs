@@ -1634,7 +1634,7 @@ pub(crate) fn verify_cross_table_lookups_circuit<F: RichField + Extendable<D>, c
     debug_assert!(ctl_zs_openings.iter_mut().all(|iter| iter.next().is_none()));
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 pub(crate) mod testutils {
     use std::collections::HashMap;
 
