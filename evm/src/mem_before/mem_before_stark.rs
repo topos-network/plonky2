@@ -17,6 +17,7 @@ use plonky2::util::transpose;
 use plonky2_util::ceil_div_usize;
 
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
+use crate::cpu::kernel::aggregator::KERNEL;
 use crate::cpu::kernel::keccak_util::keccakf_u32s;
 use crate::cross_table_lookup::{Column, Filter};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
@@ -48,6 +49,14 @@ pub(crate) struct MemBeforeStark<F, const D: usize> {
 impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
     pub(crate) fn generate_trace(&self, timing: &mut TimingTree) -> Vec<PolynomialValues<F>> {
         let mut rows: Vec<_> = vec![];
+
+        // Add first opcode read (at timestamp 0).
+        let main_label = F::from_canonical_usize(KERNEL.global_labels["main"]);
+        let mut first_row = vec![F::ZERO; NUM_COLUMNS];
+        first_row[FILTER] = F::ONE;
+        first_row[ADDR_VIRTUAL] = main_label;
+        first_row[value_limb(0)] = F::from_canonical_usize(0x5f); // value[0] = PUSH0 (0x5f)
+        rows.push(first_row);
 
         let num_rows = rows.len();
         let num_rows_padded = max(16, num_rows.next_power_of_two());
