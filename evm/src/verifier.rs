@@ -54,6 +54,7 @@ where
         keccak_sponge_stark,
         logic_stark,
         memory_stark,
+        mem_before_stark,
         cross_table_lookups,
     } = all_stark;
 
@@ -123,6 +124,14 @@ where
         &all_proof.stark_proofs[Table::Memory as usize].proof,
         &stark_challenges[Table::Memory as usize],
         &ctl_vars_per_table[Table::Memory as usize],
+        &ctl_challenges,
+        config,
+    )?;
+    verify_stark_proof_with_challenges(
+        mem_before_stark,
+        &all_proof.stark_proofs[Table::MemBefore as usize].proof,
+        &stark_challenges[Table::MemBefore as usize],
+        &ctl_vars_per_table[Table::MemBefore as usize],
         &ctl_challenges,
         config,
     )?;

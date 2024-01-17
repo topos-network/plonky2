@@ -222,6 +222,11 @@ impl<T: Copy> Traces<T> {
             "generate memory trace",
             all_stark.memory_stark.generate_trace(memory_ops, timing)
         );
+        let mem_before_trace = timed!(
+            timing,
+            "generate mem_before trace",
+            all_stark.mem_before_stark.generate_trace(timing)
+        );
 
         [
             arithmetic_trace,
@@ -231,6 +236,7 @@ impl<T: Copy> Traces<T> {
             keccak_sponge_trace,
             logic_trace,
             memory_trace,
+            mem_before_trace,
         ]
     }
 }

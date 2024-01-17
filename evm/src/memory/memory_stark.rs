@@ -21,7 +21,7 @@ use crate::lookup::Lookup;
 use crate::memory::columns::{
     value_limb, ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL, CONTEXT_FIRST_CHANGE, COUNTER, FILTER,
     FREQUENCIES, INITIALIZE_AUX, IS_READ, NUM_COLUMNS, RANGE_CHECK, SEGMENT_FIRST_CHANGE,
-    TIMESTAMP, VIRTUAL_FIRST_CHANGE,
+    TIMESTAMP, TIMESTAMP_INV, VIRTUAL_FIRST_CHANGE,
 };
 use crate::memory::VALUE_LIMBS;
 use crate::stark::Stark;
@@ -44,6 +44,19 @@ pub(crate) fn ctl_data<F: Field>() -> Vec<Column<F>> {
 /// CTL filter for memory operations.
 pub(crate) fn ctl_filter<F: Field>() -> Filter<F> {
     Filter::new_simple(Column::single(FILTER))
+}
+
+/// CTL filter for initialization writes.
+/// Initialization operations have timestamp 0.
+/// The filter is `1 - timestamp * timestamp_inv`.
+pub(crate) fn ctl_filter_mem_before<F: Field>() -> Filter<F> {
+    Filter::new(
+        vec![(
+            Column::single(TIMESTAMP),
+            Column::linear_combination([(TIMESTAMP_INV, -F::ONE)]),
+        )],
+        vec![Column::constant(F::ONE)],
+    )
 }
 
 #[derive(Copy, Clone, Default)]

@@ -295,6 +295,21 @@ where
             ctl_challenges,
             challenger,
             timing,
+            abort_signal.clone(),
+        )?
+    );
+    let mem_before_proof = timed!(
+        timing,
+        "prove mem_before STARK",
+        prove_single_table(
+            &all_stark.mem_before_stark,
+            config,
+            &trace_poly_values[Table::MemBefore as usize],
+            &trace_commitments[Table::MemBefore as usize],
+            &ctl_data_per_table[Table::MemBefore as usize],
+            ctl_challenges,
+            challenger,
+            timing,
             abort_signal,
         )?
     );
@@ -307,6 +322,7 @@ where
         keccak_sponge_proof,
         logic_proof,
         memory_proof,
+        mem_before_proof,
     ])
 }
 

@@ -182,6 +182,7 @@ pub mod keccak;
 pub mod keccak_sponge;
 pub mod logic;
 pub mod lookup;
+pub mod mem_before;
 pub mod memory;
 pub mod proof;
 pub mod prover;
