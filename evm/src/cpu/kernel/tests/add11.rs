@@ -17,8 +17,9 @@ use crate::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use crate::generation::rlp::all_rlp_prover_inputs_reversed;
 use crate::generation::TrieInputs;
 use crate::memory::segments::Segment;
-use crate::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use crate::proof::{BlockHashes, BlockMetadata, MemCap, TrieRoots};
 use crate::util::h2u;
+use crate::witness::state::RegistersState;
 use crate::GenerationInputs;
 
 #[test]
@@ -143,6 +144,14 @@ fn test_add11_yml() {
         block_bloom: [0.into(); 8],
     };
 
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = KERNEL.global_labels["halt"];
+    // Address of the stack top in the stored registers. This value does not actually matter much: it is unconstrained because
+    // the stack is empty at the end of the execution. This simply corresponds to the actual stored value in that memory slot
+    // instead of the (here nonexisten) previous stack_top.
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 32436;
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -158,6 +167,9 @@ fn test_add11_yml() {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after: registers_after,
     };
 
     let initial_stack = vec![];
@@ -285,6 +297,11 @@ fn test_add11_yml_with_exception() {
         block_bloom: [0.into(); 8],
     };
 
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = KERNEL.global_labels["halt"];
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 33950;
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -300,6 +317,9 @@ fn test_add11_yml_with_exception() {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after,
     };
 
     let initial_stack = vec![];

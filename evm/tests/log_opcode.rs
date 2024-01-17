@@ -18,9 +18,10 @@ use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::mpt::transaction_testing::{AddressOption, LegacyTransactionRlp};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
+use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 
 type F = GoldilocksField;
@@ -229,10 +230,23 @@ fn test_log_opcodes() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after: RegistersState::new_last_registers_with_gas(42793),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing, None)?;
+    let max_cpu_len = 1 << 20;
+    let (proof, _) = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        true,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
     // Assert that the proof leads to the correct state and receipt roots.
@@ -437,22 +451,62 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes.clone(),
             cur_hash: block_1_hash,
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after: RegistersState::new_last_registers_with_gas(167785),
+    };
+
+    let mut final_inputs_first = GenerationInputs {
+        registers_before: inputs_first.registers_after,
+        registers_after: inputs_first.registers_after,
+        ..inputs_first.clone()
     };
 
     // Preprocess all circuits.
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
-        &[16..17, 12..15, 14..18, 14..15, 9..10, 12..13, 17..20],
+        &[
+            16..17,
+            8..15,
+            7..17,
+            4..15,
+            8..11,
+            4..13,
+            17..20,
+            8..18,
+            17..18,
+        ],
         &config,
     );
 
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
-    let (root_proof_first, public_values_first) =
-        all_circuits.prove_root(&all_stark, &config, inputs_first, &mut timing, None)?;
+    let max_cpu_len = 1 << 20;
+    let (root_proof_first, public_values_first, next_state_first, final_mem_values_first) =
+        all_circuits.prove_root(
+            &all_stark,
+            &config,
+            inputs_first,
+            max_cpu_len,
+            None,
+            true,
+            &mut timing,
+            None,
+        )?;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
-
+    final_inputs_first.memory_before = final_mem_values_first;
+    let (final_root_proof_first, final_public_values_first, _, _) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        final_inputs_first,
+        max_cpu_len,
+        Some(next_state_first),
+        false,
+        &mut timing,
+        None,
+    )?;
+    all_circuits.verify_root(final_root_proof_first.clone())?;
     // The gas used and transaction number are fed to the next transaction, so the two proofs can be correctly aggregated.
     let gas_used_second = public_values_first.extra_block_data.gas_used_after;
 
@@ -564,26 +618,90 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes.clone(),
             cur_hash: block_1_hash,
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after: RegistersState::new_last_registers_with_gas(56705),
+    };
+
+    let mut final_inputs = GenerationInputs {
+        registers_before: inputs.registers_after,
+        registers_after: inputs.registers_after,
+        ..inputs.clone()
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
-    let (root_proof_second, public_values_second) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None.clone())?;
+    let max_cpu_len = 1 << 20;
+    let (root_proof_second, public_values_second, next_state_second, final_mem_values_second) =
+        all_circuits.prove_root(
+            &all_stark,
+            &config,
+            inputs,
+            max_cpu_len,
+            None,
+            true,
+            &mut timing,
+            None.clone(),
+        )?;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof_second.clone())?;
 
-    let (agg_proof, updated_agg_public_values) = all_circuits.prove_aggregation(
+    final_inputs.memory_before = final_mem_values_second;
+    let (final_root_proof_second, final_public_values_second, _, _) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        final_inputs,
+        max_cpu_len,
+        Some(next_state_second),
         false,
-        &root_proof_first,
-        public_values_first,
-        false,
-        &root_proof_second,
-        public_values_second,
+        &mut timing,
+        None.clone(),
     )?;
-    all_circuits.verify_aggregation(&agg_proof)?;
+
+    all_circuits.verify_root(final_root_proof_second.clone())?;
+
+    let (segment_agg_proof_first, updated_agg_public_values_first) = all_circuits
+        .prove_segment_aggregation(
+            false,
+            &root_proof_first,
+            public_values_first,
+            false,
+            &final_root_proof_first,
+            final_public_values_first,
+        )?;
+    all_circuits.verify_segment_aggregation(&segment_agg_proof_first)?;
+
+    let (segment_agg_proof_second, updated_agg_public_values_second) = all_circuits
+        .prove_segment_aggregation(
+            false,
+            &root_proof_second,
+            public_values_second,
+            false,
+            &final_root_proof_second,
+            final_public_values_second,
+        )?;
+    all_circuits.verify_segment_aggregation(&segment_agg_proof_second)?;
+    let (txn_proof_first, txn_pv_first) = all_circuits.prove_transaction_aggregation(
+        None,
+        &segment_agg_proof_first,
+        updated_agg_public_values_first,
+    )?;
+    let txn_pvs = PublicValues {
+        trie_roots_before: txn_pv_first.trie_roots_before,
+        extra_block_data: ExtraBlockData {
+            txn_number_before: txn_pv_first.extra_block_data.txn_number_before,
+            gas_used_before: txn_pv_first.extra_block_data.txn_number_before,
+            ..updated_agg_public_values_second.extra_block_data
+        },
+        ..updated_agg_public_values_second
+    };
+    let (txn_proof_second, txn_pv_second) = all_circuits.prove_transaction_aggregation(
+        Some(&txn_proof_first),
+        &segment_agg_proof_second,
+        txn_pvs,
+    )?;
     let (first_block_proof, _block_public_values) =
-        all_circuits.prove_block(None, &agg_proof, updated_agg_public_values)?;
+        all_circuits.prove_block(None, &txn_proof_second, txn_pv_second)?;
     all_circuits.verify_block(&first_block_proof)?;
 
     // Prove the next, empty block.
@@ -630,27 +748,62 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes,
             cur_hash: block_2_hash,
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after: RegistersState::new_last_registers_with_gas(46667),
     };
 
-    let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
+    let mut final_inputs = GenerationInputs {
+        registers_before: inputs.registers_after,
+        registers_after: inputs.registers_after,
+        ..inputs.clone()
+    };
+
+    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        true,
+        &mut timing,
+        None,
+    )?;
     all_circuits.verify_root(root_proof.clone())?;
 
+    final_inputs.memory_before = final_mem_values;
+    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        final_inputs,
+        max_cpu_len,
+        Some(next_state),
+        false,
+        &mut timing,
+        None,
+    )?;
+    all_circuits.verify_root(final_root_proof.clone())?;
+
     // We can just duplicate the initial proof as the state didn't change.
-    let (agg_proof, updated_agg_public_values) = all_circuits.prove_aggregation(
+    let (segment_agg_proof, updated_agg_public_values) = all_circuits.prove_segment_aggregation(
         false,
         &root_proof,
         public_values.clone(),
         false,
-        &root_proof,
-        public_values,
+        &final_root_proof,
+        final_public_values,
     )?;
-    all_circuits.verify_aggregation(&agg_proof)?;
+    all_circuits.verify_segment_aggregation(&segment_agg_proof)?;
 
+    let (second_txn_proof, second_txn_pvs) = all_circuits.prove_transaction_aggregation(
+        None,
+        &segment_agg_proof,
+        updated_agg_public_values,
+    )?;
     let (second_block_proof, _block_public_values) = all_circuits.prove_block(
         None, // We don't specify a previous proof, considering block 1 as the new checkpoint.
-        &agg_proof,
-        updated_agg_public_values,
+        &second_txn_proof,
+        second_txn_pvs,
     )?;
     all_circuits.verify_block(&second_block_proof)
 }

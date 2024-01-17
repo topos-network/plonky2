@@ -13,11 +13,17 @@ use crate::config::StarkConfig;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::lookup::Lookup;
+use crate::witness::state::RegistersState;
 
 const TRACE_ORACLE_INDEX: usize = 0;
 const AUXILIARY_ORACLE_INDEX: usize = 1;
 const QUOTIENT_ORACLE_INDEX: usize = 2;
 
+#[derive(Copy, Clone, Default)]
+pub struct PublicRegisterStates {
+    registers_before: RegistersState,
+    registers_after: RegistersState,
+}
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// The total number of columns in the trace.

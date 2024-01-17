@@ -1,4 +1,5 @@
 use anyhow::{ensure, Result};
+use ethereum_types::Public;
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::polynomial::{PolynomialCoeffs, PolynomialValues};
 use plonky2::field::types::{Field, Sample};
@@ -12,7 +13,7 @@ use plonky2_util::{log2_ceil, log2_strict};
 
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::evaluation_frame::StarkEvaluationFrame;
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 
 const WITNESS_SIZE: usize = 1 << 5;
 

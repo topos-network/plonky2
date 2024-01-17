@@ -18,6 +18,7 @@ use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
+use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 
 type F = GoldilocksField;
@@ -137,6 +138,7 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
+
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -152,10 +154,23 @@ fn test_simple_transfer() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
+        memory_before: vec![],
+        registers_before: RegistersState::new_with_main_label(),
+        registers_after: RegistersState::new_last_registers_with_gas(135161),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing, None)?;
+    let max_cpu_len = 1 << 20;
+    let (proof, _) = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        true,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)

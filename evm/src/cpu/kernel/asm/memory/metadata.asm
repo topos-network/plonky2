@@ -10,6 +10,19 @@
     // stack: value
 %endmacro
 
+// Load the given registers field from memory.
+%macro mload_registers_data
+    // Global metadata are already scaled by their corresponding segment,
+    // effectively making them the direct memory position to read from /
+    // write to.
+
+    // stack: offset
+    PUSH @SEGMENT_REGISTERS_STATES
+    ADD
+    MLOAD_GENERAL
+    // stack: value
+%endmacro
+
 // Store the given global metadata field to memory.
 %macro mstore_global_metadata(field)
     // Global metadata are already scaled by their corresponding segment,

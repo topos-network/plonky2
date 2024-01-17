@@ -1,10 +1,11 @@
 use ethereum_types::U256;
+use serde::{Deserialize, Serialize};
 
 use crate::cpu::kernel::aggregator::KERNEL;
 
 const KERNEL_CONTEXT: usize = 0;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RegistersState {
     pub program_counter: usize,
     pub is_kernel: bool,
@@ -25,6 +26,32 @@ impl RegistersState {
             KERNEL_CONTEXT
         } else {
             self.context
+        }
+    }
+
+    pub fn new_with_main_label() -> Self {
+        Self {
+            program_counter: KERNEL.global_labels["main_contd"],
+            is_kernel: true,
+            stack_len: 0,
+            stack_top: U256::zero(),
+            is_stack_top_read: false,
+            check_overflow: false,
+            context: 0,
+            gas_used: 0,
+        }
+    }
+
+    pub fn new_last_registers_with_gas(gas_used: u64) -> Self {
+        Self {
+            program_counter: KERNEL.global_labels["halt"],
+            is_kernel: true,
+            stack_len: 0,
+            stack_top: U256::zero(),
+            is_stack_top_read: false,
+            check_overflow: false,
+            context: 0,
+            gas_used,
         }
     }
 }

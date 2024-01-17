@@ -1,4 +1,5 @@
 use ethereum_types::U256;
+use serde::{Deserialize, Serialize};
 
 use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
 
@@ -31,8 +32,8 @@ impl MemoryChannel {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct MemoryAddress {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct MemoryAddress {
     pub(crate) context: usize,
     pub(crate) segment: usize,
     pub(crate) virt: usize,
@@ -123,7 +124,7 @@ impl MemoryOp {
         kind: MemoryOpKind,
         value: U256,
     ) -> Self {
-        let timestamp = clock * NUM_CHANNELS + channel.index();
+        let timestamp = (clock - 1) * NUM_CHANNELS + 1 + channel.index();
         MemoryOp {
             filter: true,
             timestamp,

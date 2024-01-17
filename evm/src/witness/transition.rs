@@ -370,7 +370,7 @@ pub(crate) fn fill_stack_fields<F: Field>(
             row.general.stack_mut().stack_len_bounds_aux = F::ZERO;
         } else {
             let clock = state.traces.clock();
-            let last_row = &mut state.traces.cpu[clock - 1];
+            let last_row = &mut state.traces.cpu[clock - 2];
             let disallowed_len = F::from_canonical_usize(MAX_USER_STACK_SIZE + 1);
             let diff = row.stack_len - disallowed_len;
             if let Some(inv) = diff.try_inverse() {
@@ -447,6 +447,20 @@ fn log_kernel_instruction<F: Field>(state: &GenerationState<F>, op: Operation) {
     );
 
     assert!(pc < KERNEL.code.len(), "Kernel PC is out of range: {}", pc);
+}
+
+pub(crate) fn final_exception<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
+    let exc_code: u8 = 6;
+
+    let checkpoint = state.checkpoint();
+    let (row, _) = base_row(state);
+    generate_exception(exc_code, state, row)
+        .map_err(|_| anyhow::Error::msg("error handling errored..."))?;
+
+    state
+        .memory
+        .apply_ops(state.traces.mem_ops_since(checkpoint.traces));
+    Ok(())
 }
 
 fn handle_error<F: Field>(state: &mut GenerationState<F>, err: ProgramError) -> anyhow::Result<()> {

@@ -9,8 +9,9 @@ use plonky2::fri::witness_util::set_fri_proof_target;
 use plonky2::gates::exponentiation::ExponentiationGate;
 use plonky2::gates::gate::GateRef;
 use plonky2::gates::noop::NoopGate;
-use plonky2::hash::hash_types::RichField;
+use plonky2::hash::hash_types::{HashOut, HashOutTarget, MerkleCapTarget, RichField};
 use plonky2::hash::hashing::PlonkyPermutation;
+use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::RecursiveChallenger;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::Target;
@@ -36,15 +37,17 @@ use crate::cross_table_lookup::{
 };
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::lookup::LookupCheckVarsTarget;
+use crate::mem_after;
 use crate::memory::segments::Segment;
 use crate::memory::VALUE_LIMBS;
 use crate::proof::{
-    BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExtraBlockData,
-    ExtraBlockDataTarget, PublicValues, PublicValuesTarget, StarkOpeningSetTarget, StarkProof,
+    BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExitKernel,
+    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues,
+    PublicValuesTarget, RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
     StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata, TrieRoots,
     TrieRootsTarget,
 };
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::{h256_limbs, h2u, u256_limbs, u256_to_u32, u256_to_u64};
 use crate::vanishing_poly::eval_vanishing_poly_circuit;
 use crate::witness::errors::ProgramError;
@@ -123,6 +126,7 @@ where
         buffer.write_target(self.zero_target)?;
         self.stark_proof_target.to_buffer(buffer)?;
         self.ctl_challenges_target.to_buffer(buffer)?;
+
         Ok(())
     }
 
@@ -138,6 +142,7 @@ where
         let zero_target = buffer.read_target()?;
         let stark_proof_target = StarkProofTarget::from_buffer(buffer)?;
         let ctl_challenges_target = GrandProductChallengeSet::from_buffer(buffer)?;
+
         Ok(Self {
             circuit,
             stark_proof_target,
@@ -627,6 +632,56 @@ pub(crate) fn get_memory_extra_looking_sum_circuit<F: RichField + Extendable<D>,
         &[kernel_len_target],
     );
 
+    // Write registers.
+    let registers_segment =
+        builder.constant(F::from_canonical_usize(Segment::RegistersStates.unscale()));
+    let registers_before: [&[Target]; 6] = [
+        &[public_values.registers_before.program_counter],
+        &[public_values.registers_before.is_kernel],
+        &[public_values.registers_before.stack_len],
+        &public_values.registers_before.stack_top,
+        &[public_values.registers_before.context],
+        &[public_values.registers_before.gas_used],
+    ];
+    for i in 0..registers_before.len() {
+        sum = add_data_write(
+            builder,
+            challenge,
+            sum,
+            registers_segment,
+            i,
+            registers_before[i],
+        );
+    }
+
+    let registers_after: [&[Target]; 6] = [
+        &[public_values.registers_after.program_counter],
+        &[public_values.registers_after.is_kernel],
+        &[public_values.registers_after.stack_len],
+        &public_values.registers_after.stack_top,
+        &[public_values.registers_after.context],
+        &[public_values.registers_after.gas_used],
+    ];
+    for i in 0..registers_before.len() {
+        sum = add_data_write(
+            builder,
+            challenge,
+            sum,
+            registers_segment,
+            registers_before.len() + i,
+            registers_after[i],
+        );
+    }
+
+    // Add exit kernel read.
+    sum = add_data_write(
+        builder,
+        challenge,
+        sum,
+        registers_segment,
+        registers_before.len() * 2,
+        &public_values.exit_kernel.exit_kernel,
+    );
     sum
 }
 
@@ -662,8 +717,9 @@ fn add_data_write<F: RichField + Extendable<D>, const D: usize>(
         builder.assert_zero(row[4 + j]);
     }
 
-    // timestamp = 1
-    builder.assert_one(row[12]);
+    // timestamp = 2
+    let two = builder.constant(F::TWO);
+    builder.connect(row[12], two);
 
     let combined = challenge.combine_base_circuit(builder, &row);
     let inverse = builder.inverse(combined);
@@ -691,18 +747,36 @@ fn eval_l_0_and_l_last_circuit<F: RichField + Extendable<D>, const D: usize>(
 
 pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
+    len_before: usize,
+    len_after: usize,
 ) -> PublicValuesTarget {
     let trie_roots_before = add_virtual_trie_roots(builder);
     let trie_roots_after = add_virtual_trie_roots(builder);
     let block_metadata = add_virtual_block_metadata(builder);
     let block_hashes = add_virtual_block_hashes(builder);
     let extra_block_data = add_virtual_extra_block_data(builder);
+    let registers_before = add_virtual_registers_data(builder);
+    let registers_after = add_virtual_registers_data(builder);
+    let exit_kernel = add_virtual_exit_kernel(builder);
+
+    let mem_before = MemCapTarget {
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_before)),
+    };
+    let mem_after = MemCapTarget {
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_after)),
+    };
+
     PublicValuesTarget {
         trie_roots_before,
         trie_roots_after,
         block_metadata,
         block_hashes,
         extra_block_data,
+        registers_before,
+        registers_after,
+        exit_kernel,
+        mem_before,
+        mem_after,
     }
 }
 
@@ -771,6 +845,32 @@ pub(crate) fn add_virtual_extra_block_data<F: RichField + Extendable<D>, const D
         gas_used_before,
         gas_used_after,
     }
+}
+
+pub(crate) fn add_virtual_registers_data<F: RichField + Extendable<D>, const D: usize>(
+    builder: &mut CircuitBuilder<F, D>,
+) -> RegistersDataTarget {
+    let program_counter = builder.add_virtual_public_input();
+    let is_kernel = builder.add_virtual_public_input();
+    let stack_len = builder.add_virtual_public_input();
+    let stack_top = builder.add_virtual_public_input_arr();
+    let context = builder.add_virtual_public_input();
+    let gas_used = builder.add_virtual_public_input();
+    RegistersDataTarget {
+        program_counter,
+        is_kernel,
+        stack_len,
+        stack_top,
+        context,
+        gas_used,
+    }
+}
+
+pub(crate) fn add_virtual_exit_kernel<F: RichField + Extendable<D>, const D: usize>(
+    builder: &mut CircuitBuilder<F, D>,
+) -> ExitKernelTarget {
+    let exit_kernel = builder.add_virtual_public_input_arr();
+    ExitKernelTarget { exit_kernel }
 }
 
 pub(crate) fn add_virtual_stark_proof<
@@ -893,6 +993,31 @@ where
         witness,
         &public_values_target.extra_block_data,
         &public_values.extra_block_data,
+    )?;
+    set_registers_target(
+        witness,
+        &public_values_target.registers_before,
+        &public_values.registers_before,
+    )?;
+    set_registers_target(
+        witness,
+        &public_values_target.registers_after,
+        &public_values.registers_after,
+    )?;
+    set_exit_kernel_target(
+        witness,
+        &public_values_target.exit_kernel,
+        &public_values.exit_kernel,
+    )?;
+    set_mem_cap_target(
+        witness,
+        &public_values_target.mem_before,
+        &public_values.mem_before,
+    )?;
+    set_mem_cap_target(
+        witness,
+        &public_values_target.mem_after,
+        &public_values.mem_after,
     )?;
 
     Ok(())
@@ -1050,5 +1175,58 @@ where
     witness.set_target(ed_target.gas_used_before, u256_to_u32(ed.gas_used_before)?);
     witness.set_target(ed_target.gas_used_after, u256_to_u32(ed.gas_used_after)?);
 
+    Ok(())
+}
+
+pub(crate) fn set_registers_target<F, W, const D: usize>(
+    witness: &mut W,
+    rd_target: &RegistersDataTarget,
+    rd: &RegistersData,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    witness.set_target(rd_target.program_counter, u256_to_u32(rd.program_counter)?);
+    witness.set_target(rd_target.is_kernel, u256_to_u32(rd.is_kernel)?);
+    witness.set_target(rd_target.stack_len, u256_to_u32(rd.stack_len)?);
+    witness.set_target_arr(&rd_target.stack_top, &u256_limbs(rd.stack_top));
+    witness.set_target(rd_target.context, u256_to_u32(rd.context)?);
+    witness.set_target(rd_target.gas_used, u256_to_u32(rd.gas_used)?);
+
+    Ok(())
+}
+
+pub(crate) fn set_exit_kernel_target<F, W, const D: usize>(
+    witness: &mut W,
+    ek_target: &ExitKernelTarget,
+    ek: &ExitKernel,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    witness.set_target_arr(&ek_target.exit_kernel, &u256_limbs(ek.exit_kernel));
+
+    Ok(())
+}
+
+pub(crate) fn set_mem_cap_target<F, W, const D: usize>(
+    witness: &mut W,
+    mc_target: &MemCapTarget,
+    mc: &MemCap,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    for i in 0..mc.mem_cap.len() {
+        witness.set_hash_target(
+            mc_target.mem_cap.0[i],
+            HashOut {
+                elements: mc.mem_cap[i].map(|elt| F::from_canonical_u64(elt.as_u64())),
+            },
+        );
+    }
     Ok(())
 }

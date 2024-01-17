@@ -26,11 +26,11 @@ pub(crate) struct GenerationStateCheckpoint {
 }
 
 #[derive(Debug)]
-pub(crate) struct GenerationState<F: Field> {
+pub struct GenerationState<F: Field> {
     pub(crate) inputs: GenerationInputs,
     pub(crate) registers: RegistersState,
     pub(crate) memory: MemoryState,
-    pub(crate) traces: Traces<F>,
+    pub traces: Traces<F>,
 
     /// Prover inputs containing RLP data, in reverse order so that the next input can be obtained
     /// via `pop()`.

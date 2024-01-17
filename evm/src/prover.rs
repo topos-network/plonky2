@@ -1,19 +1,22 @@
+use std::any::type_name;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, ensure, Result};
+use ethereum_types::U256;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use plonky2::field::extension::Extendable;
 use plonky2::field::packable::Packable;
 use plonky2::field::packed::PackedField;
 use plonky2::field::polynomial::{PolynomialCoeffs, PolynomialValues};
-use plonky2::field::types::Field;
+use plonky2::field::types::{Field, PrimeField64};
 use plonky2::field::zero_poly_coset::ZeroPolyOnCoset;
 use plonky2::fri::oracle::PolynomialBatch;
 use plonky2::hash::hash_types::RichField;
+use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::Challenger;
-use plonky2::plonk::config::GenericConfig;
+use plonky2::plonk::config::{GenericConfig, GenericHashOut};
 use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 use plonky2::util::transpose;
@@ -29,14 +32,19 @@ use crate::cross_table_lookup::{
     GrandProductChallengeSet,
 };
 use crate::evaluation_frame::StarkEvaluationFrame;
-use crate::generation::{generate_traces, GenerationInputs};
+use crate::generation::state::GenerationState;
+use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
-use crate::proof::{AllProof, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata};
-use crate::stark::Stark;
+use crate::proof::{
+    AllProof, MemCap, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata,
+};
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
-#[cfg(test)]
+use crate::witness::memory::MemoryAddress;
+use crate::witness::state::RegistersState;
+// #[cfg(test)]
 use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
 };
@@ -46,30 +54,44 @@ pub fn prove<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     inputs: GenerationInputs,
+    max_cpu_len: usize,
+    previous_state: Option<GenerationState<F>>,
+    is_first_segment: bool,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<AllProof<F, C, D>>
+) -> Result<(AllProof<F, C, D>, GenerationState<F>)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (traces, public_values) = timed!(
+    let (traces, final_memory_values, final_registers, mut public_values, next_state) = timed!(
         timing,
         "generate all traces",
-        generate_traces(all_stark, inputs, config, timing)?
+        generate_traces(
+            all_stark,
+            inputs,
+            config,
+            max_cpu_len,
+            previous_state,
+            is_first_segment,
+            timing
+        )?
     );
+
     check_abort_signal(abort_signal.clone())?;
 
     let proof = prove_with_traces(
         all_stark,
         config,
         traces,
-        public_values,
+        final_memory_values,
+        final_registers,
+        &mut public_values,
         timing,
         abort_signal,
     )?;
-    Ok(proof)
+    Ok((proof, next_state))
 }
 
 /// Compute all STARK proofs.
@@ -77,7 +99,9 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
-    public_values: PublicValues,
+    final_memory_values: Vec<Vec<F>>,
+    final_register_values: RegistersState,
+    public_values: &mut PublicValues,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
 ) -> Result<AllProof<F, C, D>>
@@ -139,13 +163,14 @@ where
         )
     );
 
-    let stark_proofs = timed!(
+    let (stark_proofs, (mem_before_cap, mem_after_cap), final_mem_values) = timed!(
         timing,
         "compute all proofs given commitments",
         prove_with_commitments(
             all_stark,
             config,
             &trace_poly_values,
+            final_memory_values,
             trace_commitments,
             ctl_data_per_table,
             &mut challenger,
@@ -155,7 +180,36 @@ where
         )?
     );
 
-    #[cfg(test)]
+    public_values.mem_before = MemCap {
+        mem_cap: mem_before_cap
+            .0
+            .iter()
+            .map(|h| {
+                h.to_vec()
+                    .iter()
+                    .map(|hi| hi.to_canonical_u64().into())
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    };
+    public_values.mem_after = MemCap {
+        mem_cap: mem_after_cap
+            .0
+            .iter()
+            .map(|h| {
+                h.to_vec()
+                    .iter()
+                    .map(|hi| hi.to_canonical_u64().into())
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    };
+
+    // #[cfg(test)]
     {
         check_ctls(
             &trace_poly_values,
@@ -167,7 +221,9 @@ where
     Ok(AllProof {
         stark_proofs,
         ctl_challenges,
-        public_values,
+        public_values: public_values.clone(),
+        final_memory_values: final_mem_values,
+        final_register_values,
     })
 }
 
@@ -182,18 +238,23 @@ fn prove_with_commitments<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     trace_poly_values: &[Vec<PolynomialValues<F>>; NUM_TABLES],
+    final_memory_values: Vec<Vec<F>>,
     trace_commitments: Vec<PolynomialBatch<F, C, D>>,
     ctl_data_per_table: [CtlData<F>; NUM_TABLES],
     challenger: &mut Challenger<F, C::Hasher>,
     ctl_challenges: &GrandProductChallengeSet<F>,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<[StarkProofWithMetadata<F, C, D>; NUM_TABLES]>
+) -> Result<(
+    [StarkProofWithMetadata<F, C, D>; NUM_TABLES],
+    (MerkleCap<F, C::Hasher>, MerkleCap<F, C::Hasher>),
+    MemBeforeValues,
+)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
-    let arithmetic_proof = timed!(
+    let (arithmetic_proof, arithmetic_cap) = timed!(
         timing,
         "prove Arithmetic STARK",
         prove_single_table(
@@ -208,7 +269,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let byte_packing_proof = timed!(
+    let (byte_packing_proof, bp_cap) = timed!(
         timing,
         "prove byte packing STARK",
         prove_single_table(
@@ -223,7 +284,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let cpu_proof = timed!(
+    let (cpu_proof, cpu_cap) = timed!(
         timing,
         "prove CPU STARK",
         prove_single_table(
@@ -238,7 +299,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let keccak_proof = timed!(
+    let (keccak_proof, keccak_cap) = timed!(
         timing,
         "prove Keccak STARK",
         prove_single_table(
@@ -253,7 +314,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let keccak_sponge_proof = timed!(
+    let (keccak_sponge_proof, keccak_sponge_cap) = timed!(
         timing,
         "prove Keccak sponge STARK",
         prove_single_table(
@@ -268,7 +329,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let logic_proof = timed!(
+    let (logic_proof, logic_cap) = timed!(
         timing,
         "prove logic STARK",
         prove_single_table(
@@ -283,7 +344,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let memory_proof = timed!(
+    let (memory_proof, mem_cap) = timed!(
         timing,
         "prove memory STARK",
         prove_single_table(
@@ -295,19 +356,111 @@ where
             ctl_challenges,
             challenger,
             timing,
+            abort_signal.clone(),
+        )?
+    );
+    let (mem_before_proof, mem_before_cap) = timed!(
+        timing,
+        "prove mem_before STARK",
+        prove_single_table(
+            &all_stark.mem_before_stark,
+            config,
+            &trace_poly_values[Table::MemBefore as usize],
+            &trace_commitments[Table::MemBefore as usize],
+            &ctl_data_per_table[Table::MemBefore as usize],
+            ctl_challenges,
+            challenger,
+            timing,
+            abort_signal.clone(),
+        )?
+    );
+    let (mem_after_proof, mem_after_cap, final_memory_values) = timed!(
+        timing,
+        "prove mem_after STARK",
+        prove_single_table_mem_after(
+            &all_stark.mem_after_stark,
+            config,
+            &trace_poly_values[Table::MemAfter as usize],
+            final_memory_values,
+            &trace_commitments[Table::MemAfter as usize],
+            &ctl_data_per_table[Table::MemAfter as usize],
+            ctl_challenges,
+            challenger,
+            timing,
             abort_signal,
         )?
     );
 
-    Ok([
-        arithmetic_proof,
-        byte_packing_proof,
-        cpu_proof,
-        keccak_proof,
-        keccak_sponge_proof,
-        logic_proof,
-        memory_proof,
-    ])
+    Ok((
+        [
+            arithmetic_proof,
+            byte_packing_proof,
+            cpu_proof,
+            keccak_proof,
+            keccak_sponge_proof,
+            logic_proof,
+            memory_proof,
+            mem_before_proof,
+            mem_after_proof,
+        ],
+        (mem_before_cap, mem_after_cap),
+        final_memory_values,
+    ))
+}
+
+pub(crate) fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAddress, U256) {
+    // The row has shape (1, context, segment, virt, [values]) where [values] are 8 32-bit elements representing one U256 word.
+    let mem_address = MemoryAddress {
+        context: row[1].to_canonical_u64() as usize,
+        segment: row[2].to_canonical_u64() as usize,
+        virt: row[3].to_canonical_u64() as usize,
+    };
+
+    let value: U256 = row[4..]
+        .iter()
+        .rev()
+        .fold(0.into(), |acc, v| (acc << 32) + v.to_canonical_u64());
+    (mem_address, value)
+}
+
+pub(crate) fn prove_single_table_mem_after<F, C, S, const D: usize>(
+    stark: &S,
+    config: &StarkConfig,
+    trace_poly_values: &[PolynomialValues<F>],
+    final_memory_values: Vec<Vec<F>>,
+    trace_commitment: &PolynomialBatch<F, C, D>,
+    ctl_data: &CtlData<F>,
+    ctl_challenges: &GrandProductChallengeSet<F>,
+    challenger: &mut Challenger<F, C::Hasher>,
+    timing: &mut TimingTree,
+    abort_signal: Option<Arc<AtomicBool>>,
+) -> Result<(
+    StarkProofWithMetadata<F, C, D>,
+    MerkleCap<F, C::Hasher>,
+    MemBeforeValues,
+)>
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
+{
+    let final_mem_values = final_memory_values
+        .iter()
+        .map(|row| get_mem_after_value_from_row(row))
+        .collect::<Vec<_>>();
+    let (proof, cap) = prove_single_table(
+        stark,
+        config,
+        trace_poly_values,
+        trace_commitment,
+        ctl_data,
+        ctl_challenges,
+        challenger,
+        timing,
+        abort_signal,
+    )?;
+
+    Ok((proof, cap, final_mem_values))
 }
 
 /// Computes a proof for a single STARK table, including:
@@ -324,7 +477,7 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     challenger: &mut Challenger<F, C::Hasher>,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<StarkProofWithMetadata<F, C, D>>
+) -> Result<(StarkProofWithMetadata<F, C, D>, MerkleCap<F, C::Hasher>)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -410,7 +563,7 @@ where
 
     let num_ctl_polys = ctl_data.num_ctl_helper_polys();
 
-    #[cfg(test)]
+    // #[cfg(test)]
     {
         check_constraints(
             stark,
@@ -528,10 +681,13 @@ where
         openings,
         opening_proof,
     };
-    Ok(StarkProofWithMetadata {
-        init_challenger_state,
-        proof,
-    })
+    Ok((
+        StarkProofWithMetadata {
+            init_challenger_state,
+            proof,
+        },
+        trace_commitment.merkle_tree.cap.clone(),
+    ))
 }
 
 /// Computes the quotient polynomials `(sum alpha^i C_i(x)) / Z_H(x)` for `alpha` in `alphas`,
@@ -708,7 +864,7 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 /// Check that all constraints evaluate to zero on `H`.
 /// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
 fn check_constraints<'a, F, C, S, const D: usize>(
@@ -830,11 +986,14 @@ fn check_constraints<'a, F, C, S, const D: usize>(
         .collect::<Vec<_>>();
 
     // Assert that all constraints evaluate to 0 over our subgroup.
-    for v in constraint_values {
-        assert!(
-            v.iter().all(|x| x.is_zero()),
-            "Constraint failed in {}",
-            std::any::type_name::<S>()
-        );
+    for (row, v) in constraint_values.iter().enumerate() {
+        for x in v.iter() {
+            assert!(
+                x.is_zero(),
+                "Constraint failed in {} at row {}",
+                type_name::<S>(),
+                row
+            )
+        }
     }
 }

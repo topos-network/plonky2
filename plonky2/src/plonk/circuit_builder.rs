@@ -345,6 +345,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         HashOutTarget::from_vec(self.add_virtual_targets(4))
     }
 
+    pub fn add_virtual_hash_public_input(&mut self) -> HashOutTarget {
+        HashOutTarget::from_vec(self.add_virtual_public_input_arr::<4>().into())
+    }
+
     /// Adds a new `MerkleCapTarget`, consisting in `1 << cap_height` `HashOutTarget`.
     pub fn add_virtual_cap(&mut self, cap_height: usize) -> MerkleCapTarget {
         MerkleCapTarget(self.add_virtual_hashes(1 << cap_height))
@@ -353,6 +357,12 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Adds `n` new `HashOutTarget` in a vector fashion.
     pub fn add_virtual_hashes(&mut self, n: usize) -> Vec<HashOutTarget> {
         (0..n).map(|_i| self.add_virtual_hash()).collect()
+    }
+
+    pub fn add_virtual_hashes_public_input(&mut self, n: usize) -> Vec<HashOutTarget> {
+        (0..n)
+            .map(|_i| self.add_virtual_hash_public_input())
+            .collect()
     }
 
     pub(crate) fn add_virtual_merkle_proof(&mut self, len: usize) -> MerkleProofTarget {
