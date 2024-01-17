@@ -20,7 +20,8 @@ use crate::plonk::circuit_data::CommonCircuitData;
 use crate::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBase};
 use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
-/// Computes `sum alpha^i c_i` for a vector `c_i` of `num_coeffs` elements of the base field.
+/// Computes `sum alpha^i c_i` for a vector `c_i` of `num_coeffs` elements of
+/// the base field.
 #[derive(Debug, Default, Clone)]
 pub struct ReducingGate<const D: usize> {
     pub num_coeffs: usize,

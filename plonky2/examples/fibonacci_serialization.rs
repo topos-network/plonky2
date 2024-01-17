@@ -8,9 +8,10 @@ use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
 
 /// An example of using Plonky2 to prove a statement of the form
-/// "I know the 100th element of the Fibonacci sequence, starting with constants a and b."
-/// When a == 0 and b == 1, this is proving knowledge of the 100th (standard) Fibonacci number.
-/// This example also serializes the circuit data and proof to JSON files.
+/// "I know the 100th element of the Fibonacci sequence, starting with constants
+/// a and b." When a == 0 and b == 1, this is proving knowledge of the 100th
+/// (standard) Fibonacci number. This example also serializes the circuit data
+/// and proof to JSON files.
 fn main() -> Result<()> {
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;
@@ -30,7 +31,8 @@ fn main() -> Result<()> {
         cur_target = temp;
     }
 
-    // Public inputs are the two initial values (provided below) and the result (which is generated).
+    // Public inputs are the two initial values (provided below) and the result
+    // (which is generated).
     builder.register_public_input(initial_a);
     builder.register_public_input(initial_b);
     builder.register_public_input(cur_target);

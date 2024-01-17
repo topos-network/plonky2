@@ -25,23 +25,26 @@ use crate::plonk::circuit_data::CommonCircuitData;
 use crate::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBase};
 use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
-/// One of the instantiations of `InterpolationGate`: allows constraints of variable
-/// degree, up to `1<<subgroup_bits`.
+/// One of the instantiations of `InterpolationGate`: allows constraints of
+/// variable degree, up to `1<<subgroup_bits`.
 ///
 /// This gate has as routed wires
 /// - the coset shift from subgroup H
 /// - the values that the interpolated polynomial takes on the coset
 /// - the evaluation point
 ///
-/// The evaluation strategy is based on the observation that if $P(X)$ is the interpolant of some
-/// values over a coset and $P'(X)$ is the interpolant of those values over the subgroup, then
-/// $P(X) = P'(X \cdot \mathrm{shift}^{-1})$. Interpolating $P'(X)$ is preferable because when subgroup is fixed
-/// then so are the Barycentric weights and both can be hardcoded into the constraint polynomials.
+/// The evaluation strategy is based on the observation that if $P(X)$ is the
+/// interpolant of some values over a coset and $P'(X)$ is the interpolant of
+/// those values over the subgroup, then $P(X) = P'(X \cdot
+/// \mathrm{shift}^{-1})$. Interpolating $P'(X)$ is preferable because when
+/// subgroup is fixed then so are the Barycentric weights and both can be
+/// hardcoded into the constraint polynomials.
 ///
-/// A full interpolation of N values corresponds to the evaluation of a degree-N polynomial. This
-/// gate can however be configured with a bounded degree of at least 2 by introducing more
-/// non-routed wires. Let $x[]$ be the domain points, $v[]$ be the values, $w[]$ be the Barycentric
-/// weights and $z$ be the evaluation point. Define the sequences
+/// A full interpolation of N values corresponds to the evaluation of a degree-N
+/// polynomial. This gate can however be configured with a bounded degree of at
+/// least 2 by introducing more non-routed wires. Let $x[]$ be the domain
+/// points, $v[]$ be the values, $w[]$ be the Barycentric weights and $z$ be the
+/// evaluation point. Define the sequences
 ///
 /// $p[0] = 1,$
 ///
@@ -49,10 +52,12 @@ use crate::util::serialization::{Buffer, IoResult, Read, Write};
 ///
 /// $e[0] = 0,$
 ///
-/// $e[i] = e[i - 1] ] \cdot (z - x[i - 1]) + w[i - 1] \cdot v[i - 1] \cdot p[i - 1]$
+/// $e[i] = e[i - 1] ] \cdot (z - x[i - 1]) + w[i - 1] \cdot v[i - 1] \cdot p[i
+/// - 1]$
 ///
-/// Then $e[N]$ is the final interpolated value. The non-routed wires hold every $(d - 1)$'th
-/// intermediate value of $p$ and $e$, starting at $p[d]$ and $e[d]$, where $d$ is the gate degree.
+/// Then $e[N]$ is the final interpolated value. The non-routed wires hold every
+/// $(d - 1)$'th intermediate value of $p$ and $e$, starting at $p[d]$ and
+/// $e[d]$, where $d$ is the gate degree.
 #[derive(Clone, Debug, Default)]
 pub struct CosetInterpolationGate<F: RichField + Extendable<D>, const D: usize> {
     pub subgroup_bits: usize,
@@ -71,11 +76,13 @@ impl<F: RichField + Extendable<D>, const D: usize> CosetInterpolationGate<F, D> 
 
         let n_points = 1 << subgroup_bits;
 
-        // Number of intermediate values required to compute interpolation with degree bound
+        // Number of intermediate values required to compute interpolation with degree
+        // bound
         let n_intermediates = (n_points - 2) / (max_degree - 1);
 
-        // Find minimum degree such that (n_points - 2) / (degree - 1) < n_intermediates + 1
-        // Minimizing the degree this way allows the gate to be in a larger selector group
+        // Find minimum degree such that (n_points - 2) / (degree - 1) < n_intermediates
+        // + 1 Minimizing the degree this way allows the gate to be in a larger
+        // selector group
         let degree = (n_points - 2) / (n_intermediates + 1) + 2;
 
         let barycentric_weights = barycentric_weights(
@@ -388,8 +395,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for CosetInterpola
     }
 
     fn num_constraints(&self) -> usize {
-        // D constraints to check for consistency of the shifted evaluation point, plus D
-        // constraints for the evaluation value.
+        // D constraints to check for consistency of the shifted evaluation point, plus
+        // D constraints for the evaluation value.
         D + D + 2 * D * self.num_intermediates()
     }
 }
@@ -516,10 +523,12 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     }
 }
 
-/// Interpolate the polynomial defined by its values on an arbitrary domain at the given point `x`.
+/// Interpolate the polynomial defined by its values on an arbitrary domain at
+/// the given point `x`.
 ///
-/// The domain lies in a base field while the values and evaluation point may be from an extension
-/// field. The Barycentric weights are precomputed and taken as arguments.
+/// The domain lies in a base field while the values and evaluation point may be
+/// from an extension field. The Barycentric weights are precomputed and taken
+/// as arguments.
 pub fn interpolate_over_base_domain<F: Field + Extendable<D>, const D: usize>(
     domain: &[F],
     values: &[F::Extension],
@@ -537,12 +546,14 @@ pub fn interpolate_over_base_domain<F: Field + Extendable<D>, const D: usize>(
     result
 }
 
-/// Perform a partial interpolation of the polynomial defined by its values on an arbitrary domain.
+/// Perform a partial interpolation of the polynomial defined by its values on
+/// an arbitrary domain.
 ///
-/// The Barycentric algorithm to interpolate a polynomial at a given point `x` is a linear pass
-/// over the sequence of domain points, values, and Barycentric weights which maintains two
-/// accumulated values, a partial evaluation and a partial product. This partially updates the
-/// accumulated values, so that starting with an initial evaluation of 0 and a partial evaluation
+/// The Barycentric algorithm to interpolate a polynomial at a given point `x`
+/// is a linear pass over the sequence of domain points, values, and Barycentric
+/// weights which maintains two accumulated values, a partial evaluation and a
+/// partial product. This partially updates the accumulated values, so that
+/// starting with an initial evaluation of 0 and a partial evaluation
 /// of 1 and running over the whole domain is a full interpolation.
 fn partial_interpolate<F: Field + Extendable<D>, const D: usize>(
     domain: &[F],
@@ -706,8 +717,8 @@ mod tests {
             _phantom: PhantomData,
         };
 
-        // The exact indices aren't really important, but we want to make sure we don't have any
-        // overlaps or gaps.
+        // The exact indices aren't really important, but we want to make sure we don't
+        // have any overlaps or gaps.
         assert_eq!(gate.wire_shift(), 0);
         assert_eq!(gate.wires_value(0), 1..5);
         assert_eq!(gate.wires_value(1), 5..9);
@@ -737,8 +748,8 @@ mod tests {
             _phantom: PhantomData,
         };
 
-        // The exact indices aren't really important, but we want to make sure we don't have any
-        // overlaps or gaps.
+        // The exact indices aren't really important, but we want to make sure we don't
+        // have any overlaps or gaps.
         assert_eq!(gate.wire_shift(), 0);
         assert_eq!(gate.wires_value(0), 1..5);
         assert_eq!(gate.wires_value(1), 5..9);
@@ -766,8 +777,8 @@ mod tests {
             _phantom: PhantomData,
         };
 
-        // The exact indices aren't really important, but we want to make sure we don't have any
-        // overlaps or gaps.
+        // The exact indices aren't really important, but we want to make sure we don't
+        // have any overlaps or gaps.
         assert_eq!(gate.wire_shift(), 0);
         assert_eq!(gate.wires_value(0), 1..5);
         assert_eq!(gate.wires_value(1), 5..9);
@@ -802,7 +813,8 @@ mod tests {
         type F = <C as GenericConfig<D>>::F;
         type FF = <C as GenericConfig<D>>::FE;
 
-        /// Returns the local wires for an interpolation gate for given coeffs, points and eval point.
+        /// Returns the local wires for an interpolation gate for given coeffs,
+        /// points and eval point.
         fn get_wires(shift: F, values: PolynomialValues<FF>, eval_point: FF) -> Vec<FF> {
             let domain = F::two_adic_subgroup(log2_strict(values.len()));
             let shifted_eval_point =

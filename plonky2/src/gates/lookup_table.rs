@@ -34,7 +34,8 @@ use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
 pub type LookupTable = Arc<Vec<(u16, u16)>>;
 
-/// A gate which stores the set of (input, output) value pairs of a lookup table, and their multiplicities.
+/// A gate which stores the set of (input, output) value pairs of a lookup
+/// table, and their multiplicities.
 #[derive(Debug, Clone)]
 pub struct LookupTableGate {
     /// Number of lookup entries per gate.

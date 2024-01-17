@@ -58,11 +58,13 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> S
 pub struct StarkProofTarget<const D: usize> {
     /// `Target` for the Merkle cap trace values LDEs.
     pub trace_cap: MerkleCapTarget,
-    /// Optional `Target` for the Merkle cap of lookup helper and CTL columns LDEs, if any.
+    /// Optional `Target` for the Merkle cap of lookup helper and CTL columns
+    /// LDEs, if any.
     pub auxiliary_polys_cap: Option<MerkleCapTarget>,
     /// `Target` for the Merkle cap of quotient polynomial evaluations LDEs.
     pub quotient_polys_cap: MerkleCapTarget,
-    /// `Target`s for the purported values of each polynomial at the challenge point.
+    /// `Target`s for the purported values of each polynomial at the challenge
+    /// point.
     pub openings: StarkOpeningSetTarget<D>,
     /// `Target`s for the batch FRI argument for all openings.
     pub opening_proof: FriProofTarget<D>,
@@ -114,7 +116,8 @@ impl<const D: usize> StarkProofTarget<D> {
     }
 }
 
-/// Merkle caps and openings that form the proof of a single STARK, along with its public inputs.
+/// Merkle caps and openings that form the proof of a single STARK, along with
+/// its public inputs.
 #[derive(Debug, Clone)]
 pub struct StarkProofWithPublicInputs<
     F: RichField + Extendable<D>,
@@ -165,8 +168,8 @@ pub struct CompressedStarkProofWithPublicInputs<
     pub public_inputs: Vec<F>,
 }
 
-/// A [`StarkProof`] along with metadata about the initial Fiat-Shamir state, which is used when
-/// creating a recursive wrapper proof around a STARK proof.
+/// A [`StarkProof`] along with metadata about the initial Fiat-Shamir state,
+/// which is used when creating a recursive wrapper proof around a STARK proof.
 #[derive(Debug, Clone)]
 pub struct StarkProofWithMetadata<F, C, const D: usize>
 where
@@ -179,8 +182,9 @@ where
     pub proof: StarkProof<F, C, D>,
 }
 
-/// A combination of STARK proofs for independent statements operating on possibly shared variables,
-/// along with Cross-Table Lookup (CTL) challenges to assert consistency of common variables across tables.
+/// A combination of STARK proofs for independent statements operating on
+/// possibly shared variables, along with Cross-Table Lookup (CTL) challenges to
+/// assert consistency of common variables across tables.
 #[derive(Debug, Clone)]
 pub struct MultiProof<
     F: RichField + Extendable<D>,
@@ -224,7 +228,8 @@ pub struct StarkProofChallengesTarget<const D: usize> {
     pub lookup_challenge_set: Option<GrandProductChallengeSet<Target>>,
     /// `Target`s for the random values used to combine STARK constraints.
     pub stark_alphas: Vec<Target>,
-    /// `ExtensionTarget` for the point at which the STARK polynomials are opened.
+    /// `ExtensionTarget` for the point at which the STARK polynomials are
+    /// opened.
     pub stark_zeta: ExtensionTarget<D>,
     /// `Target`s for the randomness used in FRI.
     pub fri_challenges: FriChallengesTarget<D>,
@@ -248,7 +253,8 @@ pub struct StarkOpeningSet<F: RichField + Extendable<D>, const D: usize> {
     pub next_values: Vec<F::Extension>,
     /// Openings of lookups and cross-table lookups `Z` polynomials at `zeta`.
     pub auxiliary_polys: Option<Vec<F::Extension>>,
-    /// Openings of lookups and cross-table lookups `Z` polynomials at `g * zeta`.
+    /// Openings of lookups and cross-table lookups `Z` polynomials at `g *
+    /// zeta`.
     pub auxiliary_polys_next: Option<Vec<F::Extension>>,
     /// Openings of cross-table lookups `Z` polynomials at `1`.
     pub ctl_zs_first: Option<Vec<F>>,
@@ -257,10 +263,12 @@ pub struct StarkOpeningSet<F: RichField + Extendable<D>, const D: usize> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> StarkOpeningSet<F, D> {
-    /// Returns a `StarkOpeningSet` given all the polynomial commitments, the number
-    /// of permutation `Z`polynomials, the evaluation point and a generator `g`.
+    /// Returns a `StarkOpeningSet` given all the polynomial commitments, the
+    /// number of permutation `Z`polynomials, the evaluation point and a
+    /// generator `g`.
     ///
-    /// Polynomials are evaluated at point `zeta` and, if necessary, at `g * zeta`.
+    /// Polynomials are evaluated at point `zeta` and, if necessary, at `g *
+    /// zeta`.
     pub fn new<C: GenericConfig<D, F = F>>(
         zeta: F::Extension,
         g: F,
@@ -346,18 +354,22 @@ impl<F: RichField + Extendable<D>, const D: usize> StarkOpeningSet<F, D> {
 }
 
 /// Circuit version of [`StarkOpeningSet`].
-/// `Target`s for the purported values of each polynomial at the challenge point.
+/// `Target`s for the purported values of each polynomial at the challenge
+/// point.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StarkOpeningSetTarget<const D: usize> {
     /// `ExtensionTarget`s for the openings of trace polynomials at `zeta`.
     pub local_values: Vec<ExtensionTarget<D>>,
     /// `ExtensionTarget`s for the opening of trace polynomials at `g * zeta`.
     pub next_values: Vec<ExtensionTarget<D>>,
-    /// `ExtensionTarget`s for the opening of lookups and cross-table lookups `Z` polynomials at `zeta`.
+    /// `ExtensionTarget`s for the opening of lookups and cross-table lookups
+    /// `Z` polynomials at `zeta`.
     pub auxiliary_polys: Option<Vec<ExtensionTarget<D>>>,
-    /// `ExtensionTarget`s for the opening of lookups and cross-table lookups `Z` polynomials at `g * zeta`.
+    /// `ExtensionTarget`s for the opening of lookups and cross-table lookups
+    /// `Z` polynomials at `g * zeta`.
     pub auxiliary_polys_next: Option<Vec<ExtensionTarget<D>>>,
-    /// `ExtensionTarget`s for the opening of lookups and cross-table lookups `Z` polynomials at 1.
+    /// `ExtensionTarget`s for the opening of lookups and cross-table lookups
+    /// `Z` polynomials at 1.
     pub ctl_zs_first: Option<Vec<Target>>,
     /// `ExtensionTarget`s for the opening of quotient polynomials at `zeta`.
     pub quotient_polys: Vec<ExtensionTarget<D>>,

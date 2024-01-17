@@ -31,7 +31,8 @@ use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
 pub type Lookup = Vec<(Target, Target)>;
 
-/// A gate which stores (input, output) lookup pairs made elsewhere in the trace. It doesn't check any constraints itself.
+/// A gate which stores (input, output) lookup pairs made elsewhere in the
+/// trace. It doesn't check any constraints itself.
 #[derive(Debug, Clone)]
 pub struct LookupGate {
     /// Number of lookups per gate.

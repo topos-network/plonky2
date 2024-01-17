@@ -12,13 +12,16 @@ use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::plonk::config::PoseidonGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
+use plonky2_evm::all_stark::AllStark;
+use plonky2_evm::fixed_recursive_verifier::{AllRecursiveCircuits, ProverOutputData};
 use plonky2_evm::generation::mpt::transaction_testing::{AddressOption, LegacyTransactionRlp};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
-use plonky2_evm::{AllRecursiveCircuits, AllStark, Node, StarkConfig};
+use plonky2_evm::Node;
+use starky::config::StarkConfig;
 
 type F = GoldilocksField;
 const D: usize = 2;
@@ -46,7 +49,9 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     let sender_nibbles = Nibbles::from_bytes_be(sender_state_key.as_bytes()).unwrap();
     let to_nibbles = Nibbles::from_bytes_be(to_hashed.as_bytes()).unwrap();
 
-    // For the first code transaction code, we consider two LOG opcodes. The first deals with 0 topics and empty data. The second deals with two topics, and data of length 5, stored in memory.
+    // For the first code transaction code, we consider two LOG opcodes. The first
+    // deals with 0 topics and empty data. The second deals with two topics, and
+    // data of length 5, stored in memory.
     let code = [
         0x64, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0x60, 0x0, 0x52, // MSTORE(0x0, 0xA1B2C3D4E5)
         0x60, 0x0, 0x60, 0x0, 0xA0, // LOG0(0x0, 0x0)
@@ -88,7 +93,8 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     state_trie_before.insert(sender_nibbles, rlp::encode(&sender_account_before).to_vec());
     state_trie_before.insert(to_nibbles, rlp::encode(&to_account_before).to_vec());
 
-    // We now add two receipts with logs and data. This updates the receipt trie as well.
+    // We now add two receipts with logs and data. This updates the receipt trie as
+    // well.
     let log_0 = LogRlp {
         address: hex!("7ef66b77759e12Caf3dDB3E4AFF524E577C59D8D").into(),
         topics: vec![
@@ -108,7 +114,8 @@ fn test_log_opcodes() -> anyhow::Result<()> {
             logs: vec![log_0],
         };
 
-    // Insert the first receipt into the initial receipt trie. The initial receipts trie has an initial node with a random nibble.
+    // Insert the first receipt into the initial receipt trie. The initial receipts
+    // trie has an initial node with a random nibble.
     let mut receipts_trie = HashedPartialTrie::from(Node::Empty);
     receipts_trie.insert(
         Nibbles::from_str("0x1337").unwrap(),
@@ -143,8 +150,8 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     contract_code.insert(keccak(vec![]), vec![]);
     contract_code.insert(code_hash, code.to_vec());
 
-    // Update the state and receipt tries after the transaction, so that we have the correct expected tries:
-    // Update accounts
+    // Update the state and receipt tries after the transaction, so that we have the
+    // correct expected tries: Update accounts
     let beneficiary_account_after = AccountRlp {
         nonce: 1.into(),
         ..AccountRlp::default()
@@ -172,8 +179,8 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     let second_log = LogRlp {
         address: to.into(),
         topics: vec![
-            hex!("0000000000000000000000000000000000000000000000000000000000000062").into(), // dec: 98
-            hex!("0000000000000000000000000000000000000000000000000000000000000063").into(), // dec: 99
+            hex!("0000000000000000000000000000000000000000000000000000000000000062").into(), /* dec: 98 */
+            hex!("0000000000000000000000000000000000000000000000000000000000000063").into(), /* dec: 99 */
         ],
         data: hex!("a1b2c3d4e5").to_vec().into(),
     };
@@ -229,7 +236,16 @@ fn test_log_opcodes() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing, None)?;
+    let max_cpu_len = 1 << 20;
+    let proof = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        0,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
     // Assert that the proof leads to the correct state and receipt roots.
@@ -305,7 +321,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         ..AccountRlp::default()
     };
 
-    // In the first transaction, the sender account sends `txn_value` to `to_account`.
+    // In the first transaction, the sender account sends `txn_value` to
+    // `to_account`.
     let gas_price = 10;
     let txn_value = 0xau64;
     let mut state_trie_before = HashedPartialTrie::from(Node::Empty);
@@ -439,21 +456,62 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     // Preprocess all circuits.
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
-        &[16..17, 12..15, 14..18, 14..15, 9..10, 12..13, 17..20],
+        &[
+            16..17,
+            8..15,
+            7..17,
+            4..15,
+            8..11,
+            4..13,
+            17..20,
+            8..18,
+            16..17,
+        ],
         &config,
     );
 
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
-    let (root_proof_first, public_values_first) =
-        all_circuits.prove_root(&all_stark, &config, inputs_first, &mut timing, None)?;
+    let max_cpu_len = 1 << 20;
+    let root_proof_data_first = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs_first.clone(),
+        max_cpu_len,
+        0,
+        &mut timing,
+        None,
+    )?;
+
+    let ProverOutputData {
+        proof_with_pis: root_proof_first,
+        public_values: public_values_first,
+    } = root_proof_data_first;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
+    let final_root_proof_data_first = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs_first,
+        max_cpu_len,
+        1,
+        &mut timing,
+        None,
+    )?;
 
-    // The gas used and transaction number are fed to the next transaction, so the two proofs can be correctly aggregated.
+    let ProverOutputData {
+        proof_with_pis: final_root_proof_first,
+        public_values: final_public_values_first,
+        ..
+    } = final_root_proof_data_first;
+
+    all_circuits.verify_root(final_root_proof_first.clone())?;
+    // The gas used and transaction number are fed to the next transaction, so the
+    // two proofs can be correctly aggregated.
     let gas_used_second = public_values_first.extra_block_data.gas_used_after;
 
-    // Prove second transaction. In this second transaction, the code with logs is executed.
+    // Prove second transaction. In this second transaction, the code with logs is
+    // executed.
 
     let state_trie_before = expected_state_trie_after;
 
@@ -472,8 +530,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     contract_code.insert(keccak(vec![]), vec![]);
     contract_code.insert(code_hash, code.to_vec());
 
-    // Update the state and receipt tries after the transaction, so that we have the correct expected tries:
-    // Update accounts.
+    // Update the state and receipt tries after the transaction, so that we have the
+    // correct expected tries: Update accounts.
     let beneficiary_account_after = AccountRlp {
         nonce: 1.into(),
         ..AccountRlp::default()
@@ -506,8 +564,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let second_log = LogRlp {
         address: to.into(),
         topics: vec![
-            hex!("0000000000000000000000000000000000000000000000000000000000000062").into(), // dec: 98
-            hex!("0000000000000000000000000000000000000000000000000000000000000063").into(), // dec: 99
+            hex!("0000000000000000000000000000000000000000000000000000000000000062").into(), /* dec: 98 */
+            hex!("0000000000000000000000000000000000000000000000000000000000000063").into(), /* dec: 99 */
         ],
         data: hex!("a1b2c3d4e5").to_vec().into(),
     };
@@ -564,23 +622,81 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
-    let (root_proof_second, public_values_second) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None.clone())?;
+    let max_cpu_len = 1 << 20;
+    let root_proof_data_second = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs.clone(),
+        max_cpu_len,
+        0,
+        &mut timing,
+        None.clone(),
+    )?;
+    let ProverOutputData {
+        proof_with_pis: root_proof_second,
+        public_values: public_values_second,
+    } = root_proof_data_second;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof_second.clone())?;
 
-    let (agg_proof, updated_agg_public_values) = all_circuits.prove_aggregation(
-        false,
-        &root_proof_first,
-        public_values_first,
-        false,
-        &root_proof_second,
-        public_values_second,
+    let final_root_proof_data_second = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        1,
+        &mut timing,
+        None.clone(),
     )?;
-    all_circuits.verify_aggregation(&agg_proof)?;
+    let ProverOutputData {
+        proof_with_pis: final_root_proof_second,
+        public_values: final_public_values_second,
+    } = final_root_proof_data_second;
+    all_circuits.verify_root(final_root_proof_second.clone())?;
+
+    let (segment_agg_proof_first, updated_agg_public_values_first) = all_circuits
+        .prove_segment_aggregation(
+            false,
+            &root_proof_first,
+            public_values_first,
+            false,
+            &final_root_proof_first,
+            final_public_values_first,
+        )?;
+    all_circuits.verify_segment_aggregation(&segment_agg_proof_first)?;
+
+    let (segment_agg_proof_second, updated_agg_public_values_second) = all_circuits
+        .prove_segment_aggregation(
+            false,
+            &root_proof_second,
+            public_values_second,
+            false,
+            &final_root_proof_second,
+            final_public_values_second,
+        )?;
+    all_circuits.verify_segment_aggregation(&segment_agg_proof_second)?;
+    let (txn_proof_first, txn_pv_first) = all_circuits.prove_transaction_aggregation(
+        None,
+        &segment_agg_proof_first,
+        updated_agg_public_values_first,
+    )?;
+    let txn_pvs = PublicValues {
+        trie_roots_before: txn_pv_first.trie_roots_before,
+        extra_block_data: ExtraBlockData {
+            txn_number_before: txn_pv_first.extra_block_data.txn_number_before,
+            gas_used_before: txn_pv_first.extra_block_data.txn_number_before,
+            ..updated_agg_public_values_second.extra_block_data
+        },
+        ..updated_agg_public_values_second
+    };
+    let (txn_proof_second, txn_pv_second) = all_circuits.prove_transaction_aggregation(
+        Some(&txn_proof_first),
+        &segment_agg_proof_second,
+        txn_pvs,
+    )?;
     let (first_block_proof, _block_public_values) =
-        all_circuits.prove_block(None, &agg_proof, updated_agg_public_values)?;
+        all_circuits.prove_block(None, &txn_proof_second, txn_pv_second)?;
     all_circuits.verify_block(&first_block_proof)?;
 
     // Prove the next, empty block.
@@ -629,25 +745,57 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
     };
 
-    let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
+    let root_proof_data = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs.clone(),
+        max_cpu_len,
+        0,
+        &mut timing,
+        None,
+    )?;
+    let ProverOutputData {
+        proof_with_pis: root_proof,
+        public_values,
+    } = root_proof_data;
     all_circuits.verify_root(root_proof.clone())?;
 
+    let final_root_proof_data = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        1,
+        &mut timing,
+        None,
+    )?;
+    let ProverOutputData {
+        proof_with_pis: final_root_proof,
+        public_values: final_public_values,
+        ..
+    } = final_root_proof_data;
+    all_circuits.verify_root(final_root_proof.clone())?;
+
     // We can just duplicate the initial proof as the state didn't change.
-    let (agg_proof, updated_agg_public_values) = all_circuits.prove_aggregation(
+    let (segment_agg_proof, updated_agg_public_values) = all_circuits.prove_segment_aggregation(
         false,
         &root_proof,
         public_values.clone(),
         false,
-        &root_proof,
-        public_values,
+        &final_root_proof,
+        final_public_values,
     )?;
-    all_circuits.verify_aggregation(&agg_proof)?;
+    all_circuits.verify_segment_aggregation(&segment_agg_proof)?;
 
+    let (second_txn_proof, second_txn_pvs) = all_circuits.prove_transaction_aggregation(
+        None,
+        &segment_agg_proof,
+        updated_agg_public_values,
+    )?;
     let (second_block_proof, _block_public_values) = all_circuits.prove_block(
         None, // We don't specify a previous proof, considering block 1 as the new checkpoint.
-        &agg_proof,
-        updated_agg_public_values,
+        &second_txn_proof,
+        second_txn_pvs,
     )?;
     all_circuits.verify_block(&second_block_proof)
 }
@@ -655,7 +803,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 /// Values taken from the block 1000000 of Goerli: https://goerli.etherscan.io/txs?block=1000000
 #[test]
 fn test_txn_and_receipt_trie_hash() -> anyhow::Result<()> {
-    // This test checks that inserting into the transaction and receipt `HashedPartialTrie`s works as expected.
+    // This test checks that inserting into the transaction and receipt
+    // `HashedPartialTrie`s works as expected.
     let mut example_txn_trie = HashedPartialTrie::from(Node::Empty);
 
     // We consider two transactions, with one log each.

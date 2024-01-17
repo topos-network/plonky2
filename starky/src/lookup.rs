@@ -30,9 +30,10 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::stark::Stark;
 
-/// Represents a filter, which evaluates to 1 if the row must be considered and 0 if it should be ignored.
-/// It's an arbitrary degree 2 combination of columns: `products` are the degree 2 terms, and `constants` are
-/// the degree 1 terms.
+/// Represents a filter, which evaluates to 1 if the row must be considered and
+/// 0 if it should be ignored. It's an arbitrary degree 2 combination of
+/// columns: `products` are the degree 2 terms, and `constants` are the degree 1
+/// terms.
 #[derive(Clone, Debug)]
 pub struct Filter<F: Field> {
     products: Vec<(Column<F>, Column<F>)>,
@@ -56,7 +57,8 @@ impl<F: Field> Filter<F> {
         }
     }
 
-    /// Given the column values for the current and next rows, evaluates the filter.
+    /// Given the column values for the current and next rows, evaluates the
+    /// filter.
     pub(crate) fn eval_filter<FE, P, const D: usize>(&self, v: &[P], next_v: &[P]) -> P
     where
         FE: FieldExtension<D, BaseField = F>,
@@ -74,7 +76,8 @@ impl<F: Field> Filter<F> {
     }
 
     /// Circuit version of `eval_filter`:
-    /// Given the column values for the current and next rows, evaluates the filter.
+    /// Given the column values for the current and next rows, evaluates the
+    /// filter.
     pub(crate) fn eval_filter_circuit<const D: usize>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -119,9 +122,10 @@ impl<F: Field> Filter<F> {
     }
 }
 
-/// Represent two linear combination of columns, corresponding to the current and next row values.
-/// Each linear combination is represented as:
-/// - a vector of `(usize, F)` corresponding to the column number and the associated multiplicand
+/// Represent two linear combination of columns, corresponding to the current
+/// and next row values. Each linear combination is represented as:
+/// - a vector of `(usize, F)` corresponding to the column number and the
+///   associated multiplicand
 /// - the constant of the linear combination.
 #[derive(Clone, Debug)]
 pub struct Column<F: Field> {
@@ -182,7 +186,8 @@ impl<F: Field> Column<F> {
         Self::constant(F::ONE)
     }
 
-    /// Given an iterator of `(usize, F)` and a constant, returns the association linear combination of columns for the current row.
+    /// Given an iterator of `(usize, F)` and a constant, returns the
+    /// association linear combination of columns for the current row.
     pub fn linear_combination_with_constant<I: IntoIterator<Item = (usize, F)>>(
         iter: I,
         constant: F,
@@ -206,7 +211,8 @@ impl<F: Field> Column<F> {
         }
     }
 
-    /// Given an iterator of `(usize, F)` and a constant, returns the associated linear combination of columns for the current and the next rows.
+    /// Given an iterator of `(usize, F)` and a constant, returns the associated
+    /// linear combination of columns for the current and the next rows.
     pub fn linear_combination_and_next_row_with_constant<I: IntoIterator<Item = (usize, F)>>(
         iter: I,
         next_row_iter: I,
@@ -245,15 +251,16 @@ impl<F: Field> Column<F> {
         Self::linear_combination_with_constant(iter, F::ZERO)
     }
 
-    /// Given an iterator of columns (c_0, ..., c_n) containing bits in little endian order:
-    /// returns the representation of c_0 + 2 * c_1 + ... + 2^n * c_n.
+    /// Given an iterator of columns (c_0, ..., c_n) containing bits in little
+    /// endian order: returns the representation of c_0 + 2 * c_1 + ... +
+    /// 2^n * c_n.
     pub fn le_bits<I: IntoIterator<Item = impl Borrow<usize>>>(cs: I) -> Self {
         Self::linear_combination(cs.into_iter().map(|c| *c.borrow()).zip(F::TWO.powers()))
     }
 
-    /// Given an iterator of columns (c_0, ..., c_n) containing bits in little endian order:
-    /// returns the representation of c_0 + 2 * c_1 + ... + 2^n * c_n + k where `k` is an
-    /// additional constant.
+    /// Given an iterator of columns (c_0, ..., c_n) containing bits in little
+    /// endian order: returns the representation of c_0 + 2 * c_1 + ... +
+    /// 2^n * c_n + k where `k` is an additional constant.
     pub fn le_bits_with_constant<I: IntoIterator<Item = impl Borrow<usize>>>(
         cs: I,
         constant: F,
@@ -264,8 +271,9 @@ impl<F: Field> Column<F> {
         )
     }
 
-    /// Given an iterator of columns (c_0, ..., c_n) containing bytes in little endian order:
-    /// returns the representation of c_0 + 256 * c_1 + ... + 256^n * c_n.
+    /// Given an iterator of columns (c_0, ..., c_n) containing bytes in little
+    /// endian order: returns the representation of c_0 + 256 * c_1 + ... +
+    /// 256^n * c_n.
     pub fn le_bytes<I: IntoIterator<Item = impl Borrow<usize>>>(cs: I) -> Self {
         Self::linear_combination(
             cs.into_iter()
@@ -279,7 +287,8 @@ impl<F: Field> Column<F> {
         Self::linear_combination(cs.into_iter().map(|c| *c.borrow()).zip(repeat(F::ONE)))
     }
 
-    /// Given the column values for the current row, returns the evaluation of the linear combination.
+    /// Given the column values for the current row, returns the evaluation of
+    /// the linear combination.
     pub(crate) fn eval<FE, P, const D: usize>(&self, v: &[P]) -> P
     where
         FE: FieldExtension<D, BaseField = F>,
@@ -292,7 +301,8 @@ impl<F: Field> Column<F> {
             + FE::from_basefield(self.constant)
     }
 
-    /// Given the column values for the current and next rows, evaluates the current and next linear combinations and returns their sum.
+    /// Given the column values for the current and next rows, evaluates the
+    /// current and next linear combinations and returns their sum.
     pub(crate) fn eval_with_next<FE, P, const D: usize>(&self, v: &[P], next_v: &[P]) -> P
     where
         FE: FieldExtension<D, BaseField = F>,
@@ -319,8 +329,9 @@ impl<F: Field> Column<F> {
             .sum::<F>()
             + self.constant;
 
-        // If we access the next row at the last row, for sanity, we consider the next row's values to be 0.
-        // If the lookups are correctly written, the filter should be 0 in that case anyway.
+        // If we access the next row at the last row, for sanity, we consider the next
+        // row's values to be 0. If the lookups are correctly written, the
+        // filter should be 0 in that case anyway.
         if !self.next_row_linear_combination.is_empty() && row < table[0].values.len() - 1 {
             res += self
                 .next_row_linear_combination
@@ -340,7 +351,8 @@ impl<F: Field> Column<F> {
             .collect::<Vec<F>>()
     }
 
-    /// Circuit version of `eval`: Given a row's targets, returns their linear combination.
+    /// Circuit version of `eval`: Given a row's targets, returns their linear
+    /// combination.
     pub(crate) fn eval_circuit<const D: usize>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -364,7 +376,8 @@ impl<F: Field> Column<F> {
     }
 
     /// Circuit version of `eval_with_next`:
-    /// Given the targets of the current and next row, returns the sum of their linear combinations.
+    /// Given the targets of the current and next row, returns the sum of their
+    /// linear combinations.
     pub(crate) fn eval_with_next_circuit<const D: usize>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -430,7 +443,8 @@ impl<F: Field> Lookup<F> {
     /// Outputs the number of helper columns needed by this [`Lookup`].
     pub fn num_helper_columns(&self, constraint_degree: usize) -> usize {
         // One helper column for each column batch of size `constraint_degree-1`,
-        // then one column for the inverse of `table + challenge` and one for the `Z` polynomial.
+        // then one column for the inverse of `table + challenge` and one for the `Z`
+        // polynomial.
         ceil_div_usize(self.columns.len(), constraint_degree - 1) + 1
     }
 }
@@ -482,7 +496,8 @@ impl GrandProductChallenge<Target> {
     }
 }
 
-/// Like `GrandProductChallenge`, but with `num_challenges` copies to boost soundness.
+/// Like `GrandProductChallenge`, but with `num_challenges` copies to boost
+/// soundness.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct GrandProductChallengeSet<T: Copy + Eq + PartialEq + Debug> {
     /// A sequence of `num_challenges` challenge pairs, where `num_challenges`
@@ -501,7 +516,8 @@ impl GrandProductChallengeSet<Target> {
         Ok(())
     }
 
-    /// Serializes a `GrandProductChallengeSet` of `Target`s from the provided buffer.
+    /// Serializes a `GrandProductChallengeSet` of `Target`s from the provided
+    /// buffer.
     pub fn from_buffer(buffer: &mut Buffer) -> IoResult<Self> {
         let length = buffer.read_usize()?;
         let mut challenges = Vec::with_capacity(length);
@@ -567,9 +583,10 @@ pub fn get_grand_product_challenge_set_target<
 
 /// logUp protocol from <https://ia.cr/2022/1530>
 /// Compute the helper columns for the lookup argument.
-/// Given columns `f0,...,fk` and a column `t`, such that `∪fi ⊆ t`, and challenges `x`,
-/// this computes the helper columns `h_i = 1/(x+f_2i) + 1/(x+f_2i+1)`, `g = 1/(x+t)`,
-/// and `Z(gx) = Z(x) + sum h_i(x) - m(x)g(x)` where `m` is the frequencies column.
+/// Given columns `f0,...,fk` and a column `t`, such that `∪fi ⊆ t`, and
+/// challenges `x`, this computes the helper columns `h_i = 1/(x+f_2i) +
+/// 1/(x+f_2i+1)`, `g = 1/(x+t)`, and `Z(gx) = Z(x) + sum h_i(x) - m(x)g(x)`
+/// where `m` is the frequencies column.
 pub(crate) fn lookup_helper_columns<F: Field>(
     lookup: &Lookup<F>,
     trace_poly_values: &[PolynomialValues<F>],
@@ -604,15 +621,17 @@ pub(crate) fn lookup_helper_columns<F: Field>(
         .zip(lookup.filter_columns.iter())
         .map(|(col, filter)| (&col[..], filter))
         .collect::<Vec<_>>();
-    // For each batch of `constraint_degree-1` columns `fi`, compute `sum 1/(f_i+challenge)` and
-    // add it to the helper columns.
+    // For each batch of `constraint_degree-1` columns `fi`, compute `sum
+    // 1/(f_i+challenge)` and add it to the helper columns.
     // Note: these are the h_k(x) polynomials in the paper, with a few differences:
-    //       * Here, the first ratio m_0(x)/phi_0(x) is not included with the columns batched up to create the
-    //         h_k polynomials; instead there's a separate helper column for it (see below).
+    //       * Here, the first ratio m_0(x)/phi_0(x) is not included with the
+    //         columns batched up to create the h_k polynomials; instead there's a
+    //         separate helper column for it (see below).
     //       * Here, we use 1 instead of -1 as the numerator (and subtract later).
-    //       * Here, for now, the batch size (l) is always constraint_degree - 1 = 2.
-    //       * Here, there are filters for the columns, to only select some rows
-    //         in a given column.
+    //       * Here, for now, the batch size (l) is always constraint_degree - 1 =
+    //         2.
+    //       * Here, there are filters for the columns, to only select some rows in
+    //         a given column.
     let mut helper_columns = get_helper_cols(
         trace_poly_values,
         trace_poly_values[0].len(),
@@ -623,16 +642,18 @@ pub(crate) fn lookup_helper_columns<F: Field>(
 
     // Add `1/(table+challenge)` to the helper columns.
     // This is 1/phi_0(x) = 1/(x + t(x)) from the paper.
-    // Here, we don't include m(x) in the numerator, instead multiplying it with this column later.
+    // Here, we don't include m(x) in the numerator, instead multiplying it with
+    // this column later.
     let mut table = lookup.table_column.eval_all_rows(trace_poly_values);
     for x in table.iter_mut() {
         *x = challenge + *x;
     }
     let table_inverse: Vec<F> = F::batch_multiplicative_inverse(&table);
 
-    // Compute the `Z` polynomial with `Z(1)=0` and `Z(gx) = Z(x) + sum h_i(x) - frequencies(x)g(x)`.
-    // This enforces the check from the paper, that the sum of the h_k(x) polynomials is 0 over H.
-    // In the paper, that sum includes m(x)/(x + t(x)) = frequencies(x)/g(x), because that was bundled
+    // Compute the `Z` polynomial with `Z(1)=0` and `Z(gx) = Z(x) + sum h_i(x) -
+    // frequencies(x)g(x)`. This enforces the check from the paper, that the sum
+    // of the h_k(x) polynomials is 0 over H. In the paper, that sum includes
+    // m(x)/(x + t(x)) = frequencies(x)/g(x), because that was bundled
     // into the h_k(x) polynomials.
     let frequencies = &lookup.frequencies_column.eval_all_rows(trace_poly_values);
     let mut z = Vec::with_capacity(frequencies.len());
@@ -706,7 +727,8 @@ pub(crate) fn eval_helper_columns<F, FE, P, const D: usize, const D2: usize>(
 }
 
 /// Circuit version of `eval_helper_columns`.
-/// Given data associated to a lookup (either a CTL or a range-check), check the associated helper polynomials.
+/// Given data associated to a lookup (either a CTL or a range-check), check the
+/// associated helper polynomials.
 pub(crate) fn eval_helper_columns_circuit<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
     filter: &[Option<Filter<F>>],
@@ -765,8 +787,8 @@ pub(crate) fn eval_helper_columns_circuit<F: RichField + Extendable<D>, const D:
     }
 }
 
-/// Given a STARK's trace, and the data associated to one lookup (either CTL or range check),
-/// returns the associated helper polynomials.
+/// Given a STARK's trace, and the data associated to one lookup (either CTL or
+/// range check), returns the associated helper polynomials.
 pub(crate) fn get_helper_cols<F: Field>(
     trace: &[PolynomialValues<F>],
     degree: usize,
@@ -903,8 +925,10 @@ pub(crate) fn eval_packed_lookups_generic<F, FE, P, S, const D: usize, const D2:
                 .map(|col| vec![col.eval_with_next(local_values, next_values)])
                 .collect::<Vec<Vec<P>>>();
 
-            // For each chunk, check that `h_i (x+f_2i) (x+f_{2i+1}) = (x+f_2i) * filter_{2i+1} + (x+f_{2i+1}) * filter_2i`
-            // if the chunk has length 2 or if it has length 1, check that `h_i * (x+f_2i) = filter_2i`, where x is the challenge
+            // For each chunk, check that `h_i (x+f_2i) (x+f_{2i+1}) = (x+f_2i) *
+            // filter_{2i+1} + (x+f_{2i+1}) * filter_2i` if the chunk has length
+            // 2 or if it has length 1, check that `h_i * (x+f_2i) = filter_2i`, where x is
+            // the challenge
             eval_helper_columns(
                 &lookup.filter_columns,
                 &lookup_columns,

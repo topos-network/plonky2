@@ -278,7 +278,8 @@ fn test_different_inputs() -> anyhow::Result<()> {
     Ok(())
 }
 
-// This test looks up over 514 values for one LookupTableGate, which means that several LookupGates are created.
+// This test looks up over 514 values for one LookupTableGate, which means that
+// several LookupGates are created.
 #[test]
 fn test_many_lookups() -> anyhow::Result<()> {
     init_logger();
@@ -360,7 +361,8 @@ fn test_many_lookups() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Tests whether, when adding the same LUT to the circuit, the circuit only adds one copy, with the same index.
+// Tests whether, when adding the same LUT to the circuit, the circuit only adds
+// one copy, with the same index.
 #[test]
 fn test_same_luts() -> anyhow::Result<()> {
     init_logger();

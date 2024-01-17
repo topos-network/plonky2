@@ -33,7 +33,8 @@ pub struct FriConfig {
     /// Number of bits used for grinding.
     pub proof_of_work_bits: u32,
 
-    /// The reduction strategy to be applied at each layer during the commit phase.
+    /// The reduction strategy to be applied at each layer during the commit
+    /// phase.
     pub reduction_strategy: FriReductionStrategy,
 
     /// Number of query rounds to perform.
@@ -65,22 +66,25 @@ impl FriConfig {
     }
 }
 
-/// FRI parameters, including generated parameters which are specific to an instance size, in
-/// contrast to `FriConfig` which is user-specified and independent of instance size.
+/// FRI parameters, including generated parameters which are specific to an
+/// instance size, in contrast to `FriConfig` which is user-specified and
+/// independent of instance size.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct FriParams {
     /// User-specified FRI configuration.
     pub config: FriConfig,
 
-    /// Whether to use a hiding variant of Merkle trees (where random salts are added to leaves).
+    /// Whether to use a hiding variant of Merkle trees (where random salts are
+    /// added to leaves).
     pub hiding: bool,
 
     /// The degree of the purported codeword, measured in bits.
     pub degree_bits: usize,
 
-    /// The arity of each FRI reduction step, expressed as the log2 of the actual arity.
-    /// For example, `[3, 2, 1]` would describe a FRI reduction tree with 8-to-1 reduction, then
-    /// a 4-to-1 reduction, then a 2-to-1 reduction. After these reductions, the reduced polynomial
+    /// The arity of each FRI reduction step, expressed as the log2 of the
+    /// actual arity. For example, `[3, 2, 1]` would describe a FRI
+    /// reduction tree with 8-to-1 reduction, then a 4-to-1 reduction, then
+    /// a 2-to-1 reduction. After these reductions, the reduced polynomial
     /// is sent directly.
     pub reduction_arity_bits: Vec<usize>,
 }

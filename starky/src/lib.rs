@@ -11,10 +11,11 @@
 //!
 //! # Defining a STARK statement
 //!
-//! A STARK system is configured by a [`StarkConfig`][crate::config::StarkConfig]
-//! defining all the parameters to be used when generating proofs associated
-//! to the statement. How constraints should be defined over the STARK trace is
-//! defined through the [`Stark`][crate::stark::Stark] trait, that takes a
+//! A STARK system is configured by a
+//! [`StarkConfig`][crate::config::StarkConfig] defining all the parameters to
+//! be used when generating proofs associated to the statement. How constraints
+//! should be defined over the STARK trace is defined through the
+//! [`Stark`][crate::stark::Stark] trait, that takes a
 //! [`StarkEvaluationFrame`][crate::evaluation_frame::StarkEvaluationFrame] of
 //! two consecutive rows and a list of public inputs.
 //!
@@ -151,8 +152,8 @@
 //! }
 //! ```
 //!
-//! One can then instantiate a new `FibonacciStark` instance, generate an associated
-//! STARK trace, and generate a proof for it.
+//! One can then instantiate a new `FibonacciStark` instance, generate an
+//! associated STARK trace, and generate a proof for it.
 //!
 //! ```rust
 //! # use anyhow::Result;
@@ -309,7 +310,6 @@
 //!         .expect("We should be able to verify this proof!")
 //! }
 //! ```
-//!
 
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::needless_range_loop)]

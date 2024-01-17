@@ -28,8 +28,8 @@ pub trait StarkEvaluationFrame<T: Copy + Clone + Default, U: Copy + Clone + Defa
     fn from_values(lv: &[T], nv: &[T], pis: &[U]) -> Self;
 }
 
-/// An evaluation frame to be used when defining constraints of a STARK system, that
-/// implements the [`StarkEvaluationFrame`] trait.
+/// An evaluation frame to be used when defining constraints of a STARK system,
+/// that implements the [`StarkEvaluationFrame`] trait.
 #[derive(Debug)]
 pub struct StarkFrame<
     T: Copy + Clone + Default,

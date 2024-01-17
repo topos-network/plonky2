@@ -5,7 +5,8 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
 
-/// An example of using Plonky2 to prove that a given value lies in a given range.
+/// An example of using Plonky2 to prove that a given value lies in a given
+/// range.
 fn main() -> Result<()> {
     const D: usize = 2;
     type C = PoseidonGoldilocksConfig;

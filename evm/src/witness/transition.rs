@@ -184,8 +184,9 @@ fn fill_op_flag<F: Field>(op: Operation, row: &mut CpuColumnsView<F>) {
     } = F::ONE;
 }
 
-// Equal to the number of pops if an operation pops without pushing, and `None` otherwise.
-const fn get_op_special_length(op: Operation) -> Option<usize> {
+// Equal to the number of pops if an operation pops without pushing, and `None`
+// otherwise.
+pub(crate) const fn get_op_special_length(op: Operation) -> Option<usize> {
     let behavior_opt = match op {
         Operation::Push(0) | Operation::Pc => STACK_BEHAVIORS.pc_push0,
         Operation::Push(1..) | Operation::ProverInput => STACK_BEHAVIORS.push_prover_input,
@@ -223,9 +224,10 @@ const fn get_op_special_length(op: Operation) -> Option<usize> {
     }
 }
 
-// These operations might trigger a stack overflow, typically those pushing without popping.
-// Kernel-only pushing instructions aren't considered; they can't overflow.
-const fn might_overflow_op(op: Operation) -> bool {
+// These operations might trigger a stack overflow, typically those pushing
+// without popping. Kernel-only pushing instructions aren't considered; they
+// can't overflow.
+pub(crate) const fn might_overflow_op(op: Operation) -> bool {
     match op {
         Operation::Push(1..) | Operation::ProverInput => MIGHT_OVERFLOW.push_prover_input,
         Operation::Dup(_) | Operation::Swap(_) => MIGHT_OVERFLOW.dup_swap,
@@ -319,9 +321,10 @@ fn perform_op<F: Field>(
     Ok(op)
 }
 
-/// Row that has the correct values for system registers and the code channel, but is otherwise
-/// blank. It fulfills the constraints that are common to successful operations and the exception
-/// operation. It also returns the opcode.
+/// Row that has the correct values for system registers and the code channel,
+/// but is otherwise blank. It fulfills the constraints that are common to
+/// successful operations and the exception operation. It also returns the
+/// opcode.
 fn base_row<F: Field>(state: &mut GenerationState<F>) -> (CpuColumnsView<F>, u8) {
     let mut row: CpuColumnsView<F> = CpuColumnsView::default();
     row.clock = F::from_canonical_usize(state.traces.clock());
@@ -370,7 +373,8 @@ pub(crate) fn fill_stack_fields<F: Field>(
             row.general.stack_mut().stack_len_bounds_aux = F::ZERO;
         } else {
             let clock = state.traces.clock();
-            let last_row = &mut state.traces.cpu[clock - 1];
+            // the clock starts at 1, so the last row is at index clock - 2.
+            let last_row = &mut state.traces.cpu[clock - 2];
             let disallowed_len = F::from_canonical_usize(MAX_USER_STACK_SIZE + 1);
             let diff = row.stack_len - disallowed_len;
             if let Some(inv) = diff.try_inverse() {
@@ -402,8 +406,8 @@ fn try_perform_instruction<F: Field>(
 
     fill_stack_fields(state, &mut row)?;
 
-    // Might write in general CPU columns when it shouldn't, but the correct values will
-    // overwrite these ones during the op generation.
+    // Might write in general CPU columns when it shouldn't, but the correct values
+    // will overwrite these ones during the op generation.
     if let Some(special_len) = get_op_special_length(op) {
         let special_len = F::from_canonical_usize(special_len);
         let diff = row.stack_len - special_len;
@@ -447,6 +451,20 @@ fn log_kernel_instruction<F: Field>(state: &GenerationState<F>, op: Operation) {
     );
 
     assert!(pc < KERNEL.code.len(), "Kernel PC is out of range: {}", pc);
+}
+
+pub(crate) fn final_exception<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
+    let exc_code: u8 = 6;
+
+    let checkpoint = state.checkpoint();
+    let (row, _) = base_row(state);
+    generate_exception(exc_code, state, row)
+        .map_err(|_| anyhow::Error::msg("error handling errored..."))?;
+
+    state
+        .memory
+        .apply_ops(state.traces.mem_ops_since(checkpoint.traces));
+    Ok(())
 }
 
 fn handle_error<F: Field>(state: &mut GenerationState<F>, err: ProgramError) -> anyhow::Result<()> {

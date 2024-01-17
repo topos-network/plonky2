@@ -2,8 +2,9 @@ use ethereum_types::U256;
 
 pub(crate) const SEGMENT_SCALING_FACTOR: usize = 32;
 
-/// This contains all the existing memory segments. The values in the enum are shifted by 32 bits
-/// to allow for convenient address components (context / segment / virtual) bundling in the kernel.
+/// This contains all the existing memory segments. The values in the enum are
+/// shifted by 32 bits to allow for convenient address components (context /
+/// segment / virtual) bundling in the kernel.
 #[allow(dead_code)]
 #[allow(clippy::enum_clike_unportable_variant)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Debug)]
@@ -20,12 +21,13 @@ pub(crate) enum Segment {
     Calldata = 3 << SEGMENT_SCALING_FACTOR,
     /// Data returned to the current context by its latest callee.
     Returndata = 4 << SEGMENT_SCALING_FACTOR,
-    /// A segment which contains a few fixed-size metadata fields, such as the caller's context, or the
-    /// size of `CALLDATA` and `RETURNDATA`.
+    /// A segment which contains a few fixed-size metadata fields, such as the
+    /// caller's context, or the size of `CALLDATA` and `RETURNDATA`.
     GlobalMetadata = 5 << SEGMENT_SCALING_FACTOR,
     ContextMetadata = 6 << SEGMENT_SCALING_FACTOR,
     /// General purpose kernel memory, used by various kernel functions.
-    /// In general, calling a helper function can result in this memory being clobbered.
+    /// In general, calling a helper function can result in this memory being
+    /// clobbered.
     KernelGeneral = 7 << SEGMENT_SCALING_FACTOR,
     /// Another segment for general purpose kernel use.
     KernelGeneral2 = 8 << SEGMENT_SCALING_FACTOR,
@@ -37,7 +39,8 @@ pub(crate) enum Segment {
     TxnData = 11 << SEGMENT_SCALING_FACTOR,
     /// A buffer used to hold raw RLP data.
     RlpRaw = 12 << SEGMENT_SCALING_FACTOR,
-    /// Contains all trie data. It is owned by the kernel, so it only lives on context 0.
+    /// Contains all trie data. It is owned by the kernel, so it only lives on
+    /// context 0.
     TrieData = 13 << SEGMENT_SCALING_FACTOR,
     ShiftTable = 14 << SEGMENT_SCALING_FACTOR,
     JumpdestBits = 15 << SEGMENT_SCALING_FACTOR,
@@ -50,7 +53,8 @@ pub(crate) enum Segment {
     AccessedAddresses = 21 << SEGMENT_SCALING_FACTOR,
     /// List of storage keys that have been accessed in the current transaction.
     AccessedStorageKeys = 22 << SEGMENT_SCALING_FACTOR,
-    /// List of addresses that have called SELFDESTRUCT in the current transaction.
+    /// List of addresses that have called SELFDESTRUCT in the current
+    /// transaction.
     SelfDestructList = 23 << SEGMENT_SCALING_FACTOR,
     /// Contains the bloom filter of a transaction.
     TxnBloom = 24 << SEGMENT_SCALING_FACTOR,
@@ -59,20 +63,25 @@ pub(crate) enum Segment {
     /// List of log pointers pointing to the LogsData segment.
     Logs = 26 << SEGMENT_SCALING_FACTOR,
     LogsData = 27 << SEGMENT_SCALING_FACTOR,
-    /// Journal of state changes. List of pointers to `JournalData`. Length in `GlobalMetadata`.
+    /// Journal of state changes. List of pointers to `JournalData`. Length in
+    /// `GlobalMetadata`.
     Journal = 28 << SEGMENT_SCALING_FACTOR,
     JournalData = 29 << SEGMENT_SCALING_FACTOR,
     JournalCheckpoints = 30 << SEGMENT_SCALING_FACTOR,
     /// List of addresses that have been touched in the current transaction.
     TouchedAddresses = 31 << SEGMENT_SCALING_FACTOR,
-    /// List of checkpoints for the current context. Length in `ContextMetadata`.
+    /// List of checkpoints for the current context. Length in
+    /// `ContextMetadata`.
     ContextCheckpoints = 32 << SEGMENT_SCALING_FACTOR,
     /// List of 256 previous block hashes.
     BlockHashes = 33 << SEGMENT_SCALING_FACTOR,
+    /// Segment storing the registers before/after the current execution,
+    /// as well as `exit_kernel` for the `registers_before`, in that order.
+    RegistersStates = 34 << SEGMENT_SCALING_FACTOR,
 }
 
 impl Segment {
-    pub(crate) const COUNT: usize = 34;
+    pub(crate) const COUNT: usize = 35;
 
     /// Unscales this segment by `SEGMENT_SCALING_FACTOR`.
     pub(crate) const fn unscale(&self) -> usize {
@@ -115,6 +124,7 @@ impl Segment {
             Self::TouchedAddresses,
             Self::ContextCheckpoints,
             Self::BlockHashes,
+            Self::RegistersStates,
         ]
     }
 
@@ -155,6 +165,7 @@ impl Segment {
             Segment::TouchedAddresses => "SEGMENT_TOUCHED_ADDRESSES",
             Segment::ContextCheckpoints => "SEGMENT_CONTEXT_CHECKPOINTS",
             Segment::BlockHashes => "SEGMENT_BLOCK_HASHES",
+            Segment::RegistersStates => "SEGMENT_REGISTERS_STATES",
         }
     }
 
@@ -194,6 +205,7 @@ impl Segment {
             Segment::TouchedAddresses => 256,
             Segment::ContextCheckpoints => 256,
             Segment::BlockHashes => 256,
+            Segment::RegistersStates => 256,
         }
     }
 

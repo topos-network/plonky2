@@ -9,8 +9,9 @@
 //!
 //! Most of the [`CircuitData`] is actually prover-specific, and can be
 //! extracted by calling [`CircuitData::prover_data`] method.
-//! The verifier data can similarly be extracted by calling [`CircuitData::verifier_data`].
-//! This is useful to allow even small devices to verify plonky2 proofs.
+//! The verifier data can similarly be extracted by calling
+//! [`CircuitData::verifier_data`]. This is useful to allow even small devices
+//! to verify plonky2 proofs.
 
 #[cfg(not(feature = "std"))]
 use alloc::{collections::BTreeMap, vec, vec::Vec};
@@ -53,35 +54,40 @@ use crate::util::serialization::{
 };
 use crate::util::timing::TimingTree;
 
-/// Configuration to be used when building a circuit. This defines the shape of the circuit
-/// as well as its targeted security level and sub-protocol (e.g. FRI) parameters.
+/// Configuration to be used when building a circuit. This defines the shape of
+/// the circuit as well as its targeted security level and sub-protocol (e.g.
+/// FRI) parameters.
 ///
-/// It supports a [`Default`] implementation tailored for recursion with Poseidon hash (of width 12)
-/// as internal hash function and FRI rate of 1/8.
+/// It supports a [`Default`] implementation tailored for recursion with
+/// Poseidon hash (of width 12) as internal hash function and FRI rate of 1/8.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CircuitConfig {
-    /// The number of wires available at each row. This corresponds to the "width" of the circuit,
-    /// and consists in the sum of routed wires and advice wires.
+    /// The number of wires available at each row. This corresponds to the
+    /// "width" of the circuit, and consists in the sum of routed wires and
+    /// advice wires.
     pub num_wires: usize,
-    /// The number of routed wires, i.e. wires that will be involved in Plonk's permutation argument.
-    /// This allows copy constraints, i.e. enforcing that two distant values in a circuit are equal.
-    /// Non-routed wires are called advice wires.
+    /// The number of routed wires, i.e. wires that will be involved in Plonk's
+    /// permutation argument. This allows copy constraints, i.e. enforcing
+    /// that two distant values in a circuit are equal. Non-routed wires are
+    /// called advice wires.
     pub num_routed_wires: usize,
-    /// The number of constants that can be used per gate. If a gate requires more constants than the config
-    /// allows, the [`CircuitBuilder`] will complain when trying to add this gate to its set of gates.
+    /// The number of constants that can be used per gate. If a gate requires
+    /// more constants than the config allows, the [`CircuitBuilder`] will
+    /// complain when trying to add this gate to its set of gates.
     pub num_constants: usize,
-    /// Whether to use a dedicated gate for base field arithmetic, rather than using a single gate
-    /// for both base field and extension field arithmetic.
+    /// Whether to use a dedicated gate for base field arithmetic, rather than
+    /// using a single gate for both base field and extension field
+    /// arithmetic.
     pub use_base_arithmetic_gate: bool,
     pub security_bits: usize,
-    /// The number of challenge points to generate, for IOPs that have soundness errors of (roughly)
-    /// `degree / |F|`.
+    /// The number of challenge points to generate, for IOPs that have soundness
+    /// errors of (roughly) `degree / |F|`.
     pub num_challenges: usize,
-    /// A boolean to activate the zero-knowledge property. When this is set to `false`, proofs *may*
-    /// leak additional information.
+    /// A boolean to activate the zero-knowledge property. When this is set to
+    /// `false`, proofs *may* leak additional information.
     pub zero_knowledge: bool,
-    /// A cap on the quotient polynomial's degree factor. The actual degree factor is derived
-    /// systematically, but will never exceed this value.
+    /// A cap on the quotient polynomial's degree factor. The actual degree
+    /// factor is derived systematically, but will never exceed this value.
     pub max_quotient_degree_factor: usize,
     pub fri_config: FriConfig,
 }
@@ -97,7 +103,8 @@ impl CircuitConfig {
         self.num_wires - self.num_routed_wires
     }
 
-    /// A typical recursion config, without zero-knowledge, targeting ~100 bit security.
+    /// A typical recursion config, without zero-knowledge, targeting ~100 bit
+    /// security.
     pub const fn standard_recursion_config() -> Self {
         Self {
             num_wires: 135,
@@ -245,13 +252,14 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     }
 }
 
-/// Circuit data required by the prover. This may be thought of as a proving key, although it
-/// includes code for witness generation.
+/// Circuit data required by the prover. This may be thought of as a proving
+/// key, although it includes code for witness generation.
 ///
-/// The goal here is to make proof generation as fast as we can, rather than making this prover
-/// structure as succinct as we can. Thus we include various precomputed data which isn't strictly
-/// required, like LDEs of preprocessed polynomials. If more succinctness was desired, we could
-/// construct a more minimal prover structure and convert back and forth.
+/// The goal here is to make proof generation as fast as we can, rather than
+/// making this prover structure as succinct as we can. Thus we include various
+/// precomputed data which isn't strictly required, like LDEs of preprocessed
+/// polynomials. If more succinctness was desired, we could construct a more
+/// minimal prover structure and convert back and forth.
 pub struct ProverCircuitData<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -341,8 +349,8 @@ pub struct ProverOnlyCircuitData<
     const D: usize,
 > {
     pub generators: Vec<WitnessGeneratorRef<F, D>>,
-    /// Generator indices (within the `Vec` above), indexed by the representative of each target
-    /// they watch.
+    /// Generator indices (within the `Vec` above), indexed by the
+    /// representative of each target they watch.
     pub generator_indices_by_watches: BTreeMap<usize, Vec<usize>>,
     /// Commitments to the constants polynomials and sigma polynomials.
     pub constants_sigmas_commitment: PolynomialBatch<F, C, D>,
@@ -352,17 +360,18 @@ pub struct ProverOnlyCircuitData<
     pub subgroup: Vec<F>,
     /// Targets to be made public.
     pub public_inputs: Vec<Target>,
-    /// A map from each `Target`'s index to the index of its representative in the disjoint-set
-    /// forest.
+    /// A map from each `Target`'s index to the index of its representative in
+    /// the disjoint-set forest.
     pub representative_map: Vec<usize>,
     /// Pre-computed roots for faster FFT.
     pub fft_root_table: Option<FftRootTable<F>>,
-    /// A digest of the "circuit" (i.e. the instance, minus public inputs), which can be used to
-    /// seed Fiat-Shamir.
+    /// A digest of the "circuit" (i.e. the instance, minus public inputs),
+    /// which can be used to seed Fiat-Shamir.
     pub circuit_digest: <<C as GenericConfig<D>>::Hasher as Hasher<F>>::Hash,
     ///The concrete placement of the lookup gates for each lookup table index.
     pub lookup_rows: Vec<LookupWire>,
-    /// A vector of (looking_in, looking_out) pairs for for each lookup table index.
+    /// A vector of (looking_in, looking_out) pairs for for each lookup table
+    /// index.
     pub lut_to_lookups: Vec<Lookup>,
 }
 
@@ -392,10 +401,11 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 /// Circuit data required by the verifier, but not the prover.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct VerifierOnlyCircuitData<C: GenericConfig<D>, const D: usize> {
-    /// A commitment to each constant polynomial and each permutation polynomial.
+    /// A commitment to each constant polynomial and each permutation
+    /// polynomial.
     pub constants_sigmas_cap: MerkleCap<C::F, C::Hasher>,
-    /// A digest of the "circuit" (i.e. the instance, minus public inputs), which can be used to
-    /// seed Fiat-Shamir.
+    /// A digest of the "circuit" (i.e. the instance, minus public inputs),
+    /// which can be used to seed Fiat-Shamir.
     pub circuit_digest: <<C as GenericConfig<D>>::Hasher as Hasher<C::F>>::Hash,
 }
 
@@ -510,12 +520,14 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         0..self.config.num_challenges
     }
 
-    /// Range of the partial products polynomials in the `zs_partial_products_lookup_commitment`.
+    /// Range of the partial products polynomials in the
+    /// `zs_partial_products_lookup_commitment`.
     pub const fn partial_products_range(&self) -> Range<usize> {
         self.config.num_challenges..(self.num_partial_products + 1) * self.config.num_challenges
     }
 
-    /// Range of lookup polynomials in the `zs_partial_products_lookup_commitment`.
+    /// Range of lookup polynomials in the
+    /// `zs_partial_products_lookup_commitment`.
     pub const fn lookup_range(&self) -> RangeFrom<usize> {
         self.num_zs_partial_products_polys()..
     }
@@ -639,7 +651,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         FriPolynomialInfo::from_range(PlonkOracle::QUOTIENT.index, 0..self.num_quotient_polys())
     }
 
-    /// Returns the information for lookup polynomials, i.e. the index within the oracle and the indices of the polynomials within the commitment.
+    /// Returns the information for lookup polynomials, i.e. the index within
+    /// the oracle and the indices of the polynomials within the commitment.
     fn fri_lookup_polys(&self) -> Vec<FriPolynomialInfo> {
         FriPolynomialInfo::from_range(
             PlonkOracle::ZS_PARTIAL_PRODUCTS.index,
@@ -663,15 +676,18 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
     }
 }
 
-/// The `Target` version of `VerifierCircuitData`, for use inside recursive circuits. Note that this
-/// is intentionally missing certain fields, such as `CircuitConfig`, because we support only a
-/// limited form of dynamic inner circuits. We can't practically make things like the wire count
-/// dynamic, at least not without setting a maximum wire count and paying for the worst case.
+/// The `Target` version of `VerifierCircuitData`, for use inside recursive
+/// circuits. Note that this is intentionally missing certain fields, such as
+/// `CircuitConfig`, because we support only a limited form of dynamic inner
+/// circuits. We can't practically make things like the wire count dynamic, at
+/// least not without setting a maximum wire count and paying for the worst
+/// case.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifierCircuitTarget {
-    /// A commitment to each constant polynomial and each permutation polynomial.
+    /// A commitment to each constant polynomial and each permutation
+    /// polynomial.
     pub constants_sigmas_cap: MerkleCapTarget,
-    /// A digest of the "circuit" (i.e. the instance, minus public inputs), which can be used to
-    /// seed Fiat-Shamir.
+    /// A digest of the "circuit" (i.e. the instance, minus public inputs),
+    /// which can be used to seed Fiat-Shamir.
     pub circuit_digest: HashOutTarget,
 }

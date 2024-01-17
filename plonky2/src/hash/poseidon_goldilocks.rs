@@ -305,15 +305,16 @@ impl Poseidon for GoldilocksField {
 }
 
 // MDS layer helper methods
-// The following code has been adapted from winterfell/crypto/src/hash/mds/mds_f64_12x12.rs
-// located at https://github.com/facebook/winterfell.
+// The following code has been adapted from
+// winterfell/crypto/src/hash/mds/mds_f64_12x12.rs located at https://github.com/facebook/winterfell.
 #[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
 mod poseidon12_mds {
     const MDS_FREQ_BLOCK_ONE: [i64; 3] = [16, 32, 16];
     const MDS_FREQ_BLOCK_TWO: [(i64, i64); 3] = [(2, -1), (-4, 1), (16, 1)];
     const MDS_FREQ_BLOCK_THREE: [i64; 3] = [-1, -8, 2];
 
-    /// Split 3 x 4 FFT-based MDS vector-multiplication with the Poseidon circulant MDS matrix.
+    /// Split 3 x 4 FFT-based MDS vector-multiplication with the Poseidon
+    /// circulant MDS matrix.
     #[inline(always)]
     pub(crate) const fn mds_multiply_freq(state: [u64; 12]) -> [u64; 12] {
         let [s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11] = state;
@@ -322,18 +323,20 @@ mod poseidon12_mds {
         let (u4, u5, u6) = fft4_real([s1, s4, s7, s10]);
         let (u8, u9, u10) = fft4_real([s2, s5, s8, s11]);
 
-        // This where the multiplication in frequency domain is done. More precisely, and with
-        // the appropriate permutations in between, the sequence of
-        // 3-point FFTs --> multiplication by twiddle factors --> Hadamard multiplication -->
-        // 3 point iFFTs --> multiplication by (inverse) twiddle factors
-        // is "squashed" into one step composed of the functions "block1", "block2" and "block3".
-        // The expressions in the aforementioned functions are the result of explicit computations
+        // This where the multiplication in frequency domain is done. More precisely,
+        // and with the appropriate permutations in between, the sequence of
+        // 3-point FFTs --> multiplication by twiddle factors --> Hadamard
+        // multiplication --> 3 point iFFTs --> multiplication by (inverse)
+        // twiddle factors is "squashed" into one step composed of the functions
+        // "block1", "block2" and "block3". The expressions in the
+        // aforementioned functions are the result of explicit computations
         // combined with the Karatsuba trick for the multiplication of complex numbers.
 
         let [v0, v4, v8] = block1([u0, u4, u8], MDS_FREQ_BLOCK_ONE);
         let [v1, v5, v9] = block2([u1, u5, u9], MDS_FREQ_BLOCK_TWO);
         let [v2, v6, v10] = block3([u2, u6, u10], MDS_FREQ_BLOCK_THREE);
-        // The 4th block is not computed as it is similar to the 2nd one, up to complex conjugation.
+        // The 4th block is not computed as it is similar to the 2nd one, up to complex
+        // conjugation.
 
         let [s0, s3, s6, s9] = ifft4_real_unreduced((v0, v1, v2));
         let [s1, s4, s7, s10] = ifft4_real_unreduced((v4, v5, v6));
@@ -364,7 +367,8 @@ mod poseidon12_mds {
         let y1s = y1r + y1i;
         let y2s = y2r + y2i;
 
-        // Compute x0​y0 ​− ix1​y2​ − ix2​y1​ using Karatsuba for complex numbers multiplication
+        // Compute x0​y0 ​− ix1​y2​ − ix2​y1​ using Karatsuba for complex numbers
+        // multiplication
         let m0 = (x0r * y0r, x0i * y0i);
         let m1 = (x1r * y2r, x1i * y2i);
         let m2 = (x2r * y1r, x2i * y1i);
@@ -372,7 +376,8 @@ mod poseidon12_mds {
         let z0i = (x0s * y0s - m0.0 - m0.1) + (-m1.0 + m1.1) + (-m2.0 + m2.1);
         let z0 = (z0r, z0i);
 
-        // Compute x0​y1​ + x1​y0​ − ix2​y2 using Karatsuba for complex numbers multiplication
+        // Compute x0​y1​ + x1​y0​ − ix2​y2 using Karatsuba for complex numbers
+        // multiplication
         let m0 = (x0r * y1r, x0i * y1i);
         let m1 = (x1r * y0r, x1i * y0i);
         let m2 = (x2r * y2r, x2i * y2i);
@@ -458,7 +463,8 @@ mod tests {
         // 2. range 0..WIDTH
         // 3. all -1's
         // 4. random elements of GoldilocksField.
-        // expected output calculated with (modified) hadeshash reference implementation.
+        // expected output calculated with (modified) hadeshash reference
+        // implementation.
 
         let neg_one: u64 = F::NEG_ONE.to_canonical_u64();
 

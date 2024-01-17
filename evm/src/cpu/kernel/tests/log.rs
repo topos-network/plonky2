@@ -30,9 +30,10 @@ fn test_log_0() -> Result<()> {
     interpreter.set_global_metadata_field(GlobalMetadata::LogsLen, 0.into());
     interpreter.set_global_metadata_field(GlobalMetadata::LogsDataLen, 0.into());
 
-    interpreter.run()?;
+    interpreter.run(None)?;
 
-    // The address is encoded in 1+20 bytes. There are no topics or data, so each is encoded in 1 byte. This leads to a payload of 23.
+    // The address is encoded in 1+20 bytes. There are no topics or data, so each is
+    // encoded in 1 byte. This leads to a payload of 23.
     let payload_len = 23;
     assert_eq!(
         interpreter.get_memory_segment(Segment::LogsData),
@@ -75,13 +76,16 @@ fn test_log_2() -> Result<()> {
 
     interpreter.set_memory_segment(Segment::MainMemory, memory);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.get_memory_segment(Segment::Logs),
         [0.into(), 0.into(), 5.into(),]
     );
 
-    // The data has length 3 bytes, and is encoded in 4 bytes. Each of the two topics is encoded in 1+32 bytes. The prefix for the topics list requires 2 bytes. The address is encoded in 1+20 bytes. Overall, we have a logs payload length of 93 bytes.
+    // The data has length 3 bytes, and is encoded in 4 bytes. Each of the two
+    // topics is encoded in 1+32 bytes. The prefix for the topics list requires 2
+    // bytes. The address is encoded in 1+20 bytes. Overall, we have a logs payload
+    // length of 93 bytes.
     let payload_len = 93;
     assert_eq!(
         interpreter.get_memory_segment(Segment::LogsData),
@@ -136,13 +140,16 @@ fn test_log_4() -> Result<()> {
 
     interpreter.set_memory_segment(Segment::MainMemory, memory);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.get_memory_segment(Segment::Logs),
         [0.into(), 0.into(), 5.into(),]
     );
 
-    // The data is of length 1 byte, and is encoded in 1 byte. Each of the four topics is encoded in 1+32 bytes. The topics list is prefixed by 2 bytes. The address is encoded in 1+20 bytes. Overall, this leads to a log payload length of 156.
+    // The data is of length 1 byte, and is encoded in 1 byte. Each of the four
+    // topics is encoded in 1+32 bytes. The topics list is prefixed by 2 bytes. The
+    // address is encoded in 1+20 bytes. Overall, this leads to a log payload length
+    // of 156.
     let payload_len = 156;
     assert_eq!(
         interpreter.get_memory_segment(Segment::LogsData),
@@ -194,6 +201,6 @@ fn test_log_5() -> Result<()> {
     interpreter.set_global_metadata_field(GlobalMetadata::LogsLen, 0.into());
     interpreter.set_global_metadata_field(GlobalMetadata::LogsDataLen, 0.into());
 
-    assert!(interpreter.run().is_err());
+    assert!(interpreter.run(None).is_err());
     Ok(())
 }

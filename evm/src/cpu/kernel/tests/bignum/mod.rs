@@ -67,7 +67,8 @@ fn test_data_u256(filename: &str) -> Vec<U256> {
         .collect()
 }
 
-// Convert each biguint to a vector of bignum limbs, pad to the given length, and concatenate.
+// Convert each biguint to a vector of bignum limbs, pad to the given length,
+// and concatenate.
 fn pad_bignums(biguints: &[BigUint], length: usize) -> Vec<U256> {
     biguints
         .iter()
@@ -102,7 +103,7 @@ fn run_test(fn_label: &str, memory: Vec<U256>, stack: Vec<U256>) -> Result<(Vec<
 
     let mut interpreter: Interpreter<F> = Interpreter::new_with_kernel(fn_label, initial_stack);
     interpreter.set_current_general_memory(memory);
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     let new_memory = interpreter.get_current_general_memory();
 

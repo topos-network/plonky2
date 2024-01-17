@@ -25,7 +25,8 @@ use crate::util::{log2_strict, reverse_bits, reverse_index_bits_in_place, transp
 /// Four (~64 bit) field elements gives ~128 bit security.
 pub const SALT_SIZE: usize = 4;
 
-/// Represents a FRI oracle, i.e. a batch of polynomials which have been Merklized.
+/// Represents a FRI oracle, i.e. a batch of polynomials which have been
+/// Merklized.
 #[derive(Eq, PartialEq, Debug)]
 pub struct PolynomialBatch<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 {
@@ -53,7 +54,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> D
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     PolynomialBatch<F, C, D>
 {
-    /// Creates a list polynomial commitment for the polynomials interpolating the values in `values`.
+    /// Creates a list polynomial commitment for the polynomials interpolating
+    /// the values in `values`.
     pub fn from_values(
         values: Vec<PolynomialValues<F>>,
         rate_bits: usize,
@@ -146,8 +148,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         &slice[..slice.len() - if self.blinding { SALT_SIZE } else { 0 }]
     }
 
-    /// Like `get_lde_values`, but fetches LDE values from a batch of `P::WIDTH` points, and returns
-    /// packed values.
+    /// Like `get_lde_values`, but fetches LDE values from a batch of `P::WIDTH`
+    /// points, and returns packed values.
     pub fn get_lde_values_packed<P>(&self, index_start: usize, step: usize) -> Vec<P>
     where
         P: PackedField<Scalar = F>,
@@ -156,8 +158,9 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             .map(|i| self.get_lde_values(index_start + i, step))
             .collect_vec();
 
-        // This is essentially a transpose, but we will not use the generic transpose method as we
-        // want inner lists to be of type P, not Vecs which would involve allocation.
+        // This is essentially a transpose, but we will not use the generic transpose
+        // method as we want inner lists to be of type P, not Vecs which would
+        // involve allocation.
         let leaf_size = row_wise[0].len();
         (0..leaf_size)
             .map(|j| {
@@ -187,13 +190,15 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         // Final low-degree polynomial that goes into FRI.
         let mut final_poly = PolynomialCoeffs::empty();
 
-        // Each batch `i` consists of an opening point `z_i` and polynomials `{f_ij}_j` to be opened at that point.
-        // For each batch, we compute the composition polynomial `F_i = sum alpha^j f_ij`,
-        // where `alpha` is a random challenge in the extension field.
-        // The final polynomial is then computed as `final_poly = sum_i alpha^(k_i) (F_i(X) - F_i(z_i))/(X-z_i)`
-        // where the `k_i`s are chosen such that each power of `alpha` appears only once in the final sum.
-        // There are usually two batches for the openings at `zeta` and `g * zeta`.
-        // The oracles used in Plonky2 are given in `FRI_ORACLES` in `plonky2/src/plonk/plonk_common.rs`.
+        // Each batch `i` consists of an opening point `z_i` and polynomials `{f_ij}_j`
+        // to be opened at that point. For each batch, we compute the
+        // composition polynomial `F_i = sum alpha^j f_ij`, where `alpha` is a
+        // random challenge in the extension field. The final polynomial is then
+        // computed as `final_poly = sum_i alpha^(k_i) (F_i(X) - F_i(z_i))/(X-z_i)`
+        // where the `k_i`s are chosen such that each power of `alpha` appears only once
+        // in the final sum. There are usually two batches for the openings at
+        // `zeta` and `g * zeta`. The oracles used in Plonky2 are given in
+        // `FRI_ORACLES` in `plonky2/src/plonk/plonk_common.rs`.
         for FriBatchInfo { point, polynomials } in &instance.batches {
             // Collect the coefficients of all the polynomials in `polynomials`.
             let polys_coeff = polynomials.iter().map(|fri_poly| {

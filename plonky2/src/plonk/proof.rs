@@ -327,7 +327,8 @@ impl<F: RichField + Extendable<D>, const D: usize> OpeningSet<F, D> {
         };
         let constants_sigmas_eval = eval_commitment(zeta, constants_sigmas_commitment);
 
-        // `zs_partial_products_lookup_eval` contains the permutation argument polynomials as well as lookup polynomials.
+        // `zs_partial_products_lookup_eval` contains the permutation argument
+        // polynomials as well as lookup polynomials.
         let zs_partial_products_lookup_eval =
             eval_commitment(zeta, zs_partial_products_lookup_commitment);
         let zs_partial_products_lookup_next_eval =

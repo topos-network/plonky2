@@ -303,8 +303,8 @@ impl<const D: usize> StarkProofWithPublicInputsTarget<D> {
 }
 
 // TODO: Deal with the compressed stuff.
-// impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
-//     CompressedProofWithPublicInputs<F, C, D>
+// impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D:
+// usize>     CompressedProofWithPublicInputs<F, C, D>
 // {
 //     /// Computes all Fiat-Shamir challenges used in the Plonk proof.
 //     pub(crate) fn get_challenges(
@@ -338,8 +338,8 @@ impl<const D: usize> StarkProofWithPublicInputsTarget<D> {
 //         )
 //     }
 //
-//     /// Computes all coset elements that can be inferred in the FRI reduction steps.
-//     pub(crate) fn get_inferred_elements(
+//     /// Computes all coset elements that can be inferred in the FRI reduction
+// steps.     pub(crate) fn get_inferred_elements(
 //         &self,
 //         challenges: &ProofChallenges<F, D>,
 //         common_data: &CommonCircuitData<F, C, D>,
@@ -352,19 +352,22 @@ impl<const D: usize> StarkProofWithPublicInputsTarget<D> {
 //             ..
 //         } = challenges;
 //         let mut fri_inferred_elements = Vec::new();
-//         // Holds the indices that have already been seen at each reduction depth.
-//         let mut seen_indices_by_depth =
-//             vec![HashSet::new(); common_data.fri_params.reduction_arity_bits.len()];
-//         let precomputed_reduced_evals = PrecomputedReducedOpenings::from_os_and_alpha(
+//         // Holds the indices that have already been seen at each reduction
+// depth.         let mut seen_indices_by_depth =
+//             vec![HashSet::new();
+// common_data.fri_params.reduction_arity_bits.len()];         let
+// precomputed_reduced_evals = PrecomputedReducedOpenings::from_os_and_alpha(
 //             &self.proof.openings.to_fri_openings(),
 //             *fri_alpha,
 //         );
-//         let log_n = common_data.degree_bits + common_data.config.fri_config.rate_bits;
-//         // Simulate the proof verification and collect the inferred elements.
-//         // The content of the loop is basically the same as the `fri_verifier_query_round` function.
+//         let log_n = common_data.degree_bits +
+// common_data.config.fri_config.rate_bits;         // Simulate the proof
+// verification and collect the inferred elements.         // The content of the
+// loop is basically the same as the `fri_verifier_query_round` function.
 //         for &(mut x_index) in fri_query_indices {
 //             let mut subgroup_x = F::MULTIPLICATIVE_GROUP_GENERATOR
-//                 * F::primitive_root_of_unity(log_n).exp_u64(reverse_bits(x_index, log_n) as u64);
+//                 * F::primitive_root_of_unity(log_n).
+//                   exp_u64(reverse_bits(x_index, log_n) as u64);
 //             let mut old_eval = fri_combine_initial::<F, C, D>(
 //                 &common_data.get_fri_instance(*plonk_zeta),
 //                 &self
@@ -385,12 +388,13 @@ impl<const D: usize> StarkProofWithPublicInputsTarget<D> {
 //             {
 //                 let coset_index = x_index >> arity_bits;
 //                 if !seen_indices_by_depth[i].insert(coset_index) {
-//                     // If this index has already been seen, we can skip the rest of the reductions.
-//                     break;
+//                     // If this index has already been seen, we can skip the
+// rest of the reductions.                     break;
 //                 }
 //                 fri_inferred_elements.push(old_eval);
 //                 let arity = 1 << arity_bits;
-//                 let mut evals = self.proof.opening_proof.query_round_proofs.steps[i][&coset_index]
+//                 let mut evals =
+// self.proof.opening_proof.query_round_proofs.steps[i][&coset_index]
 //                     .evals
 //                     .clone();
 //                 let x_index_within_coset = x_index & (arity - 1);

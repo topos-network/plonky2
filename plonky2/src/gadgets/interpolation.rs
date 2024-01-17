@@ -10,8 +10,9 @@ use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
-    /// Interpolates a polynomial, whose points are a coset of the multiplicative subgroup with the
-    /// given size, and whose values are given. Returns the evaluation of the interpolant at
+    /// Interpolates a polynomial, whose points are a coset of the
+    /// multiplicative subgroup with the given size, and whose values are
+    /// given. Returns the evaluation of the interpolant at
     /// `evaluation_point`.
     pub(crate) fn interpolate_coset(
         &mut self,

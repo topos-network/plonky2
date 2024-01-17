@@ -1,6 +1,7 @@
 //! Handle instructions that are implemented in terms of system calls.
 //!
-//! These are usually the ones that are too complicated to implement in one CPU table row.
+//! These are usually the ones that are too complicated to implement in one CPU
+//! table row.
 
 use plonky2::field::extension::Extendable;
 use plonky2::field::packed::PackedField;
@@ -33,9 +34,6 @@ pub(crate) fn eval_packed<P: PackedField>(
     yield_constr.constraint(filter_syscall * (filter_syscall - P::ONES));
     yield_constr.constraint(filter_exception * (filter_exception - P::ONES));
 
-    // If exception, ensure we are not in kernel mode
-    yield_constr.constraint(filter_exception * lv.is_kernel_mode);
-
     // Get the exception code as an value in {0, ..., 7}.
     let exc_code_bits = lv.general.exception().exc_code_bits;
     let exc_code: P = exc_code_bits
@@ -43,6 +41,11 @@ pub(crate) fn eval_packed<P: PackedField>(
         .enumerate()
         .map(|(i, bit)| bit * P::Scalar::from_canonical_u64(1 << i))
         .sum();
+
+    // If exception but not final halting step, ensure we are not in kernel mode.
+    let six = P::Scalar::from_canonical_u8(6);
+    yield_constr.constraint(filter_exception * (exc_code - six) * lv.is_kernel_mode);
+
     // Ensure that all bits are either 0 or 1.
     for bit in exc_code_bits {
         yield_constr.constraint(filter_exception * bit * (bit - P::ONES));
@@ -105,7 +108,8 @@ pub(crate) fn eval_packed<P: PackedField>(
     yield_constr.constraint_transition(total_filter * nv.gas);
 
     let output = nv.mem_channels[0].value;
-    // New top of the stack: current PC + 1 (limb 0), kernel flag (limb 1), gas counter (limbs 6 and 7).
+    // New top of the stack: current PC + 1 (limb 0), kernel flag (limb 1), gas
+    // counter (limbs 6 and 7).
     yield_constr.constraint(filter_syscall * (output[0] - (lv.program_counter + P::ONES)));
     yield_constr.constraint(filter_exception * (output[0] - lv.program_counter));
     // Check the kernel mode, for syscalls only
@@ -114,8 +118,9 @@ pub(crate) fn eval_packed<P: PackedField>(
     yield_constr.constraint(total_filter * output[7]); // High limb of gas is zero.
 
     // Zero the rest of that register
-    // output[1] is 0 for exceptions, but not for syscalls
-    yield_constr.constraint(filter_exception * output[1]);
+    // output[1] is 0 for exceptions (except for the final halting step), but not
+    // for syscalls.
+    yield_constr.constraint(filter_exception * (exc_code - six) * output[1]);
     for &limb in &output[2..6] {
         yield_constr.constraint(total_filter * limb);
     }
@@ -141,10 +146,6 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     let constr = builder.mul_sub_extension(filter_exception, filter_exception, filter_exception);
     yield_constr.constraint(builder, constr);
 
-    // Ensure that, if exception, we are not in kernel mode
-    let constr = builder.mul_extension(filter_exception, lv.is_kernel_mode);
-    yield_constr.constraint(builder, constr);
-
     let exc_code_bits = lv.general.exception().exc_code_bits;
     let exc_code =
         exc_code_bits
@@ -154,6 +155,11 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
                 builder.mul_const_add_extension(F::from_canonical_u64(1 << i), bit, cumul)
             });
 
+    // If exception but not final halting step, ensure we are not in kernel mode.
+    let opcode_is_six = builder.add_const_extension(exc_code, F::NEG_ONE * F::from_canonical_u8(6));
+    let constr = builder.mul_many_extension([filter_exception, opcode_is_six, lv.is_kernel_mode]);
+
+    yield_constr.constraint(builder, constr);
     // Ensure that all bits are either 0 or 1.
     for bit in exc_code_bits {
         let constr = builder.mul_sub_extension(bit, bit, bit);
@@ -268,14 +274,16 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 
     // New top of the stack.
     let output = nv.mem_channels[0].value;
-    // Push to stack (syscall): current PC + 1 (limb 0), kernel flag (limb 1), gas counter (limbs 6 and 7).
+    // Push to stack (syscall): current PC + 1 (limb 0), kernel flag (limb 1), gas
+    // counter (limbs 6 and 7).
     {
         let pc_plus_1 = builder.add_const_extension(lv.program_counter, F::ONE);
         let diff = builder.sub_extension(output[0], pc_plus_1);
         let constr = builder.mul_extension(filter_syscall, diff);
         yield_constr.constraint(builder, constr);
     }
-    // Push to stack (exception): current PC (limb 0), kernel flag (limb 1), gas counter (limbs 6 and 7).
+    // Push to stack (exception): current PC (limb 0), kernel flag (limb 1), gas
+    // counter (limbs 6 and 7).
     {
         let diff = builder.sub_extension(output[0], lv.program_counter);
         let constr = builder.mul_extension(filter_exception, diff);
@@ -299,7 +307,9 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     }
 
     // Zero the rest of that register
-    let constr = builder.mul_extension(filter_exception, output[1]);
+    // output[1] is 0 for exceptions (except for the final halting step), but not
+    // for syscalls.
+    let constr = builder.mul_many_extension([filter_exception, opcode_is_six, output[1]]);
     yield_constr.constraint(builder, constr);
     for &limb in &output[2..6] {
         let constr = builder.mul_extension(total_filter, limb);

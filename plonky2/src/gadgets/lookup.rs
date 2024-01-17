@@ -47,22 +47,28 @@ pub const OTHER_TABLE: [u16; 256] = [
 pub const SMALLER_TABLE: [u16; 8] = [2, 24, 56, 100, 128, 16, 20, 49];
 
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
-    /// Adds a lookup table to the list of stored lookup tables `self.luts` based on a table of (input, output) pairs. It returns the index of the LUT within `self.luts`.
+    /// Adds a lookup table to the list of stored lookup tables `self.luts`
+    /// based on a table of (input, output) pairs. It returns the index of the
+    /// LUT within `self.luts`.
     pub fn add_lookup_table_from_pairs(&mut self, table: LookupTable) -> usize {
         self.update_luts_from_pairs(table)
     }
 
-    /// Adds a lookup table to the list of stored lookup tables `self.luts` based on a table, represented as a slice `&[u16]` of inputs and a slice `&[u16]` of outputs. It returns the index of the LUT within `self.luts`.
+    /// Adds a lookup table to the list of stored lookup tables `self.luts`
+    /// based on a table, represented as a slice `&[u16]` of inputs and a slice
+    /// `&[u16]` of outputs. It returns the index of the LUT within `self.luts`.
     pub fn add_lookup_table_from_table(&mut self, inps: &[u16], outs: &[u16]) -> usize {
         self.update_luts_from_table(inps, outs)
     }
 
-    /// Adds a lookup table to the list of stored lookup tables `self.luts` based on a function. It returns the index of the LUT within `self.luts`.
+    /// Adds a lookup table to the list of stored lookup tables `self.luts`
+    /// based on a function. It returns the index of the LUT within `self.luts`.
     pub fn add_lookup_table_from_fn(&mut self, f: fn(u16) -> u16, inputs: &[u16]) -> usize {
         self.update_luts_from_fn(f, inputs)
     }
 
-    /// Adds a lookup (input, output) pair to the stored lookups. Takes a `Target` input and returns a `Target` output.
+    /// Adds a lookup (input, output) pair to the stored lookups. Takes a
+    /// `Target` input and returns a `Target` output.
     pub fn add_lookup_from_index(&mut self, looking_in: Target, lut_index: usize) -> Target {
         assert!(
             lut_index < self.get_luts_length(),
@@ -75,8 +81,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         looking_out
     }
 
-    /// We call this function at the end of circuit building right before the PI gate to add all `LookupTableGate` and `LookupGate`.
-    /// It also updates `self.lookup_rows` accordingly.
+    /// We call this function at the end of circuit building right before the PI
+    /// gate to add all `LookupTableGate` and `LookupGate`. It also updates
+    /// `self.lookup_rows` accordingly.
     pub fn add_all_lookups(&mut self) {
         for lut_index in 0..self.num_luts() {
             assert!(
@@ -95,12 +102,14 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                 let gate = LookupGate::new_from_table(&self.config, lut.clone());
                 let num_slots = LookupGate::num_slots(&self.config);
 
-                // Given the number of lookups and the number of slots for each gate, it is possible
-                // to compute the number of gates that will employ all their slots; such gates can
-                // can be instantiated with `add_gate` rather than being instantiated slot by slot
+                // Given the number of lookups and the number of slots for each gate, it is
+                // possible to compute the number of gates that will employ all
+                // their slots; such gates can can be instantiated with
+                // `add_gate` rather than being instantiated slot by slot
 
-                // lookup_iter will iterate over the lookups that can be placed in fully utilized
-                // gates, splitting them in chunks that can be placed in the same `LookupGate`
+                // lookup_iter will iterate over the lookups that can be placed in fully
+                // utilized gates, splitting them in chunks that can be placed
+                // in the same `LookupGate`
                 let lookup_iter = lookups.chunks_exact(num_slots);
                 // `last_chunk` will contain the remainder of lookups, which cannot fill all the
                 // slots of a `LookupGate`; this last chunk will be processed by incrementally
@@ -132,23 +141,27 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                 let num_lut_rows = (self.get_luts_idx_length(lut_index) - 1) / num_lut_entries + 1;
                 let gate =
                     LookupTableGate::new_from_table(&self.config, lut.clone(), last_lut_gate);
-                // Also instances of `LookupTableGate` can be placed with the `add_gate` function
-                // rather than being instantiated slot by slot; note that in this case there is no
-                // need to separately handle the last chunk of LUT entries that cannot fill all the
-                // slots of a `LookupTableGate`, as the generator already handles empty slots
+                // Also instances of `LookupTableGate` can be placed with the `add_gate`
+                // function rather than being instantiated slot by slot; note
+                // that in this case there is no need to separately handle the
+                // last chunk of LUT entries that cannot fill all the slots of a
+                // `LookupTableGate`, as the generator already handles empty slots
                 for _ in 0..num_lut_rows {
                     self.add_gate(gate.clone(), vec![]);
                 }
 
                 let first_lut_gate = self.num_gates() - 1;
 
-                // Will ensure the next row's wires will be all zeros. With this, there is no distinction between the transition constraints on the first row
-                // and on the other rows. Additionally, initial constraints become a simple zero check.
+                // Will ensure the next row's wires will be all zeros. With this, there is no
+                // distinction between the transition constraints on the first row
+                // and on the other rows. Additionally, initial constraints become a simple zero
+                // check.
                 self.add_gate(NoopGate, vec![]);
 
                 // These elements are increasing: the gate rows are deliberately upside down.
-                // This is necessary for constraint evaluation so that you do not need values of the next
-                // row's wires, which aren't provided in the evaluation variables.
+                // This is necessary for constraint evaluation so that you do not need values of
+                // the next row's wires, which aren't provided in the evaluation
+                // variables.
                 self.add_lookup_rows(last_lu_gate, last_lut_gate, first_lut_gate);
             }
         }

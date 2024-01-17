@@ -13,7 +13,10 @@ use crate::cpu::kernel::constants::context_metadata::ContextMetadata;
 use crate::cpu::kernel::interpreter::Interpreter;
 use crate::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use crate::generation::TrieInputs;
-use crate::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use crate::memory::segments::Segment;
+use crate::proof::{BlockHashes, BlockMetadata, MemCap, TrieRoots};
+use crate::util::h2u;
+use crate::witness::state::RegistersState;
 use crate::GenerationInputs;
 
 #[test]
@@ -138,6 +141,12 @@ fn test_add11_yml() {
         block_bloom: [0.into(); 8],
     };
 
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = KERNEL.global_labels["halt"];
+    // Address of the stack top in the stored registers. This value does not
+    // actually matter much: it is unconstrained because the stack is empty at
+    // the end of the execution. This simply corresponds to the actual stored value
+    // in that memory slot instead of the (here nonexisten) previous stack_top.
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -164,12 +173,13 @@ fn test_add11_yml() {
     interpreter.generation_state.registers.program_counter = route_txn_label;
     interpreter.set_context_metadata_field(0, ContextMetadata::GasLimit, 1_000_000.into());
     interpreter.set_is_kernel(true);
-    interpreter.run().expect("Proving add11 failed.");
+    interpreter.run(None).expect("Proving add11 failed.");
 }
 
 #[test]
 fn test_add11_yml_with_exception() {
-    // In this test, we make sure that the user code throws a stack underflow exception.
+    // In this test, we make sure that the user code throws a stack underflow
+    // exception.
     let beneficiary = hex!("2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
     let sender = hex!("a94f5374fce5edbc8e2a8697c15331677e6ebf0b");
     let to = hex!("095e7baea6a6c7c4c2dfeb977efac326af552d87");
@@ -222,7 +232,8 @@ fn test_add11_yml_with_exception() {
     let txn_gas_limit = 400_000;
     let gas_price = 10;
 
-    // Here, since the transaction fails, it consumes its gas limit, and does nothing else.
+    // Here, since the transaction fails, it consumes its gas limit, and does
+    // nothing else.
     let expected_state_trie_after = {
         let beneficiary_account_after = beneficiary_account_before;
         // This is the only account that changes: the nonce and the balance are updated.
@@ -280,6 +291,11 @@ fn test_add11_yml_with_exception() {
         block_bloom: [0.into(); 8],
     };
 
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = KERNEL.global_labels["halt"];
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 31848;
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -307,6 +323,6 @@ fn test_add11_yml_with_exception() {
     interpreter.set_context_metadata_field(0, ContextMetadata::GasLimit, 1_000_000.into());
     interpreter.set_is_kernel(true);
     interpreter
-        .run()
+        .run(None)
         .expect("Proving add11 with exception failed.");
 }

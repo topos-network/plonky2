@@ -35,9 +35,9 @@ use crate::util::partial_products::{partial_products_and_z_gx, quotient_chunk_pr
 use crate::util::timing::TimingTree;
 use crate::util::{ceil_div_usize, log2_ceil, transpose};
 
-/// Set all the lookup gate wires (including multiplicities) and pad unused LU slots.
-/// Warning: rows are in descending order: the first gate to appear is the last LU gate, and
-/// the last gate to appear is the first LUT gate.
+/// Set all the lookup gate wires (including multiplicities) and pad unused LU
+/// slots. Warning: rows are in descending order: the first gate to appear is
+/// the last LU gate, and the last gate to appear is the first LUT gate.
 pub fn set_lookup_wires<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -94,7 +94,8 @@ pub fn set_lookup_wires<
             multiplicities[0] += 1;
         }
 
-        // We don't need to pad the last `LookupTableGate`; extra wires are set to 0 by default, which satisfies the constraints.
+        // We don't need to pad the last `LookupTableGate`; extra wires are set to 0 by
+        // default, which satisfies the constraints.
         for lut_entry in 0..lut_len {
             let row = first_lut_gate - lut_entry / num_lut_entries;
             let col = lut_entry % num_lut_entries;
@@ -190,7 +191,8 @@ where
 
     challenger.observe_cap::<C::Hasher>(&wires_commitment.merkle_tree.cap);
 
-    // We need 4 values per challenge: 2 for the combos, 1 for (X-combo) in the accumulators and 1 to prove that the lookup table was computed correctly.
+    // We need 4 values per challenge: 2 for the combos, 1 for (X-combo) in the
+    // accumulators and 1 to prove that the lookup table was computed correctly.
     // We can reuse betas and gammas for two of them.
     let num_lookup_challenges = NUM_COINS_LOOKUP * num_challenges;
 
@@ -219,7 +221,8 @@ where
         all_wires_permutation_partial_products(&witness, &betas, &gammas, prover_data, common_data)
     );
 
-    // Z is expected at the front of our batch; see `zs_range` and `partial_products_range`.
+    // Z is expected at the front of our batch; see `zs_range` and
+    // `partial_products_range`.
     let plonk_z_vecs = partial_products_and_zs
         .iter_mut()
         .map(|partial_products_and_z| partial_products_and_z.pop().unwrap())
@@ -300,9 +303,10 @@ where
     challenger.observe_cap::<C::Hasher>(&quotient_polys_commitment.merkle_tree.cap);
 
     let zeta = challenger.get_extension_challenge::<D>();
-    // To avoid leaking witness data, we want to ensure that our opening locations, `zeta` and
-    // `g * zeta`, are not in our subgroup `H`. It suffices to check `zeta` only, since
-    // `(g * zeta)^n = zeta^n`, where `n` is the order of `g`.
+    // To avoid leaking witness data, we want to ensure that our opening locations,
+    // `zeta` and `g * zeta`, are not in our subgroup `H`. It suffices to check
+    // `zeta` only, since `(g * zeta)^n = zeta^n`, where `n` is the order of
+    // `g`.
     let g = F::Extension::primitive_root_of_unity(common_data.degree_bits());
     ensure!(
         zeta.exp_power_of_2(common_data.degree_bits()) != F::Extension::ONE,
@@ -431,7 +435,8 @@ fn wires_permutation_partial_products_and_zs<
     for quotient_chunk_products in all_quotient_chunk_products {
         let mut partial_products_and_z_gx =
             partial_products_and_z_gx(z_x, &quotient_chunk_products);
-        // The last term is Z(gx), but we replace it with Z(x), otherwise Z would end up shifted.
+        // The last term is Z(gx), but we replace it with Z(x), otherwise Z would end up
+        // shifted.
         swap(&mut z_x, &mut partial_products_and_z_gx[num_prods]);
         all_partial_products_and_zs.push(partial_products_and_z_gx);
     }
@@ -444,11 +449,14 @@ fn wires_permutation_partial_products_and_zs<
 
 /// Computes lookup polynomials for a given challenge.
 /// The polynomials hold the value of RE, Sum and Ldc of the Tip5 paper (<https://eprint.iacr.org/2023/107.pdf>). To reduce their
-/// numbers, we batch multiple slots in a single polynomial. Since RE only involves degree one constraints, we can batch
-/// all the slots of a row. For Sum and Ldc, batching increases the constraint degree, so we bound the number of
-/// partial polynomials according to `max_quotient_degree_factor`.
-/// As another optimization, Sum and LDC polynomials are shared (in so called partial SLDC polynomials), and the last value
-/// of the last partial polynomial is Sum(end) - LDC(end). If the lookup argument is valid, then it must be equal to 0.
+/// numbers, we batch multiple slots in a single polynomial. Since RE only
+/// involves degree one constraints, we can batch all the slots of a row. For
+/// Sum and Ldc, batching increases the constraint degree, so we bound the
+/// number of partial polynomials according to `max_quotient_degree_factor`.
+/// As another optimization, Sum and LDC polynomials are shared (in so called
+/// partial SLDC polynomials), and the last value of the last partial polynomial
+/// is Sum(end) - LDC(end). If the lookup argument is valid, then it must be
+/// equal to 0.
 fn compute_lookup_polys<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -518,7 +526,8 @@ fn compute_lookup_polys<
                 let prev = if slot != 0 {
                     final_poly_vecs[slot].values[row]
                 } else {
-                    // If `row == first_lut_row`, then `final_poly_vecs[num_partial_lookups].values[row + 1] == 0`.
+                    // If `row == first_lut_row`, then
+                    // `final_poly_vecs[num_partial_lookups].values[row + 1] == 0`.
                     final_poly_vecs[num_partial_lookups].values[row + 1]
                 };
                 let sum = (slot * max_lookup_table_degree
@@ -627,11 +636,12 @@ fn compute_quotient_polys<
         If we need this in the future, we can precompute the larger LDE before computing the `PolynomialBatch`s."
     );
 
-    // We reuse the LDE computed in `PolynomialBatch` and extract every `step` points to get
-    // an LDE matching `max_filtered_constraint_degree`.
+    // We reuse the LDE computed in `PolynomialBatch` and extract every `step`
+    // points to get an LDE matching `max_filtered_constraint_degree`.
     let step = 1 << (common_data.config.fri_config.rate_bits - quotient_degree_bits);
-    // When opening the `Z`s polys at the "next" point in Plonk, need to look at the point `next_step`
-    // steps away since we work on an LDE of degree `max_filtered_constraint_degree`.
+    // When opening the `Z`s polys at the "next" point in Plonk, need to look at the
+    // point `next_step` steps away since we work on an LDE of degree
+    // `max_filtered_constraint_degree`.
     let next_step = 1 << quotient_degree_bits;
 
     let points = F::two_adic_subgroup(common_data.degree_bits() + quotient_degree_bits);
@@ -642,7 +652,8 @@ fn compute_quotient_polys<
     // Precompute the lookup table evals on the challenges in delta
     // These values are used to produce the final RE constraints for each lut,
     // and are the same each time in check_lookup_constraints_batched.
-    // lut_poly_evals[i][j] gives the eval for the i'th challenge and the j'th lookup table
+    // lut_poly_evals[i][j] gives the eval for the i'th challenge and the j'th
+    // lookup table
     let lut_re_poly_evals: Vec<Vec<F>> = if has_lookup {
         let num_lut_slots = LookupTableGate::num_slots(&common_data.config);
         (0..num_challenges)

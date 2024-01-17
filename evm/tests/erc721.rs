@@ -41,8 +41,9 @@ type C = KeccakGoldilocksConfig;
 /// }
 /// ```
 ///
-/// The transaction calls the `safeTransferFrom` function to transfer token `1337` from address
-/// `0x5B38Da6a701c568545dCfcB03FcB875f56beddC4` to address `0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2`.
+/// The transaction calls the `safeTransferFrom` function to transfer token
+/// `1337` from address `0x5B38Da6a701c568545dCfcB03FcB875f56beddC4` to address
+/// `0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2`.
 #[test]
 fn test_erc721() -> anyhow::Result<()> {
     init_logger();
@@ -176,7 +177,16 @@ fn test_erc721() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing, None)?;
+    let max_cpu_len = 1 << 20;
+    let proof = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        0,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)

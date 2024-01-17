@@ -14,14 +14,16 @@ use plonky2::fri::reduction_strategies::FriReductionStrategy;
 use plonky2::fri::{FriConfig, FriParams};
 use plonky2::hash::hash_types::RichField;
 
-/// A configuration containing the different parameters used by the STARK prover.
+/// A configuration containing the different parameters used by the STARK
+/// prover.
 #[derive(Clone, Debug)]
 pub struct StarkConfig {
-    /// The targeted security level for the proofs generated with this configuration.
+    /// The targeted security level for the proofs generated with this
+    /// configuration.
     pub security_bits: usize,
 
-    /// The number of challenge points to generate, for IOPs that have soundness errors of (roughly)
-    /// `degree / |F|`.
+    /// The number of challenge points to generate, for IOPs that have soundness
+    /// errors of (roughly) `degree / |F|`.
     pub num_challenges: usize,
 
     /// The configuration of the FRI sub-protocol.
@@ -44,8 +46,8 @@ impl StarkConfig {
         }
     }
 
-    /// A typical configuration with a rate of 2, resulting in fast but large proofs.
-    /// Targets ~100 bit conjectured security.
+    /// A typical configuration with a rate of 2, resulting in fast but large
+    /// proofs. Targets ~100 bit conjectured security.
     pub const fn standard_fast_config() -> Self {
         Self {
             security_bits: 100,
@@ -60,13 +62,14 @@ impl StarkConfig {
         }
     }
 
-    /// Outputs the [`FriParams`] used during the FRI sub-protocol by this [`StarkConfig`].
+    /// Outputs the [`FriParams`] used during the FRI sub-protocol by this
+    /// [`StarkConfig`].
     pub fn fri_params(&self, degree_bits: usize) -> FriParams {
         self.fri_config.fri_params(degree_bits, false)
     }
 
-    /// Checks that this STARK configuration is consistent, i.e. that the different
-    /// parameters meet the targeted security level.
+    /// Checks that this STARK configuration is consistent, i.e. that the
+    /// different parameters meet the targeted security level.
     pub fn check_config<F: RichField + Extendable<D>, const D: usize>(&self) -> Result<()> {
         let StarkConfig {
             security_bits,
@@ -140,8 +143,9 @@ mod tests {
                 num_query_rounds: 50,
             },
         );
-        // The conjectured security yields `rate_bits` * `num_query_rounds` + `proof_of_work_bits` = 66
-        // bits of security for FRI, which falls short of the 100 bits of security target.
+        // The conjectured security yields `rate_bits` * `num_query_rounds` +
+        // `proof_of_work_bits` = 66 bits of security for FRI, which falls short
+        // of the 100 bits of security target.
         assert!(too_few_queries_config.check_config::<F, D>().is_err());
     }
 }

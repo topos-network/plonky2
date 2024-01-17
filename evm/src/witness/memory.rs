@@ -1,4 +1,5 @@
 use ethereum_types::U256;
+use serde::{Deserialize, Serialize};
 
 use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
 
@@ -31,8 +32,8 @@ impl MemoryChannel {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct MemoryAddress {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct MemoryAddress {
     pub(crate) context: usize,
     pub(crate) segment: usize,
     pub(crate) virt: usize,
@@ -72,8 +73,8 @@ impl MemoryAddress {
     }
 
     /// Creates a new `MemoryAddress` from a bundled address fitting a `U256`.
-    /// It will recover the virtual offset as the lowest 32-bit limb, the segment
-    /// as the next limb, and the context as the next one.
+    /// It will recover the virtual offset as the lowest 32-bit limb, the
+    /// segment as the next limb, and the context as the next one.
     pub(crate) fn new_bundle(addr: U256) -> Result<Self, ProgramError> {
         let virt = addr.low_u32().into();
         let segment = (addr >> SEGMENT_SCALING_FACTOR).low_u32().into();
@@ -95,7 +96,8 @@ pub(crate) enum MemoryOpKind {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MemoryOp {
-    /// true if this is an actual memory operation, or false if it's a padding row.
+    /// true if this is an actual memory operation, or false if it's a padding
+    /// row.
     pub filter: bool,
     pub timestamp: usize,
     pub address: MemoryAddress,
@@ -123,7 +125,9 @@ impl MemoryOp {
         kind: MemoryOpKind,
         value: U256,
     ) -> Self {
-        let timestamp = clock * NUM_CHANNELS + channel.index();
+        // Since the clock starts at 1, the timestamps is:
+        // `timestamp = (clock - 1) * NUM_CHANNELS + 1 + channel`
+        let timestamp = (clock - 1) * NUM_CHANNELS + 1 + channel.index();
         MemoryOp {
             filter: true,
             timestamp,
@@ -164,7 +168,7 @@ pub(crate) struct MemoryState {
 
 impl MemoryState {
     pub(crate) fn new(kernel_code: &[u8]) -> Self {
-        let code_u256s = kernel_code.iter().map(|&x| x.into()).collect();
+        let code_u256s = kernel_code.iter().map(|&x| Some(x.into())).collect();
         let mut result = Self::default();
         result.contexts[0].segments[Segment::Code.unscale()].content = code_u256s;
         result
@@ -184,17 +188,26 @@ impl MemoryState {
         }
     }
 
-    pub(crate) fn get(&self, address: MemoryAddress) -> U256 {
+    pub(crate) fn get_option(&self, address: MemoryAddress) -> Option<U256> {
         if address.context >= self.contexts.len() {
-            return U256::zero();
+            return None;
         }
 
         let segment = Segment::all()[address.segment];
 
         if let Some(constant) = Segment::constant(&segment, address.virt) {
-            return constant;
+            return Some(constant);
         }
 
+        if address.virt
+            >= self.contexts[address.context].segments[address.segment]
+                .content
+                .len()
+            || self.contexts[address.context].segments[address.segment].content[address.virt]
+                .is_none()
+        {
+            return None;
+        }
         let val = self.contexts[address.context].segments[address.segment].get(address.virt);
         assert!(
             val.bits() <= segment.bit_range(),
@@ -203,7 +216,13 @@ impl MemoryState {
             segment,
             segment.bit_range()
         );
-        val
+        Some(val)
+    }
+    pub(crate) fn get(&self, address: MemoryAddress) -> U256 {
+        match self.get_option(address) {
+            Some(val) => val,
+            None => 0.into(),
+        }
     }
 
     pub(crate) fn set(&mut self, address: MemoryAddress, val: U256) {
@@ -262,7 +281,7 @@ impl Default for MemoryContextState {
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct MemorySegmentState {
-    pub(crate) content: Vec<U256>,
+    pub(crate) content: Vec<Option<U256>>,
 }
 
 impl MemorySegmentState {
@@ -270,13 +289,21 @@ impl MemorySegmentState {
         self.content
             .get(virtual_addr)
             .copied()
-            .unwrap_or(U256::zero())
+            .unwrap_or_default()
+            .unwrap_or_default()
     }
 
     pub(crate) fn set(&mut self, virtual_addr: usize, value: U256) {
         if virtual_addr >= self.content.len() {
-            self.content.resize(virtual_addr + 1, U256::zero());
+            self.content.resize(virtual_addr + 1, None);
         }
-        self.content[virtual_addr] = value;
+        self.content[virtual_addr] = Some(value);
+    }
+
+    pub(crate) fn return_content(&self) -> Vec<U256> {
+        self.content
+            .iter()
+            .map(|&val| val.unwrap_or_default())
+            .collect()
     }
 }

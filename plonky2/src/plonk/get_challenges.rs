@@ -50,7 +50,8 @@ fn get_challenges<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, cons
     let plonk_gammas = challenger.get_n_challenges(num_challenges);
 
     // If there are lookups in the circuit, we should get delta challenges as well.
-    // But we can use the already generated `plonk_betas` and `plonk_gammas` as the first `plonk_deltas` challenges.
+    // But we can use the already generated `plonk_betas` and `plonk_gammas` as the
+    // first `plonk_deltas` challenges.
     let plonk_deltas = if has_lookup {
         let num_lookup_challenges = NUM_COINS_LOOKUP * num_challenges;
         let mut deltas = Vec::with_capacity(num_lookup_challenges);
@@ -64,7 +65,8 @@ fn get_challenges<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, cons
         vec![]
     };
 
-    // `plonk_zs_partial_products_cap` also contains the commitment to lookup polynomials.
+    // `plonk_zs_partial_products_cap` also contains the commitment to lookup
+    // polynomials.
     challenger.observe_cap::<C::Hasher>(plonk_zs_partial_products_cap);
     let plonk_alphas = challenger.get_n_challenges(num_challenges);
 
@@ -177,7 +179,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         )
     }
 
-    /// Computes all coset elements that can be inferred in the FRI reduction steps.
+    /// Computes all coset elements that can be inferred in the FRI reduction
+    /// steps.
     pub(crate) fn get_inferred_elements(
         &self,
         challenges: &ProofChallenges<F, D>,
@@ -204,7 +207,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         );
         let log_n = common_data.degree_bits() + common_data.config.fri_config.rate_bits;
         // Simulate the proof verification and collect the inferred elements.
-        // The content of the loop is basically the same as the `fri_verifier_query_round` function.
+        // The content of the loop is basically the same as the
+        // `fri_verifier_query_round` function.
         for &(mut x_index) in fri_query_indices {
             let mut subgroup_x = F::MULTIPLICATIVE_GROUP_GENERATOR
                 * F::primitive_root_of_unity(log_n).exp_u64(reverse_bits(x_index, log_n) as u64);
@@ -286,7 +290,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let plonk_gammas = challenger.get_n_challenges(self, num_challenges);
 
         // If there are lookups in the circuit, we should get delta challenges as well.
-        // But we can use the already generated `plonk_betas` and `plonk_gammas` as the first `plonk_deltas` challenges.
+        // But we can use the already generated `plonk_betas` and `plonk_gammas` as the
+        // first `plonk_deltas` challenges.
         let plonk_deltas = if has_lookup {
             let num_lookup_challenges = NUM_COINS_LOOKUP * num_challenges;
             let mut deltas = Vec::with_capacity(num_lookup_challenges);

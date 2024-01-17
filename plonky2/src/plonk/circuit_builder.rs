@@ -59,10 +59,11 @@ use crate::util::{log2_ceil, log2_strict, transpose, transpose_poly_values};
 pub const NUM_COINS_LOOKUP: usize = 4;
 
 /// Enum listing the different types of lookup challenges.
-/// `ChallengeA` is used for the linear combination of input and output pairs in Sum and LDC.
-/// `ChallengeB` is used for the linear combination of input and output pairs in the polynomial RE.
-/// `ChallengeAlpha` is used for the running sums: 1/(alpha - combo_i).
-/// `ChallengeDelta` is a challenge on which to evaluate the interpolated LUT function.
+/// `ChallengeA` is used for the linear combination of input and output pairs in
+/// Sum and LDC. `ChallengeB` is used for the linear combination of input and
+/// output pairs in the polynomial RE. `ChallengeAlpha` is used for the running
+/// sums: 1/(alpha - combo_i). `ChallengeDelta` is a challenge on which to
+/// evaluate the interpolated LUT function.
 pub enum LookupChallenges {
     ChallengeA = 0,
     ChallengeB = 1,
@@ -70,10 +71,11 @@ pub enum LookupChallenges {
     ChallengeDelta = 3,
 }
 
-/// Structure containing, for each lookup table, the indices of the last lookup row,
-/// the last lookup table row and the first lookup table row. Since the rows are in
-/// reverse order in the trace, they actually correspond, respectively, to: the indices
-/// of the first `LookupGate`, the first `LookupTableGate` and the last `LookupTableGate`.
+/// Structure containing, for each lookup table, the indices of the last lookup
+/// row, the last lookup table row and the first lookup table row. Since the
+/// rows are in reverse order in the trace, they actually correspond,
+/// respectively, to: the indices of the first `LookupGate`, the first
+/// `LookupTableGate` and the last `LookupTableGate`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LookupWire {
     /// Index of the last lookup row (i.e. the first `LookupGate`).
@@ -84,9 +86,9 @@ pub struct LookupWire {
     pub first_lut_gate: usize,
 }
 
-/// Structure used to construct a plonky2 circuit. It provides all the necessary toolkit that,
-/// from an initial circuit configuration, will enable one to design a circuit and its associated
-/// prover/verifier data.
+/// Structure used to construct a plonky2 circuit. It provides all the necessary
+/// toolkit that, from an initial circuit configuration, will enable one to
+/// design a circuit and its associated prover/verifier data.
 ///
 /// # Usage
 ///
@@ -139,9 +141,10 @@ pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     /// Circuit configuration to be used by this [`CircuitBuilder`].
     pub config: CircuitConfig,
 
-    /// A domain separator, which is included in the initial Fiat-Shamir seed. This is generally not
-    /// needed, but can be used to ensure that proofs for one application are not valid for another.
-    /// Defaults to the empty vector.
+    /// A domain separator, which is included in the initial Fiat-Shamir seed.
+    /// This is generally not needed, but can be used to ensure that proofs
+    /// for one application are not valid for another. Defaults to the empty
+    /// vector.
     domain_separator: Option<Vec<F>>,
 
     /// The types of gates used in this circuit.
@@ -173,13 +176,15 @@ pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     /// Memoized results of `arithmetic_extension` calls.
     pub(crate) arithmetic_results: HashMap<ExtensionArithmeticOperation<F, D>, ExtensionTarget<D>>,
 
-    /// Map between gate type and the current gate of this type with available slots.
+    /// Map between gate type and the current gate of this type with available
+    /// slots.
     current_slots: HashMap<GateRef<F, D>, CurrentSlot<F, D>>,
 
     /// List of constant generators used to fill the constant wires.
     constant_generators: Vec<ConstantGenerator<F>>,
 
-    /// Rows for each LUT: [`LookupWire`] contains: first [`LookupGate`], first and last
+    /// Rows for each LUT: [`LookupWire`] contains: first [`LookupGate`], first
+    /// and last
     /// [LookupTableGate](crate::gates::lookup_table::LookupTableGate).
     lookup_rows: Vec<LookupWire>,
 
@@ -189,8 +194,8 @@ pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     // Lookup tables in the form of `Vec<(input_value, output_value)>`.
     luts: Vec<LookupTable>,
 
-    /// Optional common data. When it is `Some(goal_data)`, the `build` function panics if the resulting
-    /// common data doesn't equal `goal_data`.
+    /// Optional common data. When it is `Some(goal_data)`, the `build` function
+    /// panics if the resulting common data doesn't equal `goal_data`.
     /// This is used in cyclic recursion.
     pub(crate) goal_common_data: Option<CommonCircuitData<F, D>>,
 
@@ -231,8 +236,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         builder
     }
 
-    /// Assert that the configuration used to create this `CircuitBuilder` is consistent,
-    /// i.e. that the different parameters meet the targeted security level.
+    /// Assert that the configuration used to create this `CircuitBuilder` is
+    /// consistent, i.e. that the different parameters meet the targeted
+    /// security level.
     fn check_config(&self) {
         let &CircuitConfig {
             security_bits,
@@ -311,16 +317,19 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         self.lut_to_lookups.len()
     }
 
-    /// Given an index, outputs the corresponding looking table in the set of tables
-    /// used in this circuit, as a sequence of target tuples `(input, output)`.
+    /// Given an index, outputs the corresponding looking table in the set of
+    /// tables used in this circuit, as a sequence of target tuples `(input,
+    /// output)`.
     pub fn get_lut_lookups(&self, lut_index: usize) -> &[(Target, Target)] {
         &self.lut_to_lookups[lut_index]
     }
 
-    /// Adds a new "virtual" target. This is not an actual wire in the witness, but just a target
-    /// that help facilitate witness generation. In particular, a generator can assign a values to a
-    /// virtual target, which can then be copied to other (virtual or concrete) targets. When we
-    /// generate the final witness (a grid of wire values), these virtual targets will go away.
+    /// Adds a new "virtual" target. This is not an actual wire in the witness,
+    /// but just a target that help facilitate witness generation. In
+    /// particular, a generator can assign a values to a virtual target,
+    /// which can then be copied to other (virtual or concrete) targets. When we
+    /// generate the final witness (a grid of wire values), these virtual
+    /// targets will go away.
     pub fn add_virtual_target(&mut self) -> Target {
         let index = self.virtual_target_index;
         self.virtual_target_index += 1;
@@ -337,13 +346,21 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         [0; N].map(|_| self.add_virtual_target())
     }
 
-    /// Adds a new `HashOutTarget`. `NUM_HASH_OUT_ELTS` being hardcoded to 4, it internally
-    /// adds 4 virtual targets in a vector fashion.
+    /// Adds a new `HashOutTarget`. `NUM_HASH_OUT_ELTS` being hardcoded to 4, it
+    /// internally adds 4 virtual targets in a vector fashion.
     pub fn add_virtual_hash(&mut self) -> HashOutTarget {
         HashOutTarget::from_vec(self.add_virtual_targets(4))
     }
 
-    /// Adds a new `MerkleCapTarget`, consisting in `1 << cap_height` `HashOutTarget`.
+    /// Registers a new `HashOutTarget` as a public input. `NUM_HASH_OUT_ELTS`
+    /// being hardcoded to 4, it internally adds 4 virtual targets in a
+    /// vector fashion.
+    pub fn add_virtual_hash_public_input(&mut self) -> HashOutTarget {
+        HashOutTarget::from_vec(self.add_virtual_public_input_arr::<4>().into())
+    }
+
+    /// Adds a new `MerkleCapTarget`, consisting in `1 << cap_height`
+    /// `HashOutTarget`.
     pub fn add_virtual_cap(&mut self, cap_height: usize) -> MerkleCapTarget {
         MerkleCapTarget(self.add_virtual_hashes(1 << cap_height))
     }
@@ -351,6 +368,13 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Adds `n` new `HashOutTarget` in a vector fashion.
     pub fn add_virtual_hashes(&mut self, n: usize) -> Vec<HashOutTarget> {
         (0..n).map(|_i| self.add_virtual_hash()).collect()
+    }
+
+    /// Registers `n` new `HashOutTarget` as public inputs, in a vector fashion.
+    pub fn add_virtual_hashes_public_input(&mut self, n: usize) -> Vec<HashOutTarget> {
+        (0..n)
+            .map(|_i| self.add_virtual_hash_public_input())
+            .collect()
     }
 
     pub(crate) fn add_virtual_merkle_proof(&mut self, len: usize) -> MerkleProofTarget {
@@ -407,7 +431,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// Add a virtual verifier data, register it as a public input and set it to `self.verifier_data_public_input`.
+    /// Add a virtual verifier data, register it as a public input and set it to
+    /// `self.verifier_data_public_input`.
     ///
     /// **WARNING**: Do not register any public input after calling this!
     // TODO: relax this
@@ -450,9 +475,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                 },
             ));
 
-        // Note that we can't immediately add this gate's generators, because the list of constants
-        // could be modified later, i.e. in the case of `ConstantGate`. We will add them later in
-        // `build` instead.
+        // Note that we can't immediately add this gate's generators, because the list
+        // of constants could be modified later, i.e. in the case of
+        // `ConstantGate`. We will add them later in `build` instead.
 
         // Register this gate type if we haven't seen it before.
         let gate_ref = GateRef::new(gate_type);
@@ -483,8 +508,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         );
     }
 
-    /// Adds a gate type to the set of gates to be used in this circuit. This can be useful
-    /// in conditional recursion to uniformize the set of gates of the different circuits.
+    /// Adds a gate type to the set of gates to be used in this circuit. This
+    /// can be useful in conditional recursion to uniformize the set of
+    /// gates of the different circuits.
     pub fn add_gate_to_gate_set(&mut self, gate: GateRef<F, D>) {
         self.gates.insert(gate);
     }
@@ -518,22 +544,24 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// Enforces that a routable `Target` value is 0, using Plonk's permutation argument.
+    /// Enforces that a routable `Target` value is 0, using Plonk's permutation
+    /// argument.
     pub fn assert_zero(&mut self, x: Target) {
         let zero = self.zero();
         self.connect(x, zero);
     }
 
-    /// Enforces that a routable `Target` value is 1, using Plonk's permutation argument.
+    /// Enforces that a routable `Target` value is 1, using Plonk's permutation
+    /// argument.
     ///
     /// # Example
     ///
-    /// Let say the circuit contains a target `a`, and a target `b` as public input so that the
-    /// prover can non-deterministically compute the multiplicative inverse of `a` when generating
-    /// a proof.
+    /// Let say the circuit contains a target `a`, and a target `b` as public
+    /// input so that the prover can non-deterministically compute the
+    /// multiplicative inverse of `a` when generating a proof.
     ///
-    /// One can then add the following constraint in the circuit to enforce that the value provided
-    /// by the prover is correct:
+    /// One can then add the following constraint in the circuit to enforce that
+    /// the value provided by the prover is correct:
     ///
     /// ```ignore
     /// let c = builder.mul(a, b);
@@ -639,17 +667,19 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// If the given target is a constant (i.e. it was created by the `constant(F)` method), returns
-    /// its constant value. Otherwise, returns `None`.
+    /// If the given target is a constant (i.e. it was created by the
+    /// `constant(F)` method), returns its constant value. Otherwise,
+    /// returns `None`.
     pub fn target_as_constant(&self, target: Target) -> Option<F> {
         self.targets_to_constants.get(&target).cloned()
     }
 
-    /// If the given [`ExtensionTarget`] is a constant (i.e. it was created by the
-    /// `constant_extension(F)` method), returns its constant value. Otherwise, returns `None`.
+    /// If the given [`ExtensionTarget`] is a constant (i.e. it was created by
+    /// the `constant_extension(F)` method), returns its constant value.
+    /// Otherwise, returns `None`.
     pub fn target_as_constant_ext(&self, target: ExtensionTarget<D>) -> Option<F::Extension> {
-        // Get a Vec of any coefficients that are constant. If we end up with exactly D of them,
-        // then the `ExtensionTarget` as a whole is constant.
+        // Get a Vec of any coefficients that are constant. If we end up with exactly D
+        // of them, then the `ExtensionTarget` as a whole is constant.
         let const_coeffs: Vec<F> = target
             .0
             .iter()
@@ -715,7 +745,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     pub fn update_luts_from_fn(&mut self, f: fn(u16) -> u16, inputs: &[u16]) -> usize {
         let lut = Arc::new(Self::get_lut_from_fn::<u16>(f, inputs));
 
-        // If the LUT `lut` is already stored in `self.luts`, return its index. Otherwise, append `table` to `self.luts` and return its index.
+        // If the LUT `lut` is already stored in `self.luts`, return its index.
+        // Otherwise, append `table` to `self.luts` and return its index.
         if let Some(idx) = self.is_stored(lut.clone()) {
             idx
         } else {
@@ -726,7 +757,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// Adds a table to the vector of LUTs in the circuit builder, given a list of inputs and table values.
+    /// Adds a table to the vector of LUTs in the circuit builder, given a list
+    /// of inputs and table values.
     pub fn update_luts_from_table(&mut self, inputs: &[u16], table: &[u16]) -> usize {
         assert!(
             inputs.len() == table.len(),
@@ -741,7 +773,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             .collect();
         let lut: LookupTable = Arc::new(pairs);
 
-        // If the LUT `lut` is already stored in `self.luts`, return its index. Otherwise, append `table` to `self.luts` and return its index.
+        // If the LUT `lut` is already stored in `self.luts`, return its index.
+        // Otherwise, append `table` to `self.luts` and return its index.
         if let Some(idx) = self.is_stored(lut.clone()) {
             idx
         } else {
@@ -754,7 +787,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
 
     /// Adds a table to the vector of LUTs in the circuit builder.
     pub fn update_luts_from_pairs(&mut self, table: LookupTable) -> usize {
-        // If the LUT `table` is already stored in `self.luts`, return its index. Otherwise, append `table` to `self.luts` and return its index.
+        // If the LUT `table` is already stored in `self.luts`, return its index.
+        // Otherwise, append `table` to `self.luts` and return its index.
         if let Some(idx) = self.is_stored(table.clone()) {
             idx
         } else {
@@ -765,9 +799,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// Find an available slot, of the form `(row, op)` for gate `G` using parameters `params`
-    /// and constants `constants`. Parameters are any data used to differentiate which gate should be
-    /// used for the given operation.
+    /// Find an available slot, of the form `(row, op)` for gate `G` using
+    /// parameters `params` and constants `constants`. Parameters are any
+    /// data used to differentiate which gate should be used for the given
+    /// operation.
     pub fn find_slot<G: Gate<F, D> + Clone>(
         &mut self,
         gate: G,
@@ -803,7 +838,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             .fri_params(degree_bits, self.config.zero_knowledge)
     }
 
-    /// The number of (base field) `arithmetic` operations that can be performed in a single gate.
+    /// The number of (base field) `arithmetic` operations that can be performed
+    /// in a single gate.
     pub(crate) const fn num_base_arithmetic_ops_per_gate(&self) -> usize {
         if self.config.use_base_arithmetic_gate {
             ArithmeticGate::new_from_config(&self.config).num_ops
@@ -812,14 +848,16 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// The number of `arithmetic_extension` operations that can be performed in a single gate.
+    /// The number of `arithmetic_extension` operations that can be performed in
+    /// a single gate.
     pub(crate) const fn num_ext_arithmetic_ops_per_gate(&self) -> usize {
         ArithmeticExtensionGate::<D>::new_from_config(&self.config).num_ops
     }
 
-    /// The number of polynomial values that will be revealed per opening, both for the "regular"
-    /// polynomials and for the Z polynomials. Because calculating these values involves a recursive
-    /// dependence (the amount of blinding depends on the degree, which depends on the blinding),
+    /// The number of polynomial values that will be revealed per opening, both
+    /// for the "regular" polynomials and for the Z polynomials. Because
+    /// calculating these values involves a recursive dependence (the amount
+    /// of blinding depends on the degree, which depends on the blinding),
     /// this function takes in an estimate of the degree.
     fn num_blinding_gates(&self, degree_estimate: usize) -> (usize, usize) {
         let degree_bits_estimate = log2_strict(degree_estimate);
@@ -842,9 +880,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         (regular_poly_openings, z_openings)
     }
 
-    /// The number of polynomial values that will be revealed per opening, both for the "regular"
-    /// polynomials (which are opened at only one location) and for the Z polynomials (which are
-    /// opened at two).
+    /// The number of polynomial values that will be revealed per opening, both
+    /// for the "regular" polynomials (which are opened at only one
+    /// location) and for the Z polynomials (which are opened at two).
     fn blinding_counts(&self) -> (usize, usize) {
         let num_gates = self.gate_instances.len();
         let mut degree_estimate = 1 << log2_ceil(num_gates);
@@ -861,7 +899,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                 return (regular_poly_openings, z_openings);
             }
 
-            // The blinding gates do not fit within our estimated degree; increase our estimate.
+            // The blinding gates do not fit within our estimated degree; increase our
+            // estimate.
             degree_estimate *= 2;
         }
     }
@@ -886,8 +925,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let num_routed_wires = self.config.num_routed_wires;
         let num_wires = self.config.num_wires;
 
-        // For each "regular" blinding factor, we simply add a no-op gate, and insert a random value
-        // for each wire.
+        // For each "regular" blinding factor, we simply add a no-op gate, and insert a
+        // random value for each wire.
         for _ in 0..regular_poly_openings {
             let row = self.add_gate(NoopGate, vec![]);
             for w in 0..num_wires {
@@ -897,8 +936,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             }
         }
 
-        // For each z poly blinding factor, we add two new gates with the same random value, and
-        // enforce a copy constraint between them.
+        // For each z poly blinding factor, we add two new gates with the same random
+        // value, and enforce a copy constraint between them.
         // See https://mirprotocol.org/blog/Adding-zero-knowledge-to-Plonk-Halo
         for _ in 0..z_openings {
             let gate_1 = self.add_gate(NoopGate, vec![]);
@@ -1003,10 +1042,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    /// In PLONK's permutation argument, there's a slight chance of division by zero. We can
-    /// mitigate this by randomizing some unused witness elements, so if proving fails with
-    /// division by zero, the next attempt will have an (almost) independent chance of success.
-    /// See <https://github.com/0xPolygonZero/plonky2/issues/456>.
+    /// In PLONK's permutation argument, there's a slight chance of division by
+    /// zero. We can mitigate this by randomizing some unused witness
+    /// elements, so if proving fails with division by zero, the next
+    /// attempt will have an (almost) independent chance of success. See <https://github.com/0xPolygonZero/plonky2/issues/456>.
     fn randomize_unused_pi_wires(&mut self, pi_gate: usize) {
         for wire in PublicInputGate::wires_public_inputs_hash().end..self.config.num_wires {
             self.add_simple_generator(RandomValueGenerator {
@@ -1040,8 +1079,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let cap_height = self.config.fri_config.cap_height;
         // Total number of LUTs.
         let num_luts = self.get_luts_length();
-        // Hash the public inputs, and route them to a `PublicInputGate` which will enforce that
-        // those hash wires match the claimed public inputs.
+        // Hash the public inputs, and route them to a `PublicInputGate` which will
+        // enforce that those hash wires match the claimed public inputs.
         let num_public_inputs = self.public_inputs.len();
         let public_inputs_hash =
             self.hash_n_to_hash_no_pad::<C::InnerHasher>(self.public_inputs.clone());
@@ -1068,7 +1107,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             );
         }
 
-        // For each constant-target pair used in the circuit, use a constant generator to fill this target.
+        // For each constant-target pair used in the circuit, use a constant generator
+        // to fill this target.
         for ((c, t), mut const_gen) in self
             .constants_to_targets
             .clone()
@@ -1103,7 +1143,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
 
         let quotient_degree_factor = self.config.max_quotient_degree_factor;
         let mut gates = self.gates.iter().cloned().collect::<Vec<_>>();
-        // Gates need to be sorted by their degrees (and ID to make the ordering deterministic) to compute the selector polynomials.
+        // Gates need to be sorted by their degrees (and ID to make the ordering
+        // deterministic) to compute the selector polynomials.
         gates.sort_unstable_by_key(|g| (g.0.degree(), g.0.id()));
         let (mut constant_vecs, selectors_info) =
             selector_polynomials(&gates, &self.gate_instances, quotient_degree_factor + 1);
@@ -1151,7 +1192,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             PolynomialBatch::<F, C, D>::default()
         };
 
-        // Map between gates where not all generators are used and the gate's number of used generators.
+        // Map between gates where not all generators are used and the gate's number of
+        // used generators.
         let incomplete_gates = self
             .current_slots
             .values()
@@ -1290,14 +1332,16 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             common: circuit_data.common,
         }
     }
-    /// Builds a "prover circuit", with data needed to generate proofs but not verify them.
+    /// Builds a "prover circuit", with data needed to generate proofs but not
+    /// verify them.
     pub fn build_prover<C: GenericConfig<D, F = F>>(self) -> ProverCircuitData<F, C, D> {
         // TODO: Can skip parts of this.
         let circuit_data = self.build::<C>();
         circuit_data.prover_data()
     }
 
-    /// Builds a "verifier circuit", with data needed to verify proofs but not generate them.
+    /// Builds a "verifier circuit", with data needed to verify proofs but not
+    /// generate them.
     pub fn build_verifier<C: GenericConfig<D, F = F>>(self) -> VerifierCircuitData<F, C, D> {
         // TODO: Can skip parts of this.
         let circuit_data = self.build::<C>();

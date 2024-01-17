@@ -42,6 +42,8 @@ where
         keccak_sponge_stark,
         logic_stark,
         memory_stark,
+        mem_before_stark,
+        mem_after_stark,
         cross_table_lookups,
     } = all_stark;
 
@@ -112,6 +114,22 @@ where
         &[],
         config,
     )?;
+    verify_stark_proof_with_challenges(
+        mem_before_stark,
+        &stark_proofs[Table::MemBefore as usize].proof,
+        &stark_challenges[Table::MemBefore as usize],
+        Some(&ctl_vars_per_table[Table::MemBefore as usize]),
+        &[],
+        config,
+    )?;
+    verify_stark_proof_with_challenges(
+        mem_after_stark,
+        &stark_proofs[Table::MemAfter as usize].proof,
+        &stark_challenges[Table::MemAfter as usize],
+        Some(&ctl_vars_per_table[Table::MemAfter as usize]),
+        &[],
+        config,
+    )?;
 
     let public_values = all_proof.public_values;
 
@@ -135,7 +153,8 @@ where
     )
 }
 
-/// Computes the extra product to multiply to the looked value. It contains memory operations not in the CPU trace:
+/// Computes the extra product to multiply to the looked value. It contains
+/// memory operations not in the CPU trace:
 /// - block metadata writes,
 /// - trie roots writes.
 pub(crate) fn get_memory_extra_looking_sum<F, const D: usize>(
@@ -236,7 +255,8 @@ where
     let segment = F::from_canonical_usize(Segment::GlobalMetadata.unscale());
 
     fields.map(|(field, val)| {
-        // These fields are already scaled by their segment, and are in context 0 (kernel).
+        // These fields are already scaled by their segment, and are in context 0
+        // (kernel).
         sum = add_data_write(challenge, segment, sum, field.unscale(), val)
     });
 
@@ -252,6 +272,36 @@ where
     for index in 0..256 {
         let val = h2u(public_values.block_hashes.prev_hashes[index]);
         sum = add_data_write(challenge, block_hashes_segment, sum, index, val);
+    }
+
+    let registers_segment = F::from_canonical_usize(Segment::RegistersStates.unscale());
+    let registers_before = [
+        public_values.registers_before.program_counter,
+        public_values.registers_before.is_kernel,
+        public_values.registers_before.stack_len,
+        public_values.registers_before.stack_top,
+        public_values.registers_before.context,
+        public_values.registers_before.gas_used,
+    ];
+    for i in 0..registers_before.len() {
+        sum = add_data_write(challenge, registers_segment, sum, i, registers_before[i]);
+    }
+    let registers_after = [
+        public_values.registers_after.program_counter,
+        public_values.registers_after.is_kernel,
+        public_values.registers_after.stack_len,
+        public_values.registers_after.stack_top,
+        public_values.registers_after.context,
+        public_values.registers_after.gas_used,
+    ];
+    for i in 0..registers_before.len() {
+        sum = add_data_write(
+            challenge,
+            registers_segment,
+            sum,
+            registers_before.len() + i,
+            registers_after[i],
+        );
     }
 
     sum
@@ -276,7 +326,7 @@ where
     for j in 0..VALUE_LIMBS {
         row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
     }
-    row[12] = F::ONE; // timestamp
+    row[12] = F::TWO; // timestamp
     running_sum + challenge.combine(row.iter()).inverse()
 }
 
@@ -284,8 +334,8 @@ where
 pub(crate) mod debug_utils {
     use super::*;
 
-    /// Output all the extra memory rows that don't appear in the CPU trace but are
-    /// necessary to correctly check the MemoryStark CTL.
+    /// Output all the extra memory rows that don't appear in the CPU trace but
+    /// are necessary to correctly check the MemoryStark CTL.
     pub(crate) fn get_memory_extra_looking_values<F, const D: usize>(
         public_values: &PublicValues,
     ) -> Vec<Vec<F>>
@@ -399,6 +449,39 @@ pub(crate) mod debug_utils {
             extra_looking_rows.push(add_extra_looking_row(block_hashes_segment, index, val));
         }
 
+        // Add registers writes.
+        let registers_segment = F::from_canonical_usize(Segment::RegistersStates.unscale());
+        let registers_before = [
+            public_values.registers_before.program_counter,
+            public_values.registers_before.is_kernel,
+            public_values.registers_before.stack_len,
+            public_values.registers_before.stack_top,
+            public_values.registers_before.context,
+            public_values.registers_before.gas_used,
+        ];
+        for i in 0..registers_before.len() {
+            extra_looking_rows.push(add_extra_looking_row(
+                registers_segment,
+                i,
+                registers_before[i],
+            ));
+        }
+        let registers_after = [
+            public_values.registers_after.program_counter,
+            public_values.registers_after.is_kernel,
+            public_values.registers_after.stack_len,
+            public_values.registers_after.stack_top,
+            public_values.registers_after.context,
+            public_values.registers_after.gas_used,
+        ];
+        for i in 0..registers_before.len() {
+            extra_looking_rows.push(add_extra_looking_row(
+                registers_segment,
+                registers_before.len() + i,
+                registers_after[i],
+            ));
+        }
+
         extra_looking_rows
     }
 
@@ -415,7 +498,7 @@ pub(crate) mod debug_utils {
         for j in 0..VALUE_LIMBS {
             row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
         }
-        row[12] = F::ONE; // timestamp
+        row[12] = F::TWO; // timestamp
         row
     }
 }
