@@ -467,7 +467,7 @@ where
         );
         let mem_before = RecursiveCircuitsForTable::new(
             Table::MemBefore,
-            &all_stark.memory_stark,
+            &all_stark.mem_before_stark,
             degree_bits_ranges[Table::MemBefore as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
