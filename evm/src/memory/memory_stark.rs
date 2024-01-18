@@ -411,6 +411,10 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
             );
         }
 
+        // Validate timestamp_inv. Since it's used as a CTL filter, its value must be checked.
+        let timestamp_inv = local_values[TIMESTAMP_INV];
+        yield_constr.constraint(timestamp * (timestamp * timestamp_inv - P::ONES));
+
         // Check the range column: First value must be 0,
         // and intermediate rows must increment by 1.
         let rc1 = local_values[COUNTER];
@@ -571,6 +575,13 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
                 builder.mul_extension(segment_trie_data, context_zero_initializing_constraint);
             yield_constr.constraint_transition(builder, zero_init_constraint);
         }
+
+        // Validate timestamp_inv. Since it's used as a CTL filter, its value must be checked.
+        let timestamp_inv = local_values[TIMESTAMP_INV];
+        let timestamp_prod = builder.mul_extension(timestamp, timestamp_inv);
+        let timestamp_inv_constraint =
+            builder.mul_sub_extension(timestamp, timestamp_prod, timestamp);
+        yield_constr.constraint(builder, timestamp_inv_constraint);
 
         // Check the range column: First value must be 0,
         // and intermediate rows must increment by 1.
