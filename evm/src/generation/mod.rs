@@ -42,7 +42,9 @@ pub(crate) mod state;
 mod trie_extractor;
 
 use self::mpt::{load_all_mpts, TrieRootPtrs};
-use crate::witness::util::{mem_write_log, stack_peek};
+use crate::witness::util::{mem_write_log, mem_write_log_timestamp_zero, stack_peek};
+
+pub type MemBeforeValues = Vec<(MemoryAddress, U256)>;
 
 /// Inputs needed for trace generation.
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -77,6 +79,9 @@ pub struct GenerationInputs {
 
     /// The hash of the current block, and a list of the 256 previous block hashes.
     pub block_hashes: BlockHashes,
+
+    /// Memory addresses and their values accessed in a previous execution. Used to preinitialize the current memory.
+    pub memory_before: MemBeforeValues,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -197,6 +202,14 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
             .collect::<Vec<_>>(),
     );
 
+    // Preinitialize memory using the provided `mem_before` values.
+    ops.extend(
+        inputs
+            .memory_before
+            .iter()
+            .map(|&(address, val)| mem_write_log_timestamp_zero(address, state, val)),
+    );
+
     state.memory.apply_ops(&ops);
     state.traces.memory_ops.extend(ops);
 }
@@ -206,7 +219,11 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     inputs: GenerationInputs,
     config: &StarkConfig,
     timing: &mut TimingTree,
-) -> anyhow::Result<([Vec<PolynomialValues<F>>; NUM_TABLES], PublicValues)> {
+) -> anyhow::Result<(
+    [Vec<PolynomialValues<F>>; NUM_TABLES],
+    Vec<Vec<F>>,
+    PublicValues,
+)> {
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
 
@@ -291,20 +308,26 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         gas_used_after,
     };
 
+    let init_mem_len = inputs.memory_before.len() as u64;
+    let mem_before_values = inputs.memory_before;
     let public_values = PublicValues {
         trie_roots_before,
         trie_roots_after,
         block_metadata: inputs.block_metadata,
         block_hashes: inputs.block_hashes,
         extra_block_data,
+        init_mem_len,
+        mem_before_values: mem_before_values.clone(),
     };
 
-    let tables = timed!(
+    let (tables, final_values) = timed!(
         timing,
         "convert trace data to tables",
-        state.traces.into_tables(all_stark, config, timing)
+        state
+            .traces
+            .into_tables(all_stark, &mem_before_values, config, timing)
     );
-    Ok((tables, public_values))
+    Ok((tables, final_values, public_values))
 }
 
 fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {

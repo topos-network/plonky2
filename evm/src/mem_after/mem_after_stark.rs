@@ -49,10 +49,10 @@ pub(crate) struct MemAfterStark<F, const D: usize> {
 impl<F: RichField + Extendable<D>, const D: usize> MemAfterStark<F, D> {
     pub(crate) fn generate_trace(
         &self,
-        final_values: Vec<Vec<F>>,
+        final_values: &[Vec<F>],
         timing: &mut TimingTree,
     ) -> Vec<PolynomialValues<F>> {
-        let mut rows = final_values.clone();
+        let mut rows = final_values.to_vec().clone();
 
         let num_rows = rows.len();
         let num_rows_padded = max(16, num_rows.next_power_of_two());

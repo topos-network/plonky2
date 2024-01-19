@@ -7,16 +7,18 @@ use plonky2::hash::hash_types::RichField;
 use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 
+use super::memory::MemoryAddress;
 use crate::all_stark::{AllStark, NUM_TABLES};
 use crate::arithmetic::{BinaryOperator, Operation};
 use crate::byte_packing::byte_packing_stark::BytePackingOp;
 use crate::config::StarkConfig;
 use crate::cpu::columns::CpuColumnsView;
+use crate::generation::MemBeforeValues;
 use crate::keccak_sponge::columns::KECCAK_WIDTH_BYTES;
 use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeOp;
 use crate::util::trace_rows_to_poly_values;
 use crate::witness::memory::MemoryOp;
-use crate::{arithmetic, keccak, keccak_sponge, logic};
+use crate::{arithmetic, keccak, keccak_sponge, logic, mem_before};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TraceCheckpoint {
@@ -165,9 +167,10 @@ impl<T: Copy> Traces<T> {
     pub(crate) fn into_tables<const D: usize>(
         self,
         all_stark: &AllStark<T, D>,
+        mem_before_values: &MemBeforeValues,
         config: &StarkConfig,
         timing: &mut TimingTree,
-    ) -> [Vec<PolynomialValues<T>>; NUM_TABLES]
+    ) -> ([Vec<PolynomialValues<T>>; NUM_TABLES], Vec<Vec<T>>)
     where
         T: RichField + Extendable<D>,
     {
@@ -225,27 +228,32 @@ impl<T: Copy> Traces<T> {
         let mem_before_trace = timed!(
             timing,
             "generate mem_before trace",
-            all_stark.mem_before_stark.generate_trace(timing)
+            all_stark
+                .mem_before_stark
+                .generate_trace(mem_before_values, timing)
         );
         let mem_after_trace = timed!(
             timing,
             "generate mem_after trace",
             all_stark
                 .mem_after_stark
-                .generate_trace(final_values, timing)
+                .generate_trace(&final_values, timing)
         );
 
-        [
-            arithmetic_trace,
-            byte_packing_trace,
-            cpu_trace,
-            keccak_trace,
-            keccak_sponge_trace,
-            logic_trace,
-            memory_trace,
-            mem_before_trace,
-            mem_after_trace,
-        ]
+        (
+            [
+                arithmetic_trace,
+                byte_packing_trace,
+                cpu_trace,
+                keccak_trace,
+                keccak_sponge_trace,
+                logic_trace,
+                memory_trace,
+                mem_before_trace,
+                mem_after_trace,
+            ],
+            final_values,
+        )
     }
 }
 

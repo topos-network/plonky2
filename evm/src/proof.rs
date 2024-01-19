@@ -20,7 +20,10 @@ use crate::all_stark::NUM_TABLES;
 use crate::config::StarkConfig;
 use crate::cross_table_lookup::GrandProductChallengeSet;
 use crate::generation::mpt::TrieRootPtrs;
-use crate::util::{get_h160, get_h256, h2u};
+use crate::generation::MemBeforeValues;
+use crate::mem_before::mem_before_stark::MemBeforeStark;
+use crate::util::{get_h160, get_h256, get_u256, h2u};
+use crate::witness::memory::MemoryAddress;
 
 /// A STARK proof for each table, plus some metadata used to create recursive wrapper proofs.
 #[derive(Debug, Clone)]
@@ -31,6 +34,8 @@ pub struct AllProof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, co
     pub(crate) ctl_challenges: GrandProductChallengeSet<F>,
     /// Public memory values used for the recursive proofs.
     pub public_values: PublicValues,
+    /// Memory values at the end of the execution.
+    pub final_memory_values: MemBeforeValues,
 }
 
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> AllProof<F, C, D> {
@@ -61,6 +66,10 @@ pub struct PublicValues {
     pub block_hashes: BlockHashes,
     /// Extra block data that is specific to the current proof.
     pub extra_block_data: ExtraBlockData,
+    /// Length of the initial memory state.
+    pub init_mem_len: u64,
+    /// Final memory state of the previous execution.
+    pub mem_before_values: MemBeforeValues,
 }
 
 impl PublicValues {
@@ -94,17 +103,63 @@ impl PublicValues {
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE],
         );
+        let init_mem_len = pis[TrieRootsTarget::SIZE * 2
+            + BlockMetadataTarget::SIZE
+            + BlockHashesTarget::SIZE
+            + ExtraBlockDataTarget::SIZE]
+            .to_canonical_u64();
 
+        let start_idx = TrieRootsTarget::SIZE * 2
+            + BlockMetadataTarget::SIZE
+            + BlockHashesTarget::SIZE
+            + ExtraBlockDataTarget::SIZE
+            + 1;
+        let size = MemBeforeData::get_size(init_mem_len);
+        let mem_before_values = MemBeforeData::from_public_inputs(
+            &pis[start_idx..start_idx + size as usize],
+            init_mem_len as usize,
+        );
+        // There are 3 elements per address, + 1 U256 for the memory value.
         Self {
             trie_roots_before,
             trie_roots_after,
             block_metadata,
             block_hashes,
             extra_block_data,
+            init_mem_len,
+            mem_before_values: mem_before_values.mem_before_values,
         }
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemBeforeData {
+    /// Initial memory values.
+    pub mem_before_values: MemBeforeValues,
+}
+
+impl MemBeforeData {
+    const SINGLE_SIZE: usize = 11;
+    pub fn get_size(len: u64) -> u64 {
+        // There are three elements for the address, and 8 elements for each address.
+        len * Self::SINGLE_SIZE as u64
+    }
+    pub fn from_public_inputs<F: RichField>(pis: &[F], len: usize) -> Self {
+        let mut mem_before_values = Vec::with_capacity(len);
+        for i in 0..len {
+            let addr = MemoryAddress {
+                context: pis[Self::SINGLE_SIZE * i].to_canonical_u64() as usize,
+                segment: pis[Self::SINGLE_SIZE * i + 1].to_canonical_u64() as usize,
+                virt: pis[Self::SINGLE_SIZE * i + 2].to_canonical_u64() as usize,
+            };
+            let value = get_u256(
+                &pis[Self::SINGLE_SIZE * i + 3..Self::SINGLE_SIZE * i + Self::SINGLE_SIZE],
+            );
+            mem_before_values.push((addr, value));
+        }
+        MemBeforeData { mem_before_values }
+    }
+}
 /// Trie hashes.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrieRoots {

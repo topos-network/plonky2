@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, ensure, Result};
+use ethereum_types::U256;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use plonky2::field::extension::Extendable;
@@ -29,13 +30,14 @@ use crate::cross_table_lookup::{
     GrandProductChallengeSet,
 };
 use crate::evaluation_frame::StarkEvaluationFrame;
-use crate::generation::{generate_traces, GenerationInputs};
+use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
 use crate::proof::{AllProof, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata};
 use crate::stark::Stark;
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
+use crate::witness::memory::MemoryAddress;
 // #[cfg(test)]
 use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
@@ -54,7 +56,7 @@ where
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (traces, public_values) = timed!(
+    let (traces, final_memory_values, public_values) = timed!(
         timing,
         "generate all traces",
         generate_traces(all_stark, inputs, config, timing)?
@@ -65,6 +67,7 @@ where
         all_stark,
         config,
         traces,
+        final_memory_values,
         public_values,
         timing,
         abort_signal,
@@ -77,6 +80,7 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
+    final_memory_values: Vec<Vec<F>>,
     public_values: PublicValues,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
@@ -139,13 +143,14 @@ where
         )
     );
 
-    let stark_proofs = timed!(
+    let (stark_proofs, final_mem_values) = timed!(
         timing,
         "compute all proofs given commitments",
         prove_with_commitments(
             all_stark,
             config,
             &trace_poly_values,
+            final_memory_values,
             trace_commitments,
             ctl_data_per_table,
             &mut challenger,
@@ -168,6 +173,7 @@ where
         stark_proofs,
         ctl_challenges,
         public_values,
+        final_memory_values: final_mem_values,
     })
 }
 
@@ -182,13 +188,17 @@ fn prove_with_commitments<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     trace_poly_values: &[Vec<PolynomialValues<F>>; NUM_TABLES],
+    final_memory_values: Vec<Vec<F>>,
     trace_commitments: Vec<PolynomialBatch<F, C, D>>,
     ctl_data_per_table: [CtlData<F>; NUM_TABLES],
     challenger: &mut Challenger<F, C::Hasher>,
     ctl_challenges: &GrandProductChallengeSet<F>,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<[StarkProofWithMetadata<F, C, D>; NUM_TABLES]>
+) -> Result<(
+    [StarkProofWithMetadata<F, C, D>; NUM_TABLES],
+    MemBeforeValues,
+)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -313,13 +323,14 @@ where
             abort_signal.clone(),
         )?
     );
-    let mem_after_proof = timed!(
+    let (mem_after_proof, final_memory_values) = timed!(
         timing,
         "prove mem_after STARK",
-        prove_single_table(
+        prove_single_table_mem_after(
             &all_stark.mem_after_stark,
             config,
             &trace_poly_values[Table::MemAfter as usize],
+            final_memory_values,
             &trace_commitments[Table::MemAfter as usize],
             &ctl_data_per_table[Table::MemAfter as usize],
             ctl_challenges,
@@ -329,17 +340,71 @@ where
         )?
     );
 
-    Ok([
-        arithmetic_proof,
-        byte_packing_proof,
-        cpu_proof,
-        keccak_proof,
-        keccak_sponge_proof,
-        logic_proof,
-        memory_proof,
-        mem_before_proof,
-        mem_after_proof,
-    ])
+    Ok((
+        [
+            arithmetic_proof,
+            byte_packing_proof,
+            cpu_proof,
+            keccak_proof,
+            keccak_sponge_proof,
+            logic_proof,
+            memory_proof,
+            mem_before_proof,
+            mem_after_proof,
+        ],
+        final_memory_values,
+    ))
+}
+
+fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAddress, U256) {
+    // The row has shape (1, context, segment, virt, [values]) where [values] are 8 32-bit elements representing one U256 word.
+    let mem_address = MemoryAddress {
+        context: row[1].to_canonical_u64() as usize,
+        segment: row[2].to_canonical_u64() as usize,
+        virt: row[3].to_canonical_u64() as usize,
+    };
+
+    let value: U256 = row[4..]
+        .iter()
+        .rev()
+        .fold(0.into(), |acc, v| (acc << 32) + v.to_canonical_u64());
+    (mem_address, value)
+}
+
+pub(crate) fn prove_single_table_mem_after<F, C, S, const D: usize>(
+    stark: &S,
+    config: &StarkConfig,
+    trace_poly_values: &[PolynomialValues<F>],
+    final_memory_values: Vec<Vec<F>>,
+    trace_commitment: &PolynomialBatch<F, C, D>,
+    ctl_data: &CtlData<F>,
+    ctl_challenges: &GrandProductChallengeSet<F>,
+    challenger: &mut Challenger<F, C::Hasher>,
+    timing: &mut TimingTree,
+    abort_signal: Option<Arc<AtomicBool>>,
+) -> Result<(StarkProofWithMetadata<F, C, D>, MemBeforeValues)>
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
+{
+    let final_mem_values = final_memory_values
+        .iter()
+        .map(|row| get_mem_after_value_from_row(row))
+        .collect::<Vec<_>>();
+    let proof = prove_single_table(
+        stark,
+        config,
+        trace_poly_values,
+        trace_commitment,
+        ctl_data,
+        ctl_challenges,
+        challenger,
+        timing,
+        abort_signal,
+    )?;
+
+    Ok((proof, final_mem_values))
 }
 
 /// Computes a proof for a single STARK table, including:

@@ -136,6 +136,7 @@ fn test_selfdestruct() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
+        memory_before: vec![],
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);

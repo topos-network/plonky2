@@ -229,6 +229,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
+        memory_before: vec![],
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -437,6 +438,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes.clone(),
             cur_hash: block_1_hash,
         },
+        memory_before: vec![],
     };
 
     // Preprocess all circuits.
@@ -574,6 +576,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes.clone(),
             cur_hash: block_1_hash,
         },
+        memory_before: vec![],
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
@@ -640,6 +643,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes,
             cur_hash: block_2_hash,
         },
+        memory_before: vec![],
     };
 
     let (root_proof, public_values) =

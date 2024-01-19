@@ -21,8 +21,10 @@ use crate::cpu::kernel::aggregator::KERNEL;
 use crate::cpu::kernel::keccak_util::keccakf_u32s;
 use crate::cross_table_lookup::{Column, Filter};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
+use crate::generation::MemBeforeValues;
 use crate::lookup::Lookup;
 use crate::mem_before::columns::*;
+use crate::memory::VALUE_LIMBS;
 use crate::stark::Stark;
 use crate::witness::memory::MemoryAddress;
 
@@ -47,7 +49,11 @@ pub(crate) struct MemBeforeStark<F, const D: usize> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
-    pub(crate) fn generate_trace(&self, timing: &mut TimingTree) -> Vec<PolynomialValues<F>> {
+    pub(crate) fn generate_trace(
+        &self,
+        mem_before_values: &MemBeforeValues,
+        timing: &mut TimingTree,
+    ) -> Vec<PolynomialValues<F>> {
         let mut rows: Vec<_> = vec![];
 
         // Add first opcode read (at timestamp 0).
@@ -57,6 +63,18 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
         first_row[ADDR_VIRTUAL] = main_label;
         first_row[value_limb(0)] = F::from_canonical_usize(0x5f); // value[0] = PUSH0 (0x5f)
         rows.push(first_row);
+
+        rows.extend(mem_before_values.iter().map(|mem_data| {
+            let mut row = vec![F::ZERO; NUM_COLUMNS];
+            row[FILTER] = F::ONE;
+            row[ADDR_CONTEXT] = F::from_canonical_usize(mem_data.0.context);
+            row[ADDR_SEGMENT] = F::from_canonical_usize(mem_data.0.segment);
+            row[ADDR_VIRTUAL] = F::from_canonical_usize(mem_data.0.virt);
+            for j in 0..VALUE_LIMBS {
+                row[j + 4] = F::from_canonical_u32((mem_data.1 >> (j * 32)).low_u32());
+            }
+            row
+        }));
 
         let num_rows = rows.len();
         let num_rows_padded = max(16, num_rows.next_power_of_two());
