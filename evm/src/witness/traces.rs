@@ -217,7 +217,7 @@ impl<T: Copy> Traces<T> {
                 .logic_stark
                 .generate_trace(logic_ops, cap_elements, timing)
         );
-        let memory_trace = timed!(
+        let (memory_trace, final_values) = timed!(
             timing,
             "generate memory trace",
             all_stark.memory_stark.generate_trace(memory_ops, timing)
@@ -226,6 +226,13 @@ impl<T: Copy> Traces<T> {
             timing,
             "generate mem_before trace",
             all_stark.mem_before_stark.generate_trace(timing)
+        );
+        let mem_after_trace = timed!(
+            timing,
+            "generate mem_after trace",
+            all_stark
+                .mem_after_stark
+                .generate_trace(final_values, timing)
         );
 
         [
@@ -237,6 +244,7 @@ impl<T: Copy> Traces<T> {
             logic_trace,
             memory_trace,
             mem_before_trace,
+            mem_after_trace,
         ]
     }
 }

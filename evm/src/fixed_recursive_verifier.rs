@@ -472,6 +472,13 @@ where
             &all_stark.cross_table_lookups,
             stark_config,
         );
+        let mem_after = RecursiveCircuitsForTable::new(
+            Table::MemAfter,
+            &all_stark.mem_after_stark,
+            degree_bits_ranges[Table::MemAfter as usize].clone(),
+            &all_stark.cross_table_lookups,
+            stark_config,
+        );
 
         let by_table = [
             arithmetic,
@@ -482,6 +489,7 @@ where
             logic,
             memory,
             mem_before,
+            mem_after,
         ];
         let root = Self::create_root_circuit(&by_table, stark_config);
         let aggregation = Self::create_aggregation_circuit(&root);

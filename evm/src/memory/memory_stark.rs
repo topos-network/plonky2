@@ -1,3 +1,4 @@
+use std::iter::once;
 use std::marker::PhantomData;
 
 use ethereum_types::U256;
@@ -49,7 +50,7 @@ pub(crate) fn ctl_filter<F: Field>() -> Filter<F> {
 /// Creates the vector of `Columns` corresponding to:
 /// - the initilized address (context, segment, virt),
 /// - the value in u32 limbs.
-pub(crate) fn ctl_looking_mem_before<F: Field>() -> Vec<Column<F>> {
+pub(crate) fn ctl_looking_mem<F: Field>() -> Vec<Column<F>> {
     let mut res = Column::singles([ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL]).collect_vec();
     res.extend(Column::singles((0..8).map(value_limb)));
     res
@@ -66,6 +67,17 @@ pub(crate) fn ctl_filter_mem_before<F: Field>() -> Filter<F> {
         )],
         vec![Column::constant(F::ONE)],
     )
+}
+
+/// CTL filter for final values.
+/// Final values are the last row with a given address.
+/// The filter is `address_changed`.
+pub(crate) fn ctl_filter_mem_after<F: Field>() -> Filter<F> {
+    Filter::new_simple(Column::sum([
+        CONTEXT_FIRST_CHANGE,
+        SEGMENT_FIRST_CHANGE,
+        VIRTUAL_FIRST_CHANGE,
+    ]))
 }
 
 #[derive(Copy, Clone, Default)]
@@ -279,13 +291,27 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         &self,
         memory_ops: Vec<MemoryOp>,
         timing: &mut TimingTree,
-    ) -> Vec<PolynomialValues<F>> {
+    ) -> (Vec<PolynomialValues<F>>, Vec<Vec<F>>) {
         // Generate most of the trace in row-major form.
         let trace_rows = timed!(
             timing,
             "generate trace rows",
             self.generate_trace_row_major(memory_ops)
         );
+
+        // Extract final values for MemoryAfterStark.
+        let mut final_values = Vec::<Vec<_>>::new();
+        for i in 0..trace_rows.len() - 1 {
+            let row = trace_rows[i];
+            if row[CONTEXT_FIRST_CHANGE] + row[SEGMENT_FIRST_CHANGE] + row[VIRTUAL_FIRST_CHANGE]
+                == F::ONE
+            {
+                let mut addr_val = vec![F::ONE];
+                addr_val.extend(&row[ADDR_CONTEXT..CONTEXT_FIRST_CHANGE]);
+                let addr_value = final_values.push(addr_val);
+            }
+        }
+
         let trace_row_vecs: Vec<_> = trace_rows.into_iter().map(|row| row.to_vec()).collect();
 
         // Transpose to column-major form.
@@ -294,10 +320,13 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         // A few final generation steps, which work better in column-major form.
         Self::generate_trace_col_major(&mut trace_col_vecs);
 
-        trace_col_vecs
-            .into_iter()
-            .map(|column| PolynomialValues::new(column))
-            .collect()
+        (
+            trace_col_vecs
+                .into_iter()
+                .map(|column| PolynomialValues::new(column))
+                .collect(),
+            final_values,
+        )
     }
 }
 

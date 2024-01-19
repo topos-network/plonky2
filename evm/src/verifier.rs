@@ -55,6 +55,7 @@ where
         logic_stark,
         memory_stark,
         mem_before_stark,
+        mem_after_stark,
         cross_table_lookups,
     } = all_stark;
 

@@ -310,6 +310,21 @@ where
             ctl_challenges,
             challenger,
             timing,
+            abort_signal.clone(),
+        )?
+    );
+    let mem_after_proof = timed!(
+        timing,
+        "prove mem_after STARK",
+        prove_single_table(
+            &all_stark.mem_after_stark,
+            config,
+            &trace_poly_values[Table::MemAfter as usize],
+            &trace_commitments[Table::MemAfter as usize],
+            &ctl_data_per_table[Table::MemAfter as usize],
+            ctl_challenges,
+            challenger,
+            timing,
             abort_signal,
         )?
     );
@@ -323,6 +338,7 @@ where
         logic_proof,
         memory_proof,
         mem_before_proof,
+        mem_after_proof,
     ])
 }
 
