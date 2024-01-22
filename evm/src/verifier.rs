@@ -600,15 +600,6 @@ pub(crate) mod testutils {
             extra_looking_rows.push(add_extra_looking_row(block_hashes_segment, index, val));
         }
 
-        // Add memory preinitialization from previous execution.
-        extra_looking_rows.extend(public_values.mem_before_values.iter().map(|mem_data| {
-            add_extra_looking_row_timestamp_zero(
-                mem_data.0.context,
-                mem_data.0.segment,
-                mem_data.0.virt,
-                mem_data.1,
-            )
-        }));
         extra_looking_rows
     }
 
@@ -626,28 +617,6 @@ pub(crate) mod testutils {
             row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
         }
         row[12] = F::ONE; // timestamp
-        row
-    }
-
-    fn add_extra_looking_row_timestamp_zero<F, const D: usize>(
-        context: usize,
-        segment: usize,
-        virt: usize,
-        val: U256,
-    ) -> Vec<F>
-    where
-        F: RichField + Extendable<D>,
-    {
-        let mut row = vec![F::ZERO; 13];
-        row[0] = F::ZERO; // is_read
-        row[1] = F::from_canonical_usize(context); // context
-        row[2] = F::from_canonical_usize(segment);
-        row[3] = F::from_canonical_usize(virt);
-
-        for j in 0..VALUE_LIMBS {
-            row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
-        }
-        row[12] = F::ZERO; // timestamp
         row
     }
 }

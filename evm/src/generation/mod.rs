@@ -202,14 +202,6 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
             .collect::<Vec<_>>(),
     );
 
-    // Preinitialize memory using the provided `mem_before` values.
-    ops.extend(
-        inputs
-            .memory_before
-            .iter()
-            .map(|&(address, val)| mem_write_log_timestamp_zero(address, state, val)),
-    );
-
     state.memory.apply_ops(&ops);
     state.traces.memory_ops.extend(ops);
 }
@@ -308,16 +300,13 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         gas_used_after,
     };
 
-    let init_mem_len = inputs.memory_before.len() as u64;
-    let mem_before_values = inputs.memory_before;
+    let mem_before_values: Vec<(MemoryAddress, U256)> = inputs.memory_before;
     let public_values = PublicValues {
         trie_roots_before,
         trie_roots_after,
         block_metadata: inputs.block_metadata,
         block_hashes: inputs.block_hashes,
         extra_block_data,
-        init_mem_len,
-        mem_before_values: mem_before_values.clone(),
     };
 
     let (tables, final_values) = timed!(

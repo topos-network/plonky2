@@ -1228,8 +1228,6 @@ where
             },
             block_metadata: rhs_public_values.block_metadata,
             block_hashes: rhs_public_values.block_hashes,
-            init_mem_len: lhs_public_values.init_mem_len,
-            mem_before_values: lhs_public_values.mem_before_values,
         };
 
         set_public_value_targets(
