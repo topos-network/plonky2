@@ -37,6 +37,17 @@ pub(crate) fn ctl_data<F: Field>() -> Vec<Column<F>> {
     res
 }
 
+/// Creates the vector of `Columns` corresponding to:
+/// - the initilized address (context, segment, virt),
+/// - the value in u32 limbs.
+pub(crate) fn ctl_data_memory<F: Field>() -> Vec<Column<F>> {
+    let mut res = vec![Column::constant(F::ONE)]; // IS_READ
+    res.extend(Column::singles([ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL]).collect_vec());
+    res.extend(Column::singles((0..8).map(value_limb)));
+    res.push(Column::constant(F::ZERO)); // TIMESTAMP
+    res
+}
+
 /// CTL filter for memory operations.
 pub(crate) fn ctl_filter<F: Field>() -> Filter<F> {
     Filter::new_simple(Column::single(FILTER))
@@ -56,13 +67,8 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
     ) -> Vec<PolynomialValues<F>> {
         let mut rows: Vec<_> = vec![];
 
-        // Add first opcode read (at timestamp 0).
-        let main_label = F::from_canonical_usize(KERNEL.global_labels["main"]);
+        // Add first opcode reads (at timestamp 0).
         let mut first_row = vec![F::ZERO; NUM_COLUMNS];
-        first_row[FILTER] = F::ONE;
-        first_row[ADDR_VIRTUAL] = main_label;
-        first_row[value_limb(0)] = F::from_canonical_usize(0x5f); // value[0] = PUSH0 (0x5f)
-        rows.push(first_row);
 
         rows.extend(mem_before_values.iter().map(|mem_data| {
             let mut row = vec![F::ZERO; NUM_COLUMNS];

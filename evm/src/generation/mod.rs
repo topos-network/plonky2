@@ -341,12 +341,12 @@ fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> 
             loop {
                 state.traces.push_cpu(row);
                 row.clock += F::ONE;
-                if state.traces.clock().is_power_of_two() {
+                if (state.traces.clock() - 1).is_power_of_two() {
                     break;
                 }
             }
 
-            log::info!("CPU trace padded to {} cycles", state.traces.clock());
+            log::info!("CPU trace padded to {} cycles", state.traces.clock() - 1);
 
             return Ok(());
         }

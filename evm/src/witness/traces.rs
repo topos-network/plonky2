@@ -161,7 +161,7 @@ impl<T: Copy> Traces<T> {
     }
 
     pub(crate) fn clock(&self) -> usize {
-        self.cpu.len()
+        self.cpu.len() + 1
     }
 
     pub(crate) fn into_tables<const D: usize>(
@@ -223,7 +223,9 @@ impl<T: Copy> Traces<T> {
         let (memory_trace, final_values) = timed!(
             timing,
             "generate memory trace",
-            all_stark.memory_stark.generate_trace(memory_ops, timing)
+            all_stark
+                .memory_stark
+                .generate_trace(memory_ops, mem_before_values, timing)
         );
         let mem_before_trace = timed!(
             timing,

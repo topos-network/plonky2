@@ -663,7 +663,8 @@ fn add_data_write<F: RichField + Extendable<D>, const D: usize>(
     }
 
     // timestamp = 1
-    builder.assert_one(row[12]);
+    let two = builder.constant(F::TWO);
+    builder.sub(row[12], two);
 
     let combined = challenge.combine_base_circuit(builder, &row);
     let inverse = builder.inverse(combined);

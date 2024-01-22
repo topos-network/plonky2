@@ -299,7 +299,7 @@ where
     for j in 0..VALUE_LIMBS {
         row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
     }
-    row[12] = F::ONE; // timestamp
+    row[12] = F::TWO; // timestamp
     running_sum + challenge.combine(row.iter()).inverse()
 }
 
@@ -616,7 +616,7 @@ pub(crate) mod testutils {
         for j in 0..VALUE_LIMBS {
             row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
         }
-        row[12] = F::ONE; // timestamp
+        row[12] = F::TWO; // timestamp
         row
     }
 }

@@ -370,7 +370,7 @@ pub(crate) fn fill_stack_fields<F: Field>(
             row.general.stack_mut().stack_len_bounds_aux = F::ZERO;
         } else {
             let clock = state.traces.clock();
-            let last_row = &mut state.traces.cpu[clock - 1];
+            let last_row = &mut state.traces.cpu[clock - 2];
             let disallowed_len = F::from_canonical_usize(MAX_USER_STACK_SIZE + 1);
             let diff = row.stack_len - disallowed_len;
             if let Some(inv) = diff.try_inverse() {

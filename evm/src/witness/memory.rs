@@ -124,7 +124,7 @@ impl MemoryOp {
         kind: MemoryOpKind,
         value: U256,
     ) -> Self {
-        let timestamp = clock * NUM_CHANNELS + channel.index();
+        let timestamp = (clock - 1) * NUM_CHANNELS + 1 + channel.index();
         MemoryOp {
             filter: true,
             timestamp,

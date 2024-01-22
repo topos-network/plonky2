@@ -13,7 +13,7 @@ pub(crate) fn eval_packed<P: PackedField>(
     yield_constr: &mut ConstraintConsumer<P>,
 ) {
     // The clock is 0 at the beginning.
-    yield_constr.constraint_first_row(lv.clock);
+    yield_constr.constraint_first_row(lv.clock - P::ONES);
     // The clock is incremented by 1 at each row.
     yield_constr.constraint_transition(nv.clock - lv.clock - P::ONES);
 }
@@ -26,6 +26,7 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     nv: &CpuColumnsView<ExtensionTarget<D>>,
     yield_constr: &mut RecursiveConstraintConsumer<F, D>,
 ) {
+    let first_clock = builder.add_const_extension(lv.clock, F::NEG_ONE);
     // The clock is 0 at the beginning.
     yield_constr.constraint_first_row(builder, lv.clock);
     // The clock is incremented by 1 at each row.

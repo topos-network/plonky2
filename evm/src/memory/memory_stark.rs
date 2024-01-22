@@ -289,9 +289,20 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
 
     pub(crate) fn generate_trace(
         &self,
-        memory_ops: Vec<MemoryOp>,
+        mut memory_ops: Vec<MemoryOp>,
+        mem_before_values: &[(MemoryAddress, U256)],
         timing: &mut TimingTree,
     ) -> (Vec<PolynomialValues<F>>, Vec<Vec<F>>) {
+        // First, push mem_before operations.
+        for i in 0..mem_before_values.len() {
+            memory_ops.push(MemoryOp {
+                filter: true,
+                timestamp: 0,
+                address: mem_before_values[i].0,
+                kind: crate::witness::memory::MemoryOpKind::Read,
+                value: mem_before_values[i].1,
+            });
+        }
         // Generate most of the trace in row-major form.
         let trace_rows = timed!(
             timing,
