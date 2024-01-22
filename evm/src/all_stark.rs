@@ -283,22 +283,22 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
             Some(byte_packing_stark::ctl_looking_memory_filter(i)),
         )
     });
-    // let mem_before_ops = TableWithColumns::new(
-    //     Table::MemBefore,
-    //     mem_before_stark::ctl_data_memory(),
-    //     Some(mem_before_stark::ctl_filter()),
-    // );
+    let mem_before_ops = TableWithColumns::new(
+        Table::MemBefore,
+        mem_before_stark::ctl_data_memory(),
+        Some(mem_before_stark::ctl_filter()),
+    );
     let all_lookers = vec![
         cpu_memory_code_read,
         cpu_push_write_ops,
         cpu_set_context_write,
         cpu_set_context_read,
-        // mem_before_ops,
     ]
     .into_iter()
     .chain(cpu_memory_gp_ops)
     .chain(keccak_sponge_reads)
     .chain(byte_packing_ops)
+    .chain(iter::once(mem_before_ops))
     .collect();
     let memory_looked = TableWithColumns::new(
         Table::Memory,
