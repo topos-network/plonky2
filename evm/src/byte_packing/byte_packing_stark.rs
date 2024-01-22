@@ -48,7 +48,7 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::cross_table_lookup::{Column, Filter};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::lookup::Lookup;
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::witness::memory::MemoryAddress;
 
 /// Strict upper bound for the individual bytes range-check.
@@ -269,6 +269,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for BytePackingSt
 
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
+        _public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<FE, P, D2>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
@@ -324,6 +325,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for BytePackingSt
 
     fn eval_ext_circuit(
         &self,
+        _public_registers: PublicRegisterStates,
         builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
         vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,

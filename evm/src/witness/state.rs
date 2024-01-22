@@ -1,10 +1,11 @@
 use ethereum_types::U256;
+use serde::{Deserialize, Serialize};
 
 use crate::cpu::kernel::aggregator::KERNEL;
 
 const KERNEL_CONTEXT: usize = 0;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RegistersState {
     pub program_counter: usize,
     pub is_kernel: bool,

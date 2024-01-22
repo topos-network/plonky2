@@ -33,6 +33,7 @@ use crate::prover::check_abort_signal;
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
 use crate::witness::memory::{MemoryAddress, MemoryChannel};
+use crate::witness::state::RegistersState;
 use crate::witness::transition::transition;
 
 pub mod mpt;
@@ -82,6 +83,11 @@ pub struct GenerationInputs {
 
     /// Memory addresses and their values accessed in a previous execution. Used to preinitialize the current memory.
     pub memory_before: MemBeforeValues,
+
+    /// Initial registers of the current execution.
+    pub registers_before: RegistersState,
+    /// State of the registers after the current execution.
+    pub registers_after: RegistersState,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -202,6 +208,46 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
             .collect::<Vec<_>>(),
     );
 
+    // Write initial registers.
+    let registers_before = [
+        inputs.registers_before.program_counter.into(),
+        (inputs.registers_before.is_kernel as usize).into(),
+        inputs.registers_before.stack_len.into(),
+        inputs.registers_before.stack_top,
+        (inputs.registers_before.is_stack_top_read as usize).into(),
+        (inputs.registers_before.check_overflow as usize).into(),
+        inputs.registers_before.context.into(),
+        inputs.registers_before.gas_used.into(),
+    ];
+    ops.extend((0..256).map(|i| {
+        mem_write_log(
+            channel,
+            MemoryAddress::new(0, Segment::RegistersStates, i),
+            state,
+            registers_before[i],
+        )
+    }));
+
+    // Write final registers.
+    let registers_after = [
+        inputs.registers_after.program_counter.into(),
+        (inputs.registers_after.is_kernel as usize).into(),
+        inputs.registers_after.stack_len.into(),
+        inputs.registers_after.stack_top,
+        (inputs.registers_after.is_stack_top_read as usize).into(),
+        (inputs.registers_after.check_overflow as usize).into(),
+        inputs.registers_after.context.into(),
+        inputs.registers_after.gas_used.into(),
+    ];
+    ops.extend((0..256).map(|i| {
+        mem_write_log(
+            channel,
+            MemoryAddress::new(0, Segment::RegistersStates, registers_before.len()),
+            state,
+            registers_after[i],
+        )
+    }));
+
     state.memory.apply_ops(&ops);
     state.traces.memory_ops.extend(ops);
 }
@@ -218,6 +264,8 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 )> {
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
+
+    state.registers = inputs.registers_before;
 
     apply_metadata_and_tries_memops(&mut state, &inputs);
 

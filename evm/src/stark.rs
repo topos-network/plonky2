@@ -13,11 +13,17 @@ use crate::config::StarkConfig;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::lookup::Lookup;
+use crate::witness::state::RegistersState;
 
 const TRACE_ORACLE_INDEX: usize = 0;
 const AUXILIARY_ORACLE_INDEX: usize = 1;
 const QUOTIENT_ORACLE_INDEX: usize = 2;
 
+#[derive(Copy, Clone, Default)]
+pub struct PublicRegisterStates {
+    registers_before: RegistersState,
+    registers_after: RegistersState,
+}
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// The total number of columns in the trace.
@@ -40,6 +46,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// constraints over `F`.
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
+        public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<FE, P, D2>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
@@ -49,19 +56,21 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// Evaluate constraints at a vector of points from the base field `F`.
     fn eval_packed_base<P: PackedField<Scalar = F>>(
         &self,
+        public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<F, P, 1>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) {
-        self.eval_packed_generic(vars, yield_constr)
+        self.eval_packed_generic(public_registers, vars, yield_constr)
     }
 
     /// Evaluate constraints at a single point from the degree `D` extension field.
     fn eval_ext(
         &self,
+        public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<F::Extension, F::Extension, D>,
         yield_constr: &mut ConstraintConsumer<F::Extension>,
     ) {
-        self.eval_packed_generic(vars, yield_constr)
+        self.eval_packed_generic(public_registers, vars, yield_constr)
     }
 
     /// Evaluate constraints at a vector of points from the degree `D` extension field. This is like
@@ -70,6 +79,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// same order as they are given in `eval_packed_generic`.
     fn eval_ext_circuit(
         &self,
+        public_registers: PublicRegisterStates,
         builder: &mut CircuitBuilder<F, D>,
         vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,

@@ -24,7 +24,7 @@ use crate::keccak::logic::{
     andn, andn_gen, andn_gen_circuit, xor, xor3_gen, xor3_gen_circuit, xor_gen, xor_gen_circuit,
 };
 use crate::keccak::round_flags::{eval_round_flags, eval_round_flags_recursively};
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::trace_rows_to_poly_values;
 
 /// Number of rounds in a Keccak permutation.
@@ -262,6 +262,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
 
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
+        _public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<FE, P, D2>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
@@ -430,6 +431,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
 
     fn eval_ext_circuit(
         &self,
+        _public_registers: PublicRegisterStates,
         builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
         vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
@@ -638,6 +640,7 @@ mod tests {
     use crate::keccak::columns::reg_output_limb;
     use crate::keccak::keccak_stark::{KeccakStark, NUM_INPUTS, NUM_ROUNDS};
     use crate::prover::prove_single_table;
+    use crate::stark::PublicRegisterStates;
     use crate::stark_testing::{test_stark_circuit_constraints, test_stark_low_degree};
 
     #[test]
@@ -755,6 +758,7 @@ mod tests {
 
         prove_single_table(
             &stark,
+            PublicRegisterStates::default(),
             &config,
             &trace_poly_values,
             &trace_commitments,

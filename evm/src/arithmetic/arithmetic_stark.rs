@@ -20,7 +20,7 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::cross_table_lookup::{Column, Filter, TableWithColumns};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::lookup::Lookup;
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 
 /// Creates a vector of `Columns` to link the 16-bit columns of the arithmetic table,
 /// split into groups of N_LIMBS at a time in `regs`, with the corresponding 32-bit
@@ -199,6 +199,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
 
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
+        _public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<FE, P, D2>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
@@ -245,6 +246,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
 
     fn eval_ext_circuit(
         &self,
+        _public_registers: PublicRegisterStates,
         builder: &mut CircuitBuilder<F, D>,
         vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,

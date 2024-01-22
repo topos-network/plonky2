@@ -16,7 +16,7 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::cross_table_lookup::{Column, Filter};
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
 use crate::logic::columns::NUM_COLUMNS;
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::{limb_from_bits_le, limb_from_bits_le_recursive, trace_rows_to_poly_values};
 
 /// Total number of bits per input/output.
@@ -219,6 +219,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for LogicStark<F,
 
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
+        _public_registers: PublicRegisterStates,
         vars: &Self::EvaluationFrame<FE, P, D2>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
@@ -270,6 +271,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for LogicStark<F,
 
     fn eval_ext_circuit(
         &self,
+        _public_registers: PublicRegisterStates,
         builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
         vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,

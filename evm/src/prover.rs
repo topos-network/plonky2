@@ -34,7 +34,7 @@ use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
 use crate::proof::{AllProof, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata};
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
 use crate::witness::memory::MemoryAddress;
@@ -46,6 +46,7 @@ use crate::{
 /// Generate traces, then create all STARK proofs.
 pub fn prove<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
+    public_registers: &[PublicRegisterStates; NUM_TABLES],
     config: &StarkConfig,
     inputs: GenerationInputs,
     timing: &mut TimingTree,
@@ -65,6 +66,7 @@ where
 
     let proof = prove_with_traces(
         all_stark,
+        public_registers,
         config,
         traces,
         final_memory_values,
@@ -78,6 +80,7 @@ where
 /// Compute all STARK proofs.
 pub(crate) fn prove_with_traces<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
+    public_registers: &[PublicRegisterStates; NUM_TABLES],
     config: &StarkConfig,
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
     final_memory_values: Vec<Vec<F>>,
@@ -148,6 +151,7 @@ where
         "compute all proofs given commitments",
         prove_with_commitments(
             all_stark,
+            public_registers,
             config,
             &trace_poly_values,
             final_memory_values,
@@ -186,6 +190,7 @@ where
 /// Each STARK uses its associated data to generate a proof.
 fn prove_with_commitments<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
+    public_registers: &[PublicRegisterStates; NUM_TABLES],
     config: &StarkConfig,
     trace_poly_values: &[Vec<PolynomialValues<F>>; NUM_TABLES],
     final_memory_values: Vec<Vec<F>>,
@@ -208,6 +213,7 @@ where
         "prove Arithmetic STARK",
         prove_single_table(
             &all_stark.arithmetic_stark,
+            public_registers[Table::Arithmetic as usize],
             config,
             &trace_poly_values[Table::Arithmetic as usize],
             &trace_commitments[Table::Arithmetic as usize],
@@ -223,6 +229,7 @@ where
         "prove byte packing STARK",
         prove_single_table(
             &all_stark.byte_packing_stark,
+            public_registers[Table::BytePacking as usize],
             config,
             &trace_poly_values[Table::BytePacking as usize],
             &trace_commitments[Table::BytePacking as usize],
@@ -238,6 +245,7 @@ where
         "prove CPU STARK",
         prove_single_table(
             &all_stark.cpu_stark,
+            public_registers[Table::Cpu as usize],
             config,
             &trace_poly_values[Table::Cpu as usize],
             &trace_commitments[Table::Cpu as usize],
@@ -253,6 +261,7 @@ where
         "prove Keccak STARK",
         prove_single_table(
             &all_stark.keccak_stark,
+            public_registers[Table::Keccak as usize],
             config,
             &trace_poly_values[Table::Keccak as usize],
             &trace_commitments[Table::Keccak as usize],
@@ -268,6 +277,7 @@ where
         "prove Keccak sponge STARK",
         prove_single_table(
             &all_stark.keccak_sponge_stark,
+            public_registers[Table::KeccakSponge as usize],
             config,
             &trace_poly_values[Table::KeccakSponge as usize],
             &trace_commitments[Table::KeccakSponge as usize],
@@ -283,6 +293,7 @@ where
         "prove logic STARK",
         prove_single_table(
             &all_stark.logic_stark,
+            public_registers[Table::Logic as usize],
             config,
             &trace_poly_values[Table::Logic as usize],
             &trace_commitments[Table::Logic as usize],
@@ -298,6 +309,7 @@ where
         "prove memory STARK",
         prove_single_table(
             &all_stark.memory_stark,
+            public_registers[Table::Memory as usize],
             config,
             &trace_poly_values[Table::Memory as usize],
             &trace_commitments[Table::Memory as usize],
@@ -313,6 +325,7 @@ where
         "prove mem_before STARK",
         prove_single_table(
             &all_stark.mem_before_stark,
+            public_registers[Table::MemBefore as usize],
             config,
             &trace_poly_values[Table::MemBefore as usize],
             &trace_commitments[Table::MemBefore as usize],
@@ -328,6 +341,7 @@ where
         "prove mem_after STARK",
         prove_single_table_mem_after(
             &all_stark.mem_after_stark,
+            public_registers[Table::MemAfter as usize],
             config,
             &trace_poly_values[Table::MemAfter as usize],
             final_memory_values,
@@ -373,6 +387,7 @@ fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAddress, U256
 
 pub(crate) fn prove_single_table_mem_after<F, C, S, const D: usize>(
     stark: &S,
+    public_registers: PublicRegisterStates,
     config: &StarkConfig,
     trace_poly_values: &[PolynomialValues<F>],
     final_memory_values: Vec<Vec<F>>,
@@ -394,6 +409,7 @@ where
         .collect::<Vec<_>>();
     let proof = prove_single_table(
         stark,
+        public_registers,
         config,
         trace_poly_values,
         trace_commitment,
@@ -413,6 +429,7 @@ where
 /// - all the required polynomial and FRI argument openings.
 pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     stark: &S,
+    public_registers: PublicRegisterStates,
     config: &StarkConfig,
     trace_poly_values: &[PolynomialValues<F>],
     trace_commitment: &PolynomialBatch<F, C, D>,
@@ -511,6 +528,7 @@ where
     {
         check_constraints(
             stark,
+            public_registers,
             trace_commitment,
             &auxiliary_polys_commitment,
             lookup_challenges.as_ref(),
@@ -530,6 +548,7 @@ where
         "compute quotient polys",
         compute_quotient_polys::<F, <F as Packable>::Packing, C, S, D>(
             stark,
+            public_registers,
             trace_commitment,
             &auxiliary_polys_commitment,
             lookup_challenges.as_ref(),
@@ -635,6 +654,7 @@ where
 /// where the `C_i`s are the Stark constraints.
 fn compute_quotient_polys<'a, F, P, C, S, const D: usize>(
     stark: &S,
+    public_registers: PublicRegisterStates,
     trace_commitment: &'a PolynomialBatch<F, C, D>,
     auxiliary_polys_commitment: &'a PolynomialBatch<F, C, D>,
     lookup_challenges: Option<&'a Vec<F>>,
@@ -762,6 +782,7 @@ where
             // to the permutation and CTL arguments.
             eval_vanishing_poly::<F, F, P, S, D, 1>(
                 stark,
+                public_registers,
                 &vars,
                 lookups,
                 lookup_vars,
@@ -810,6 +831,7 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
 /// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
 fn check_constraints<'a, F, C, S, const D: usize>(
     stark: &S,
+    public_registers: PublicRegisterStates,
     trace_commitment: &'a PolynomialBatch<F, C, D>,
     auxiliary_commitment: &'a PolynomialBatch<F, C, D>,
     lookup_challenges: Option<&'a Vec<F>>,
@@ -916,6 +938,7 @@ fn check_constraints<'a, F, C, S, const D: usize>(
             // to the permutation and CTL arguments.
             eval_vanishing_poly::<F, F, F, S, D, 1>(
                 stark,
+                public_registers,
                 &vars,
                 lookups,
                 lookup_vars,

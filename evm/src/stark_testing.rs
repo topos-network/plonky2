@@ -1,4 +1,5 @@
 use anyhow::{ensure, Result};
+use ethereum_types::Public;
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::polynomial::{PolynomialCoeffs, PolynomialValues};
 use plonky2::field::types::{Field, Sample};
@@ -12,7 +13,7 @@ use plonky2_util::{log2_ceil, log2_strict};
 
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::evaluation_frame::StarkEvaluationFrame;
-use crate::stark::Stark;
+use crate::stark::{PublicRegisterStates, Stark};
 
 const WITNESS_SIZE: usize = 1 << 5;
 
@@ -50,7 +51,7 @@ pub(crate) fn test_stark_low_degree<
                 lagrange_first.values[i],
                 lagrange_last.values[i],
             );
-            stark.eval_packed_base(&vars, &mut consumer);
+            stark.eval_packed_base(PublicRegisterStates::default(), &vars, &mut consumer);
             consumer.accumulators()[0]
         })
         .collect::<Vec<_>>();
@@ -102,7 +103,7 @@ pub(crate) fn test_stark_circuit_constraints<
         lagrange_first,
         lagrange_last,
     );
-    stark.eval_ext(&vars, &mut consumer);
+    stark.eval_ext(PublicRegisterStates::default(), &vars, &mut consumer);
     let native_eval = consumer.accumulators()[0];
 
     // Compute circuit constraint evaluation on same random values.
@@ -131,7 +132,12 @@ pub(crate) fn test_stark_circuit_constraints<
         lagrange_first_t,
         lagrange_last_t,
     );
-    stark.eval_ext_circuit(&mut builder, &vars, &mut consumer);
+    stark.eval_ext_circuit(
+        PublicRegisterStates::default(),
+        &mut builder,
+        &vars,
+        &mut consumer,
+    );
     let circuit_eval = consumer.accumulators()[0];
     let native_eval_t = builder.constant_extension(native_eval);
     builder.connect_extension(circuit_eval, native_eval_t);

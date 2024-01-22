@@ -19,6 +19,7 @@ use crate::generation::TrieInputs;
 use crate::memory::segments::Segment;
 use crate::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use crate::util::h2u;
+use crate::witness::state::RegistersState;
 use crate::GenerationInputs;
 
 #[test]
@@ -159,6 +160,8 @@ fn test_add11_yml() {
             cur_hash: H256::default(),
         },
         memory_before: vec![],
+        registers_before: RegistersState::default(),
+        registers_after: RegistersState::default(),
     };
 
     let initial_stack = vec![];
@@ -302,6 +305,8 @@ fn test_add11_yml_with_exception() {
             cur_hash: H256::default(),
         },
         memory_before: vec![],
+        registers_before: RegistersState::default(),
+        registers_after: RegistersState::default(),
     };
 
     let initial_stack = vec![];
