@@ -627,13 +627,6 @@ fn append_shift<F: Field>(
         row.general.shift_mut().high_limb_sum_inv = high_limb_sum.inverse();
     }
 
-    let displacement = U256::from(1) << input0;
-    let val_limbs: [u64; 4] = displacement.0;
-    for (i, limb) in val_limbs.into_iter().enumerate() {
-        row.mem_channels[2].value[2 * i] = F::from_canonical_u32(limb as u32);
-        row.mem_channels[2].value[2 * i + 1] = F::from_canonical_u32((limb >> 32) as u32);
-    }
-
     let operator = if is_shl {
         BinaryOperator::Shl
     } else {

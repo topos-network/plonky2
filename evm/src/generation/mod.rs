@@ -185,7 +185,6 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
             )
         })
         .to_vec();
-
     // Write the block's final block bloom filter.
     ops.extend((0..8).map(|i| {
         mem_write_log(
@@ -383,8 +382,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     let exit_kernel = ExitKernel {
         exit_kernel: registers_before.program_counter
             + (registers_before.is_kernel << 32)
-            + registers_before.gas_used
-            << 192,
+            + (registers_before.gas_used << 192),
     };
     let public_values = PublicValues {
         trie_roots_before,

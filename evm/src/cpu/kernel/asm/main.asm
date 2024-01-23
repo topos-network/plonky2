@@ -1,4 +1,7 @@
 global main:
+    // Initialise the shift table
+    %shift_table_init
+    
     // First, set the registers correctly and verify their values.
     // Check stack_top
     PUSH 0 // stack top is now stored in memory.
@@ -73,9 +76,6 @@ global main_contd:
     %mload_global_metadata(@GLOBAL_METADATA_KERNEL_HASH)
     // stack: expected_hash, hash
     %assert_eq
-
-    // Initialise the shift table
-    %shift_table_init
 
     // Initialize the RLP DATA pointer to its initial position (ctx == virt == 0, segment = RLP)
     PUSH @SEGMENT_RLP_RAW
