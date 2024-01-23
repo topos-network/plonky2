@@ -28,6 +28,19 @@ impl RegistersState {
             self.context
         }
     }
+
+    pub fn new_with_main_label() -> Self {
+        Self {
+            program_counter: KERNEL.global_labels["main_contd"],
+            is_kernel: true,
+            stack_len: 0,
+            stack_top: U256::zero(),
+            is_stack_top_read: false,
+            check_overflow: false,
+            context: 0,
+            gas_used: 0,
+        }
+    }
 }
 
 impl Default for RegistersState {

@@ -1,11 +1,72 @@
 global main:
+    // First, set the registers correctly and verify their values.
+    // Check stack_top
+    PUSH 0 // stack top is now stored in memory.
+    PUSH @SEGMENT_STACK
+    GET_CONTEXT
+    %build_address_no_offset
+    // stack: stack_top_addr, 0
+    // MLOAD_GENERAL starts by popping the address, and 0 becomes the new stack top.
+    // Therefore, the previous stack top is the first element stored in memory.
+    MLOAD_GENERAL
+
+    // stack: stack_top_addr, 0
+    PUSH 3 // The stack top is the third element stored in the RegisttersData segment.
+    %mload_registers_data
+    // stack: pv_stack_top, stack_top_addr, 0
+    %assert_eq
+    POP
+
+    // Now, check stack length.
+    %stack_length
+    // stack: stack_length
+    PUSH 2 %mload_registers_data
+    %assert_eq
+
+    // Check the context.
+    GET_CONTEXT
+    // stack: context
+    PUSH 4 %mload_registers_data
+    %assert_eq
+
+    PUSH 12 // offset of the current exit kernel.
+    %mload_registers_data
+    // stack: exit_info
+    // Now, get the program counter.
+    // The program counter is written in the first 32 bits of exit_info.
+    DUP1 PUSH 0xFFFFFFFF AND
+    PUSH @SEGMENT_REGISTERS_STATES
+    MLOAD_GENERAL
+    // stack: stored_pc, program_counter, exit_info
+    %assert_eq
+
+    // Check is_kernel_mode.
+    // is_kernel_mode is written in the next 32 bits of exit_info.
+    DUP1 %shr_const(32)
+    PUSH 0xFFFFFFFF AND
+    // stack: is_kernel_mode, exit_info
+    PUSH 1 %mload_registers_data
+    %assert_eq
+
+    // Check the gas used.
+    // The gas is written in the last 32 bits of exit_info.
+    // stack: exit_info
+    DUP1 %shr_const(192)
+    PUSH 0xFFFFFFFF AND
+    // stack: gas_used, exit_info
+    PUSH 5 %mload_registers_data
+    %assert_eq
+
+    // stack: exit_info
+    // Now, we set the PC to the correct values and continue the execution.
+    EXIT_KERNEL
+
+global main_contd:
     // First, hash the kernel code
     // Start with PUSH0 to avoid having a BytePacking operation at timestamp 0.
     // Timestamp 0 is reserved for memory initialization.
-    PUSH 0
     %mload_global_metadata(@GLOBAL_METADATA_KERNEL_LEN)
-    // stack: len, addr
-    SWAP1
+    PUSH 0
     // stack: addr, len
     KECCAK_GENERAL
     // stack: hash

@@ -209,6 +209,13 @@ impl<'a> Interpreter<'a> {
         kernel_hash: H256,
         kernel_code_len: usize,
     ) {
+        // Initialize registers.
+        self.generation_state.registers = RegistersState {
+            program_counter: self.generation_state.registers.program_counter,
+            is_kernel: self.generation_state.registers.is_kernel,
+            ..inputs.registers_before
+        };
+
         let tries = &inputs.tries;
 
         // Set state's inputs.
@@ -325,6 +332,79 @@ impl<'a> Interpreter<'a> {
             .collect::<Vec<_>>();
 
         self.set_memory_multi_addresses(&block_hashes_fields);
+
+        // Write initial registers.
+        let registers_before = [
+            inputs.registers_before.program_counter.into(),
+            (inputs.registers_before.is_kernel as usize).into(),
+            inputs.registers_before.stack_len.into(),
+            inputs.registers_before.stack_top,
+            inputs.registers_before.context.into(),
+            inputs.registers_before.gas_used.into(),
+        ];
+        let registers_before_fields = (0..registers_before.len())
+            .map(|i| {
+                (
+                    MemoryAddress::new_u256s(
+                        0.into(),
+                        (Segment::RegistersStates.unscale()).into(),
+                        i.into(),
+                    )
+                    .unwrap(),
+                    registers_before[i],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        self.set_memory_multi_addresses(&registers_before_fields);
+
+        let length = registers_before.len();
+
+        // Write final registers.
+        let registers_after = [
+            inputs.registers_after.program_counter.into(),
+            (inputs.registers_after.is_kernel as usize).into(),
+            inputs.registers_after.stack_len.into(),
+            inputs.registers_after.stack_top,
+            inputs.registers_after.context.into(),
+            inputs.registers_after.gas_used.into(),
+        ];
+
+        let registers_after_fields = (0..registers_before.len())
+            .map(|i| {
+                (
+                    MemoryAddress::new_u256s(
+                        0.into(),
+                        (Segment::RegistersStates.unscale()).into(),
+                        (length + i).into(),
+                    )
+                    .unwrap(),
+                    registers_after[i],
+                )
+            })
+            .collect::<Vec<_>>();
+        self.set_memory_multi_addresses(&registers_after_fields);
+
+        // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
+        println!(
+            "is kernel {:?}",
+            U256::from(inputs.registers_before.is_kernel as u64)
+        );
+        let exit_kernel = U256::from(inputs.registers_before.program_counter)
+            + (U256::from(inputs.registers_before.is_kernel as u64) << 32)
+            + (U256::from(inputs.registers_before.gas_used) << 192);
+        println!(
+            "computed PC {:?} other {:?}",
+            (exit_kernel) & 0xFFFFFFFFu32.into(),
+            47761 & 0xFFFFFFFFu32
+        );
+        let exit_kernel_addr = MemoryAddress::new_u256s(
+            0.into(),
+            Segment::RegistersStates.unscale().into(),
+            (2 * length).into(),
+        )
+        .unwrap();
+        self.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
     }
 
     fn checkpoint(&self) -> InterpreterCheckpoint {

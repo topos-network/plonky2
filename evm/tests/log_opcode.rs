@@ -232,7 +232,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
             cur_hash: H256::default(),
         },
         memory_before: vec![],
-        registers_before: RegistersState::default(),
+        registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::default(),
     };
 
@@ -444,7 +444,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             cur_hash: block_1_hash,
         },
         memory_before: vec![],
-        registers_before: RegistersState::default(),
+        registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::default(),
     };
 
@@ -592,7 +592,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             cur_hash: block_1_hash,
         },
         memory_before: vec![],
-        registers_before: RegistersState::default(),
+        registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::default(),
     };
 
@@ -668,7 +668,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             cur_hash: block_2_hash,
         },
         memory_before: vec![],
-        registers_before: RegistersState::default(),
+        registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::default(),
     };
 

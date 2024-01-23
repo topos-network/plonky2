@@ -178,7 +178,7 @@ fn test_erc721() -> anyhow::Result<()> {
             cur_hash: H256::default(),
         },
         memory_before: vec![],
-        registers_before: RegistersState::default(),
+        registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::default(),
     };
 

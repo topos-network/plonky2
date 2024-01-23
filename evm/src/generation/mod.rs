@@ -250,9 +250,8 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
 
     // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
     let exit_kernel = U256::from(inputs.registers_before.program_counter)
-        + U256::from((inputs.registers_before.is_kernel as u64) << 32)
-        + U256::from(inputs.registers_before.gas_used)
-        << 192;
+        + (U256::from(inputs.registers_before.is_kernel as u64) << 32)
+        + (U256::from(inputs.registers_before.gas_used) << 192);
     ops.push(mem_write_log(
         channel,
         MemoryAddress::new(0, Segment::RegistersStates, 2 * length),
@@ -277,7 +276,11 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
 
-    state.registers = inputs.registers_before;
+    state.registers = RegistersState {
+        program_counter: state.registers.program_counter,
+        is_kernel: state.registers.is_kernel,
+        ..inputs.registers_before
+    };
 
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
