@@ -28,11 +28,13 @@ use crate::cpu::kernel::opcodes::get_opcode;
 use crate::generation::state::GenerationState;
 use crate::generation::trie_extractor::{get_receipt_trie, get_state_trie, get_txn_trie};
 use crate::memory::segments::Segment;
-use crate::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
+use crate::proof::{
+    BlockHashes, BlockMetadata, ExitKernel, ExtraBlockData, PublicValues, RegistersData, TrieRoots,
+};
 use crate::prover::check_abort_signal;
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
-use crate::witness::memory::{MemoryAddress, MemoryChannel};
+use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp};
 use crate::witness::state::RegistersState;
 use crate::witness::transition::transition;
 
@@ -214,12 +216,10 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
         (inputs.registers_before.is_kernel as usize).into(),
         inputs.registers_before.stack_len.into(),
         inputs.registers_before.stack_top,
-        (inputs.registers_before.is_stack_top_read as usize).into(),
-        (inputs.registers_before.check_overflow as usize).into(),
         inputs.registers_before.context.into(),
         inputs.registers_before.gas_used.into(),
     ];
-    ops.extend((0..256).map(|i| {
+    ops.extend((0..registers_before.len()).map(|i| {
         mem_write_log(
             channel,
             MemoryAddress::new(0, Segment::RegistersStates, i),
@@ -228,25 +228,37 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
         )
     }));
 
+    let length = registers_before.len();
+
     // Write final registers.
     let registers_after = [
         inputs.registers_after.program_counter.into(),
         (inputs.registers_after.is_kernel as usize).into(),
         inputs.registers_after.stack_len.into(),
         inputs.registers_after.stack_top,
-        (inputs.registers_after.is_stack_top_read as usize).into(),
-        (inputs.registers_after.check_overflow as usize).into(),
         inputs.registers_after.context.into(),
         inputs.registers_after.gas_used.into(),
     ];
-    ops.extend((0..256).map(|i| {
+    ops.extend((0..registers_before.len()).map(|i| {
         mem_write_log(
             channel,
-            MemoryAddress::new(0, Segment::RegistersStates, registers_before.len()),
+            MemoryAddress::new(0, Segment::RegistersStates, length + i),
             state,
             registers_after[i],
         )
     }));
+
+    // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
+    let exit_kernel = U256::from(inputs.registers_before.program_counter)
+        + U256::from((inputs.registers_before.is_kernel as u64) << 32)
+        + U256::from(inputs.registers_before.gas_used)
+        << 192;
+    ops.push(mem_write_log(
+        channel,
+        MemoryAddress::new(0, Segment::RegistersStates, 2 * length),
+        state,
+        exit_kernel,
+    ));
 
     state.memory.apply_ops(&ops);
     state.traces.memory_ops.extend(ops);
@@ -349,12 +361,37 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     };
 
     let mem_before_values: Vec<(MemoryAddress, U256)> = inputs.memory_before;
+    let registers_before = RegistersData {
+        program_counter: inputs.registers_before.program_counter.into(),
+        is_kernel: (inputs.registers_before.is_kernel as u64).into(),
+        stack_len: inputs.registers_before.stack_len.into(),
+        stack_top: inputs.registers_before.stack_top,
+        context: inputs.registers_before.context.into(),
+        gas_used: inputs.registers_before.gas_used.into(),
+    };
+    let registers_after = RegistersData {
+        program_counter: inputs.registers_after.program_counter.into(),
+        is_kernel: (inputs.registers_after.is_kernel as u64).into(),
+        stack_len: inputs.registers_after.stack_len.into(),
+        stack_top: inputs.registers_after.stack_top,
+        context: inputs.registers_after.context.into(),
+        gas_used: inputs.registers_after.gas_used.into(),
+    };
+    let exit_kernel = ExitKernel {
+        exit_kernel: registers_before.program_counter
+            + (registers_before.is_kernel << 32)
+            + registers_before.gas_used
+            << 192,
+    };
     let public_values = PublicValues {
         trie_roots_before,
         trie_roots_after,
         block_metadata: inputs.block_metadata,
         block_hashes: inputs.block_hashes,
         extra_block_data,
+        registers_before,
+        registers_after,
+        exit_kernel,
     };
 
     let (tables, final_values) = timed!(

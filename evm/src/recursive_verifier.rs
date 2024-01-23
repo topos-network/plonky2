@@ -39,8 +39,9 @@ use crate::lookup::LookupCheckVarsTarget;
 use crate::memory::segments::Segment;
 use crate::memory::VALUE_LIMBS;
 use crate::proof::{
-    BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExtraBlockData,
-    ExtraBlockDataTarget, PublicValues, PublicValuesTarget, StarkOpeningSetTarget, StarkProof,
+    BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExitKernel,
+    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, PublicValues, PublicValuesTarget,
+    RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
     StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata, TrieRoots,
     TrieRootsTarget,
 };
@@ -631,6 +632,56 @@ pub(crate) fn get_memory_extra_looking_sum_circuit<F: RichField + Extendable<D>,
         &[kernel_len_target],
     );
 
+    // Write registers.
+    let registers_segment =
+        builder.constant(F::from_canonical_usize(Segment::RegistersStates.unscale()));
+    let registers_before: [&[Target]; 6] = [
+        &[public_values.registers_before.program_counter],
+        &[public_values.registers_before.is_kernel],
+        &[public_values.registers_before.stack_len],
+        &public_values.registers_before.stack_top,
+        &[public_values.registers_before.context],
+        &[public_values.registers_before.gas_used],
+    ];
+    for i in 0..registers_before.len() {
+        sum = add_data_write(
+            builder,
+            challenge,
+            sum,
+            registers_segment,
+            i,
+            registers_before[i],
+        );
+    }
+
+    let registers_after: [&[Target]; 6] = [
+        &[public_values.registers_after.program_counter],
+        &[public_values.registers_after.is_kernel],
+        &[public_values.registers_after.stack_len],
+        &public_values.registers_after.stack_top,
+        &[public_values.registers_after.context],
+        &[public_values.registers_after.gas_used],
+    ];
+    for i in 0..registers_before.len() {
+        sum = add_data_write(
+            builder,
+            challenge,
+            sum,
+            registers_segment,
+            registers_before.len() + i,
+            registers_after[i],
+        );
+    }
+
+    // Add exit kernel read.
+    sum = add_data_write(
+        builder,
+        challenge,
+        sum,
+        registers_segment,
+        registers_before.len() * 2,
+        &public_values.exit_kernel.exit_kernel,
+    );
     sum
 }
 
@@ -666,7 +717,7 @@ fn add_data_write<F: RichField + Extendable<D>, const D: usize>(
         builder.assert_zero(row[4 + j]);
     }
 
-    // timestamp = 1
+    // timestamp = 2
     let two = builder.constant(F::TWO);
     builder.sub(row[12], two);
 
@@ -702,12 +753,19 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
     let block_metadata = add_virtual_block_metadata(builder);
     let block_hashes = add_virtual_block_hashes(builder);
     let extra_block_data = add_virtual_extra_block_data(builder);
+    let registers_before = add_virtual_registers_data(builder);
+    let registers_after = add_virtual_registers_data(builder);
+    let exit_kernel = add_virtual_exit_kernel(builder);
+
     PublicValuesTarget {
         trie_roots_before,
         trie_roots_after,
         block_metadata,
         block_hashes,
         extra_block_data,
+        registers_before,
+        registers_after,
+        exit_kernel,
     }
 }
 
@@ -776,6 +834,32 @@ pub(crate) fn add_virtual_extra_block_data<F: RichField + Extendable<D>, const D
         gas_used_before,
         gas_used_after,
     }
+}
+
+pub(crate) fn add_virtual_registers_data<F: RichField + Extendable<D>, const D: usize>(
+    builder: &mut CircuitBuilder<F, D>,
+) -> RegistersDataTarget {
+    let program_counter = builder.add_virtual_public_input();
+    let is_kernel = builder.add_virtual_public_input();
+    let stack_len = builder.add_virtual_public_input();
+    let stack_top = builder.add_virtual_public_input_arr();
+    let context = builder.add_virtual_public_input();
+    let gas_used = builder.add_virtual_public_input();
+    RegistersDataTarget {
+        program_counter,
+        is_kernel,
+        stack_len,
+        stack_top,
+        context,
+        gas_used,
+    }
+}
+
+pub(crate) fn add_virtual_exit_kernel<F: RichField + Extendable<D>, const D: usize>(
+    builder: &mut CircuitBuilder<F, D>,
+) -> ExitKernelTarget {
+    let exit_kernel = builder.add_virtual_public_input_arr();
+    ExitKernelTarget { exit_kernel }
 }
 
 pub(crate) fn add_virtual_stark_proof<
@@ -898,6 +982,21 @@ where
         witness,
         &public_values_target.extra_block_data,
         &public_values.extra_block_data,
+    )?;
+    set_registers_target(
+        witness,
+        &public_values_target.registers_before,
+        &public_values.registers_before,
+    )?;
+    set_registers_target(
+        witness,
+        &public_values_target.registers_after,
+        &public_values.registers_after,
+    )?;
+    set_exit_kernel_target(
+        witness,
+        &public_values_target.exit_kernel,
+        &public_values.exit_kernel,
     )?;
 
     Ok(())
@@ -1054,6 +1153,39 @@ where
     );
     witness.set_target(ed_target.gas_used_before, u256_to_u32(ed.gas_used_before)?);
     witness.set_target(ed_target.gas_used_after, u256_to_u32(ed.gas_used_after)?);
+
+    Ok(())
+}
+
+pub(crate) fn set_registers_target<F, W, const D: usize>(
+    witness: &mut W,
+    rd_target: &RegistersDataTarget,
+    rd: &RegistersData,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    witness.set_target(rd_target.program_counter, u256_to_u32(rd.program_counter)?);
+    witness.set_target(rd_target.is_kernel, u256_to_u32(rd.is_kernel)?);
+    witness.set_target(rd_target.stack_len, u256_to_u32(rd.stack_len)?);
+    witness.set_target_arr(&rd_target.stack_top, &u256_limbs(rd.stack_top));
+    witness.set_target(rd_target.context, u256_to_u32(rd.context)?);
+    witness.set_target(rd_target.gas_used, u256_to_u32(rd.gas_used)?);
+
+    Ok(())
+}
+
+pub(crate) fn set_exit_kernel_target<F, W, const D: usize>(
+    witness: &mut W,
+    ek_target: &ExitKernelTarget,
+    ek: &ExitKernel,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    witness.set_target_arr(&ek_target.exit_kernel, &u256_limbs(ek.exit_kernel));
 
     Ok(())
 }

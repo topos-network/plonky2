@@ -66,6 +66,12 @@ pub struct PublicValues {
     pub block_hashes: BlockHashes,
     /// Extra block data that is specific to the current proof.
     pub extra_block_data: ExtraBlockData,
+    /// Registers to initialize the current proof.
+    pub registers_before: RegistersData,
+    /// Registers at the end of the current proof.
+    pub registers_after: RegistersData,
+    /// Exit kernel at the start of the proof.
+    pub exit_kernel: ExitKernel,
 }
 
 impl PublicValues {
@@ -99,18 +105,42 @@ impl PublicValues {
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE],
         );
-        let init_mem_len = pis[TrieRootsTarget::SIZE * 2
-            + BlockMetadataTarget::SIZE
-            + BlockHashesTarget::SIZE
-            + ExtraBlockDataTarget::SIZE]
-            .to_canonical_u64();
-
-        let start_idx = TrieRootsTarget::SIZE * 2
-            + BlockMetadataTarget::SIZE
-            + BlockHashesTarget::SIZE
-            + ExtraBlockDataTarget::SIZE
-            + 1;
-
+        let registers_before = RegistersData::from_public_inputs(
+            (&pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE]),
+        );
+        let registers_after = RegistersData::from_public_inputs(
+            (&pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2]),
+        );
+        let exit_kernel = ExitKernel::from_public_inputs(
+            &pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE * 2
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE],
+        );
         // There are 3 elements per address, + 1 U256 for the memory value.
         Self {
             trie_roots_before,
@@ -118,6 +148,9 @@ impl PublicValues {
             block_metadata,
             block_hashes,
             extra_block_data,
+            registers_before,
+            registers_after,
+            exit_kernel,
         }
     }
 }
@@ -284,6 +317,60 @@ impl ExtraBlockData {
     }
 }
 
+/// Registers data used to preinitialize the registers and check the final registers of the current proof.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RegistersData {
+    /// Program counter.
+    pub program_counter: U256,
+    /// is_kernel: indicates whether we are in kernel mode.
+    pub is_kernel: U256,
+    /// Stack length.
+    pub stack_len: U256,
+    /// Top of the stack.
+    pub stack_top: U256,
+    /// Context.
+    pub context: U256,
+    /// Gas used so far.
+    pub gas_used: U256,
+}
+impl RegistersData {
+    pub fn from_public_inputs<F: RichField>(pis: &[F]) -> Self {
+        assert!(pis.len() == RegistersDataTarget::SIZE);
+
+        let program_counter = pis[0].to_canonical_u64().into();
+        let is_kernel = pis[1].to_canonical_u64().into();
+        let stack_len = pis[2].to_canonical_u64().into();
+        let stack_top = get_u256(&pis[3..11]);
+        let context = pis[11].to_canonical_u64().into();
+        let gas_used = pis[12].to_canonical_u64().into();
+
+        Self {
+            program_counter,
+            is_kernel,
+            stack_len,
+            stack_top,
+            context,
+            gas_used,
+        }
+    }
+}
+
+/// Exit kernel at the start of the current proof.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ExitKernel {
+    /// Exit kernel.
+    pub exit_kernel: U256,
+}
+impl ExitKernel {
+    pub fn from_public_inputs<F: RichField>(pis: &[F]) -> Self {
+        assert!(pis.len() == RegistersDataTarget::SIZE);
+
+        let exit_kernel = get_u256(&pis[0..8]);
+
+        Self { exit_kernel }
+    }
+}
+
 /// Memory values which are public.
 /// Note: All the larger integers are encoded with 32-bit limbs in little-endian order.
 #[derive(Eq, PartialEq, Debug)]
@@ -298,6 +385,12 @@ pub struct PublicValuesTarget {
     pub block_hashes: BlockHashesTarget,
     /// Extra block data that is specific to the current proof.
     pub extra_block_data: ExtraBlockDataTarget,
+    /// Registers to initialize the current proof.
+    pub registers_before: RegistersDataTarget,
+    /// Registers at the end of the current proof.
+    pub registers_after: RegistersDataTarget,
+    /// Exit kernel at the start of the current proof.
+    pub exit_kernel: ExitKernelTarget,
 }
 
 impl PublicValuesTarget {
@@ -366,6 +459,36 @@ impl PublicValuesTarget {
         buffer.write_target(txn_number_after)?;
         buffer.write_target(gas_used_before)?;
         buffer.write_target(gas_used_after)?;
+        let RegistersDataTarget {
+            program_counter: program_counter_before,
+            is_kernel: is_kernel_before,
+            stack_len: stack_len_before,
+            stack_top: stack_top_before,
+            context: context_before,
+            gas_used: gas_used_before,
+        } = self.registers_before;
+        buffer.write_target(program_counter_before)?;
+        buffer.write_target(is_kernel_before)?;
+        buffer.write_target(stack_len_before)?;
+        buffer.write_target_array(&stack_top_before)?;
+        buffer.write_target(context_before)?;
+        buffer.write_target(gas_used_before)?;
+        let RegistersDataTarget {
+            program_counter: program_counter_after,
+            is_kernel: is_kernel_after,
+            stack_len: stack_len_after,
+            stack_top: stack_top_after,
+            context: context_after,
+            gas_used: gas_used_after,
+        } = self.registers_after;
+        buffer.write_target(program_counter_after)?;
+        buffer.write_target(is_kernel_after)?;
+        buffer.write_target(stack_len_after)?;
+        buffer.write_target_array(&stack_top_after)?;
+        buffer.write_target(context_after)?;
+        buffer.write_target(gas_used_after)?;
+
+        buffer.write_target_array(&self.exit_kernel.exit_kernel)?;
 
         Ok(())
     }
@@ -410,12 +533,36 @@ impl PublicValuesTarget {
             gas_used_after: buffer.read_target()?,
         };
 
+        let registers_before = RegistersDataTarget {
+            program_counter: buffer.read_target()?,
+            is_kernel: buffer.read_target()?,
+            stack_len: buffer.read_target()?,
+            stack_top: buffer.read_target_array()?,
+            context: buffer.read_target()?,
+            gas_used: buffer.read_target()?,
+        };
+        let registers_after = RegistersDataTarget {
+            program_counter: buffer.read_target()?,
+            is_kernel: buffer.read_target()?,
+            stack_len: buffer.read_target()?,
+            stack_top: buffer.read_target_array()?,
+            context: buffer.read_target()?,
+            gas_used: buffer.read_target()?,
+        };
+
+        let exit_kernel = ExitKernelTarget {
+            exit_kernel: buffer.read_target_array()?,
+        };
+
         Ok(Self {
             trie_roots_before,
             trie_roots_after,
             block_metadata,
             block_hashes,
             extra_block_data,
+            registers_before,
+            registers_after,
+            exit_kernel,
         })
     }
 
@@ -453,6 +600,42 @@ impl PublicValuesTarget {
                         + BlockMetadataTarget::SIZE
                         + BlockHashesTarget::SIZE
                         + ExtraBlockDataTarget::SIZE],
+            ),
+            registers_before: RegistersDataTarget::from_public_inputs(
+                &pis[TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    ..TrieRootsTarget::SIZE * 2
+                        + BlockMetadataTarget::SIZE
+                        + BlockHashesTarget::SIZE
+                        + ExtraBlockDataTarget::SIZE
+                        + RegistersDataTarget::SIZE],
+            ),
+            registers_after: RegistersDataTarget::from_public_inputs(
+                &pis[TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE
+                    ..TrieRootsTarget::SIZE * 2
+                        + BlockMetadataTarget::SIZE
+                        + BlockHashesTarget::SIZE
+                        + ExtraBlockDataTarget::SIZE
+                        + RegistersDataTarget::SIZE * 2],
+            ),
+            exit_kernel: ExitKernelTarget::from_public_inputs(
+                &pis[TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    ..TrieRootsTarget::SIZE * 2
+                        + BlockMetadataTarget::SIZE
+                        + BlockHashesTarget::SIZE
+                        + ExtraBlockDataTarget::SIZE
+                        + RegistersDataTarget::SIZE * 2
+                        + ExitKernelTarget::SIZE],
             ),
         }
     }
@@ -494,6 +677,24 @@ impl PublicValuesTarget {
                 condition,
                 pv0.extra_block_data,
                 pv1.extra_block_data,
+            ),
+            registers_before: RegistersDataTarget::select(
+                builder,
+                condition,
+                pv0.registers_before,
+                pv1.registers_before,
+            ),
+            registers_after: RegistersDataTarget::select(
+                builder,
+                condition,
+                pv0.registers_after,
+                pv1.registers_after,
+            ),
+            exit_kernel: ExitKernelTarget::select(
+                builder,
+                condition,
+                pv0.exit_kernel,
+                pv1.exit_kernel,
             ),
         }
     }
@@ -837,6 +1038,132 @@ impl ExtraBlockDataTarget {
         builder.connect(ed0.txn_number_after, ed1.txn_number_after);
         builder.connect(ed0.gas_used_before, ed1.gas_used_before);
         builder.connect(ed0.gas_used_after, ed1.gas_used_after);
+    }
+}
+
+/// Circuit version of `RegistersData`.
+/// Registers data used to preinitialize the registers and check the final registers of the current proof.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RegistersDataTarget {
+    /// Program counter.
+    pub program_counter: Target,
+    /// is_kernel: indicates whether we are in kernel mode.
+    pub is_kernel: Target,
+    /// Stack length.
+    pub stack_len: Target,
+    /// Top of the stack.
+    pub stack_top: [Target; 8],
+    /// Context.
+    pub context: Target,
+    /// Gas used so far.
+    pub gas_used: Target,
+}
+
+impl RegistersDataTarget {
+    /// Number of `Target`s required for the extra block data.
+    const SIZE: usize = 13;
+
+    /// Extracts the extra block data `Target`s from the public input `Target`s.
+    /// The provided `pis` should start with the extra vblock data.
+    pub(crate) fn from_public_inputs(pis: &[Target]) -> Self {
+        let program_counter = pis[0];
+        let is_kernel = pis[1];
+        let stack_len = pis[2];
+        let stack_top = pis[3..11].try_into().unwrap();
+        let context = pis[11];
+        let gas_used = pis[12];
+
+        Self {
+            program_counter,
+            is_kernel,
+            stack_len,
+            stack_top,
+            context,
+            gas_used,
+        }
+    }
+
+    /// If `condition`, returns the extra block data in `ed0`,
+    /// otherwise returns the extra block data in `ed1`.
+    pub(crate) fn select<F: RichField + Extendable<D>, const D: usize>(
+        builder: &mut CircuitBuilder<F, D>,
+        condition: BoolTarget,
+        rd0: Self,
+        rd1: Self,
+    ) -> Self {
+        Self {
+            program_counter: builder.select(condition, rd0.program_counter, rd1.program_counter),
+            is_kernel: builder.select(condition, rd0.is_kernel, rd1.is_kernel),
+            stack_len: builder.select(condition, rd0.stack_len, rd1.stack_len),
+            stack_top: core::array::from_fn(|i| {
+                builder.select(condition, rd0.stack_top[i], rd1.stack_top[i])
+            }),
+            context: builder.select(condition, rd0.context, rd1.context),
+            gas_used: builder.select(condition, rd0.context, rd1.context),
+        }
+    }
+
+    /// Connects the extra block data in `ed0` with the extra block data in `ed1`.
+    pub(crate) fn connect<F: RichField + Extendable<D>, const D: usize>(
+        builder: &mut CircuitBuilder<F, D>,
+        rd0: Self,
+        rd1: Self,
+    ) {
+        builder.connect(rd0.program_counter, rd1.program_counter);
+        builder.connect(rd0.is_kernel, rd1.is_kernel);
+        builder.connect(rd0.stack_len, rd1.stack_len);
+        for i in 0..8 {
+            builder.connect(rd0.stack_top[i], rd1.stack_top[i]);
+        }
+        builder.connect(rd0.context, rd1.context);
+        builder.connect(rd0.gas_used, rd1.gas_used);
+    }
+}
+
+/// Circuit version of `ExitKernel`.
+/// Exit kernel at the start of the current proof.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ExitKernelTarget {
+    /// Exit kernel.
+    pub exit_kernel: [Target; 8],
+}
+
+impl ExitKernelTarget {
+    /// Number of `Target`s required for the extra block data.
+    const SIZE: usize = 8;
+
+    /// Extracts the exit kernel `Target`s from the public input `Target`s.
+    /// The provided `pis` should start with the extra vblock data.
+    pub(crate) fn from_public_inputs(pis: &[Target]) -> Self {
+        let exit_kernel = pis[0..8].try_into().unwrap();
+
+        Self { exit_kernel }
+    }
+
+    /// If `condition`, returns the exit kernel in `ek0`,
+    /// otherwise returns the exit kernel in `ek1`.
+    pub(crate) fn select<F: RichField + Extendable<D>, const D: usize>(
+        builder: &mut CircuitBuilder<F, D>,
+        condition: BoolTarget,
+        ek0: Self,
+        ek1: Self,
+    ) -> Self {
+        Self {
+            exit_kernel: core::array::from_fn(|i| {
+                builder.select(condition, ek0.exit_kernel[i], ek1.exit_kernel[i])
+            }),
+        }
+    }
+
+    /// Connects the exit kernel in `ek0` with the exit kernel in `ek1`.
+    pub(crate) fn connect<F: RichField + Extendable<D>, const D: usize>(
+        builder: &mut CircuitBuilder<F, D>,
+        ek0: Self,
+        ek1: Self,
+    ) {
+        for i in 0..8 {
+            builder.connect(ek0.exit_kernel[i], ek1.exit_kernel[i]);
+        }
     }
 }
 

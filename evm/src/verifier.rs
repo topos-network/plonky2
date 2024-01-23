@@ -611,6 +611,46 @@ pub(crate) mod testutils {
             extra_looking_rows.push(add_extra_looking_row(block_hashes_segment, index, val));
         }
 
+        // Add registers writes.
+        let registers_segment = F::from_canonical_usize(Segment::RegistersStates.unscale());
+        let registers_before = [
+            public_values.registers_before.program_counter,
+            public_values.registers_before.is_kernel,
+            public_values.registers_before.stack_len,
+            public_values.registers_before.stack_top,
+            public_values.registers_before.context,
+            public_values.registers_before.gas_used,
+        ];
+        for i in 0..registers_before.len() {
+            extra_looking_rows.push(add_extra_looking_row(
+                registers_segment,
+                i,
+                registers_before[i],
+            ));
+        }
+        let registers_after = [
+            public_values.registers_after.program_counter,
+            public_values.registers_after.is_kernel,
+            public_values.registers_after.stack_len,
+            public_values.registers_after.stack_top,
+            public_values.registers_after.context,
+            public_values.registers_after.gas_used,
+        ];
+        for i in 0..registers_before.len() {
+            extra_looking_rows.push(add_extra_looking_row(
+                registers_segment,
+                registers_before.len() + i,
+                registers_after[i],
+            ));
+        }
+
+        // Write exit kernel.
+        extra_looking_rows.push(add_extra_looking_row(
+            registers_segment,
+            registers_before.len() * 2,
+            public_values.exit_kernel.exit_kernel,
+        ));
+
         extra_looking_rows
     }
 

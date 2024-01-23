@@ -1240,6 +1240,9 @@ where
             },
             block_metadata: rhs_public_values.block_metadata,
             block_hashes: rhs_public_values.block_hashes,
+            registers_before: lhs_public_values.registers_before,
+            registers_after: rhs_public_values.registers_after,
+            exit_kernel: lhs_public_values.exit_kernel,
         };
 
         set_public_value_targets(
