@@ -16,7 +16,6 @@ use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
-use plonky2_evm::stark::PublicRegisterStates;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
@@ -144,11 +143,10 @@ fn test_selfdestruct() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let registers = [PublicRegisterStates::default(); 9];
-    let proof = prove::<F, C, D>(&all_stark, &registers, &config, inputs, &mut timing, None)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing, None)?;
     timing.filter(Duration::from_millis(100)).print();
 
-    verify_proof(&all_stark, proof, &registers, &config)
+    verify_proof(&all_stark, proof, &config)
 }
 
 fn eth_to_wei(eth: U256) -> U256 {

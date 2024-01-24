@@ -33,7 +33,6 @@ use crate::vanishing_poly::eval_vanishing_poly;
 pub fn verify_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     all_stark: &AllStark<F, D>,
     all_proof: AllProof<F, C, D>,
-    public_registers: &[PublicRegisterStates; NUM_TABLES],
     config: &StarkConfig,
 ) -> Result<()>
 where
@@ -75,7 +74,6 @@ where
 
     verify_stark_proof_with_challenges(
         arithmetic_stark,
-        public_registers[Table::Arithmetic as usize],
         &all_proof.stark_proofs[Table::Arithmetic as usize].proof,
         &stark_challenges[Table::Arithmetic as usize],
         &ctl_vars_per_table[Table::Arithmetic as usize],
@@ -84,7 +82,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         byte_packing_stark,
-        public_registers[Table::BytePacking as usize],
         &all_proof.stark_proofs[Table::BytePacking as usize].proof,
         &stark_challenges[Table::BytePacking as usize],
         &ctl_vars_per_table[Table::BytePacking as usize],
@@ -93,7 +90,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         cpu_stark,
-        public_registers[Table::Cpu as usize],
         &all_proof.stark_proofs[Table::Cpu as usize].proof,
         &stark_challenges[Table::Cpu as usize],
         &ctl_vars_per_table[Table::Cpu as usize],
@@ -102,7 +98,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         keccak_stark,
-        public_registers[Table::Keccak as usize],
         &all_proof.stark_proofs[Table::Keccak as usize].proof,
         &stark_challenges[Table::Keccak as usize],
         &ctl_vars_per_table[Table::Keccak as usize],
@@ -111,7 +106,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         keccak_sponge_stark,
-        public_registers[Table::KeccakSponge as usize],
         &all_proof.stark_proofs[Table::KeccakSponge as usize].proof,
         &stark_challenges[Table::KeccakSponge as usize],
         &ctl_vars_per_table[Table::KeccakSponge as usize],
@@ -120,7 +114,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         logic_stark,
-        public_registers[Table::Logic as usize],
         &all_proof.stark_proofs[Table::Logic as usize].proof,
         &stark_challenges[Table::Logic as usize],
         &ctl_vars_per_table[Table::Logic as usize],
@@ -129,7 +122,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         memory_stark,
-        public_registers[Table::Memory as usize],
         &all_proof.stark_proofs[Table::Memory as usize].proof,
         &stark_challenges[Table::Memory as usize],
         &ctl_vars_per_table[Table::Memory as usize],
@@ -138,7 +130,6 @@ where
     )?;
     verify_stark_proof_with_challenges(
         mem_before_stark,
-        public_registers[Table::MemBefore as usize],
         &all_proof.stark_proofs[Table::MemBefore as usize].proof,
         &stark_challenges[Table::MemBefore as usize],
         &ctl_vars_per_table[Table::MemBefore as usize],
@@ -358,7 +349,6 @@ pub(crate) fn verify_stark_proof_with_challenges<
     const D: usize,
 >(
     stark: &S,
-    public_registers: PublicRegisterStates,
     proof: &StarkProof<F, C, D>,
     challenges: &StarkProofChallenges<F, D>,
     ctl_vars: &[CtlCheckVars<F, F::Extension, F::Extension, D>],
@@ -413,7 +403,6 @@ pub(crate) fn verify_stark_proof_with_challenges<
     let lookups = stark.lookups();
     eval_vanishing_poly::<F, F::Extension, F::Extension, S, D, D>(
         stark,
-        public_registers,
         &vars,
         &lookups,
         lookup_vars,

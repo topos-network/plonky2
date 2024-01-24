@@ -20,7 +20,6 @@ use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
-use plonky2_evm::stark::PublicRegisterStates;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
@@ -236,9 +235,8 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         registers_after: RegistersState::default(),
     };
 
-    let registers = [PublicRegisterStates::default(); 9];
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &registers, &config, inputs, &mut timing, None)?;
+    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing, None)?;
     timing.filter(Duration::from_millis(100)).print();
 
     // Assert that the proof leads to the correct state and receipt roots.
@@ -252,7 +250,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         receipts_trie.hash()
     );
 
-    verify_proof(&all_stark, proof, &registers, &config)
+    verify_proof(&all_stark, proof, &config)
 }
 
 // Tests proving two transactions, one of which with logs, and aggregating them.
@@ -448,11 +446,9 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         registers_after: RegistersState::default(),
     };
 
-    let registers = [PublicRegisterStates::default(); 9];
     // Preprocess all circuits.
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
-        &registers,
         &[
             16..17,
             12..16,
@@ -468,14 +464,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     );
 
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
-    let (root_proof_first, public_values_first) = all_circuits.prove_root(
-        &all_stark,
-        &registers,
-        &config,
-        inputs_first,
-        &mut timing,
-        None,
-    )?;
+    let (root_proof_first, public_values_first) =
+        all_circuits.prove_root(&all_stark, &config, inputs_first, &mut timing, None)?;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
@@ -597,15 +587,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
-    let registers = [PublicRegisterStates::default(); 9];
-    let (root_proof_second, public_values_second) = all_circuits.prove_root(
-        &all_stark,
-        &registers,
-        &config,
-        inputs,
-        &mut timing,
-        None.clone(),
-    )?;
+    let (root_proof_second, public_values_second) =
+        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None.clone())?;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof_second.clone())?;
@@ -673,7 +656,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     };
 
     let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &registers, &config, inputs, &mut timing, None)?;
+        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
     all_circuits.verify_root(root_proof.clone())?;
 
     // We can just duplicate the initial proof as the state didn't change.

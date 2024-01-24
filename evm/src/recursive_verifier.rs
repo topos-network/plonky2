@@ -217,7 +217,6 @@ pub(crate) fn recursive_stark_circuit<
 >(
     table: Table,
     stark: &S,
-    public_registers: PublicRegisterStates,
     degree_bits: usize,
     cross_table_lookups: &[CrossTableLookup<F>],
     inner_config: &StarkConfig,
@@ -293,7 +292,6 @@ where
     verify_stark_proof_with_challenges_circuit::<F, C, _, D>(
         &mut builder,
         stark,
-        public_registers,
         &proof_target,
         &challenges,
         &ctl_vars,
@@ -338,7 +336,6 @@ fn verify_stark_proof_with_challenges_circuit<
 >(
     builder: &mut CircuitBuilder<F, D>,
     stark: &S,
-    public_registers: PublicRegisterStates,
     proof: &StarkProofTarget<D>,
     challenges: &StarkProofChallengesTarget<D>,
     ctl_vars: &[CtlCheckVarsTarget<F, D>],
@@ -404,7 +401,6 @@ fn verify_stark_proof_with_challenges_circuit<
         eval_vanishing_poly_circuit::<F, S, D>(
             builder,
             stark,
-            public_registers,
             &vars,
             lookup_vars,
             ctl_vars,

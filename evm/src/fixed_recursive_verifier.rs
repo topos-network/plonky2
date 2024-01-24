@@ -413,14 +413,12 @@ where
     /// one yielding large proofs.
     pub fn new(
         all_stark: &AllStark<F, D>,
-        public_registers: &[PublicRegisterStates; NUM_TABLES],
         degree_bits_ranges: &[Range<usize>; NUM_TABLES],
         stark_config: &StarkConfig,
     ) -> Self {
         let arithmetic = RecursiveCircuitsForTable::new(
             Table::Arithmetic,
             &all_stark.arithmetic_stark,
-            public_registers[Table::Arithmetic as usize],
             degree_bits_ranges[Table::Arithmetic as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -428,7 +426,6 @@ where
         let byte_packing = RecursiveCircuitsForTable::new(
             Table::BytePacking,
             &all_stark.byte_packing_stark,
-            public_registers[Table::BytePacking as usize],
             degree_bits_ranges[Table::BytePacking as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -436,7 +433,6 @@ where
         let cpu = RecursiveCircuitsForTable::new(
             Table::Cpu,
             &all_stark.cpu_stark,
-            public_registers[Table::Cpu as usize],
             degree_bits_ranges[Table::Cpu as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -444,7 +440,6 @@ where
         let keccak = RecursiveCircuitsForTable::new(
             Table::Keccak,
             &all_stark.keccak_stark,
-            public_registers[Table::Keccak as usize],
             degree_bits_ranges[Table::Keccak as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -452,7 +447,6 @@ where
         let keccak_sponge = RecursiveCircuitsForTable::new(
             Table::KeccakSponge,
             &all_stark.keccak_sponge_stark,
-            public_registers[Table::KeccakSponge as usize],
             degree_bits_ranges[Table::KeccakSponge as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -460,7 +454,6 @@ where
         let logic = RecursiveCircuitsForTable::new(
             Table::Logic,
             &all_stark.logic_stark,
-            public_registers[Table::Logic as usize],
             degree_bits_ranges[Table::Logic as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -468,7 +461,6 @@ where
         let memory = RecursiveCircuitsForTable::new(
             Table::Memory,
             &all_stark.memory_stark,
-            public_registers[Table::Memory as usize],
             degree_bits_ranges[Table::Memory as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -476,7 +468,6 @@ where
         let mem_before = RecursiveCircuitsForTable::new(
             Table::MemBefore,
             &all_stark.mem_before_stark,
-            public_registers[Table::MemBefore as usize],
             degree_bits_ranges[Table::MemBefore as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -484,7 +475,6 @@ where
         let mem_after = RecursiveCircuitsForTable::new(
             Table::MemAfter,
             &all_stark.mem_after_stark,
-            public_registers[Table::MemAfter as usize],
             degree_bits_ranges[Table::MemAfter as usize].clone(),
             &all_stark.cross_table_lookups,
             stark_config,
@@ -1015,7 +1005,6 @@ where
     pub fn prove_root(
         &self,
         all_stark: &AllStark<F, D>,
-        public_registers: &[PublicRegisterStates; NUM_TABLES],
         config: &StarkConfig,
         generation_inputs: GenerationInputs,
         timing: &mut TimingTree,
@@ -1023,7 +1012,6 @@ where
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
         let all_proof = prove::<F, C, D>(
             all_stark,
-            public_registers,
             config,
             generation_inputs,
             timing,
@@ -1490,7 +1478,6 @@ where
     fn new<S: Stark<F, D>>(
         table: Table,
         stark: &S,
-        public_registers: PublicRegisterStates,
         degree_bits_range: Range<usize>,
         all_ctls: &[CrossTableLookup<F>],
         stark_config: &StarkConfig,
@@ -1502,7 +1489,6 @@ where
                     RecursiveCircuitsForTableSize::new::<S>(
                         table,
                         stark,
-                        public_registers,
                         degree_bits,
                         all_ctls,
                         stark_config,
@@ -1613,7 +1599,6 @@ where
     fn new<S: Stark<F, D>>(
         table: Table,
         stark: &S,
-        public_registers: PublicRegisterStates,
         degree_bits: usize,
         all_ctls: &[CrossTableLookup<F>],
         stark_config: &StarkConfig,
@@ -1621,7 +1606,6 @@ where
         let initial_wrapper = recursive_stark_circuit(
             table,
             stark,
-            public_registers,
             degree_bits,
             all_ctls,
             stark_config,
