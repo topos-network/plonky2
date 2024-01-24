@@ -214,6 +214,12 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
 
+    let halt_label = 40129;
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = halt_label;
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 42793;
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -232,7 +238,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::default(),
+        registers_after,
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -426,6 +432,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         H256::from_str("0x0101010101010101010101010101010101010101010101010101010101010101")?;
     let mut block_hashes = vec![H256::default(); 256];
 
+    let halt_label = 40129;
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = halt_label;
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 167785;
     let inputs_first = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -443,7 +455,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::default(),
+        registers_after,
     };
 
     // Preprocess all circuits.
@@ -566,6 +578,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
 
+    let halt_label = 40129;
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = halt_label;
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 45229;
     let inputs = GenerationInputs {
         signed_txn: Some(txn_2.to_vec()),
         withdrawals: vec![],
@@ -583,7 +601,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::default(),
+        registers_after,
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
@@ -626,6 +644,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let mut contract_code = HashMap::new();
     contract_code.insert(keccak(vec![]), vec![]);
 
+    let halt_label = 40129;
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = halt_label;
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 45229;
     let inputs = GenerationInputs {
         signed_txn: None,
         withdrawals: vec![],
@@ -652,7 +676,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::default(),
+        registers_after,
     };
 
     let (root_proof, public_values) =

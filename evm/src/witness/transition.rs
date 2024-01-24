@@ -449,6 +449,20 @@ fn log_kernel_instruction<F: Field>(state: &GenerationState<F>, op: Operation) {
     assert!(pc < KERNEL.code.len(), "Kernel PC is out of range: {}", pc);
 }
 
+pub(crate) fn final_exception<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
+    let exc_code: u8 = 6;
+
+    let checkpoint = state.checkpoint();
+    let (row, _) = base_row(state);
+    generate_exception(exc_code, state, row)
+        .map_err(|_| anyhow::Error::msg("error handling errored..."))?;
+
+    state
+        .memory
+        .apply_ops(state.traces.mem_ops_since(checkpoint.traces));
+    Ok(())
+}
+
 fn handle_error<F: Field>(state: &mut GenerationState<F>, err: ProgramError) -> anyhow::Result<()> {
     let exc_code: u8 = match err {
         ProgramError::OutOfGas => 0,

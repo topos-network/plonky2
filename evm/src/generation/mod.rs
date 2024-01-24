@@ -36,7 +36,7 @@ use crate::util::{h2u, u256_to_u8, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
 use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp};
 use crate::witness::state::RegistersState;
-use crate::witness::transition::transition;
+use crate::witness::transition::{final_exception, transition};
 
 pub mod mpt;
 pub(crate) mod prover_input;
@@ -408,12 +408,17 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 
 fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
     let halt_pc = KERNEL.global_labels["halt"];
+    let halt_final_pc = KERNEL.global_labels["halt_final"];
 
     loop {
         // If we've reached the kernel's halt routine, and our trace length is a power of 2, stop.
         let pc = state.registers.program_counter;
         let halt = state.registers.is_kernel && pc == halt_pc;
         if halt {
+            final_exception(state)?;
+        }
+        let halt_final = pc == halt_final_pc;
+        if halt_final {
             log::info!("CPU halted after {} cycles", state.traces.clock());
 
             // Padding
@@ -515,7 +520,11 @@ fn simulate_cpu_between_labels_and_get_user_jumps<F: Field>(
                     jumpdest_addresses.insert(context, BTreeSet::from([jumpdest]));
                 }
             }
-            if halt || transition(state).is_err() {
+            if halt {
+                final_exception(state);
+            }
+            let halt_final = state.registers.program_counter == KERNEL.global_labels["halt_final"];
+            if halt_final || transition(state).is_err() {
                 log::debug!(
                     "Simulated CPU for jumpdest analysis halted after {} cycles",
                     state.traces.clock() - initial_clock

@@ -13,6 +13,7 @@ use plonky2::field::goldilocks_field::GoldilocksField;
 use super::assembler::BYTES_PER_OFFSET;
 use super::utils::u256_from_bool;
 use crate::cpu::kernel::aggregator::KERNEL;
+use crate::cpu::kernel::assembler::Kernel;
 use crate::cpu::kernel::constants::context_metadata::ContextMetadata;
 use crate::cpu::kernel::constants::global_metadata::GlobalMetadata;
 use crate::cpu::kernel::constants::txn_fields::NormalizedTxnField;
@@ -21,7 +22,7 @@ use crate::extension_tower::BN_BASE;
 use crate::generation::mpt::load_all_mpts;
 use crate::generation::prover_input::ProverInputFn;
 use crate::generation::rlp::all_rlp_prover_inputs_reversed;
-use crate::generation::state::{all_withdrawals_prover_inputs_reversed, GenerationState};
+use crate::generation::state::{self, all_withdrawals_prover_inputs_reversed, GenerationState};
 use crate::generation::GenerationInputs;
 use crate::memory::segments::{Segment, SEGMENT_SCALING_FACTOR};
 use crate::util::{h2u, u256_to_usize};
@@ -179,7 +180,7 @@ impl<'a> Interpreter<'a> {
             prover_inputs_map: prover_inputs,
             // `DEFAULT_HALT_OFFSET` is used as a halting point for the interpreter,
             // while the label `halt` is the halting label in the kernel.
-            halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt"]],
+            halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt_final"]],
             debug_offsets: vec![],
             running: false,
             opcode_count: [0; 256],
@@ -386,18 +387,10 @@ impl<'a> Interpreter<'a> {
         self.set_memory_multi_addresses(&registers_after_fields);
 
         // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
-        println!(
-            "is kernel {:?}",
-            U256::from(inputs.registers_before.is_kernel as u64)
-        );
         let exit_kernel = U256::from(inputs.registers_before.program_counter)
             + (U256::from(inputs.registers_before.is_kernel as u64) << 32)
             + (U256::from(inputs.registers_before.gas_used) << 192);
-        println!(
-            "computed PC {:?} other {:?}",
-            (exit_kernel) & 0xFFFFFFFFu32.into(),
-            47761 & 0xFFFFFFFFu32
-        );
+
         let exit_kernel_addr = MemoryAddress::new_u256s(
             0.into(),
             Segment::RegistersStates.unscale().into(),
@@ -478,6 +471,10 @@ impl<'a> Interpreter<'a> {
         self.running = true;
         while self.running {
             let pc = self.generation_state.registers.program_counter;
+            if self.is_kernel() && pc == KERNEL.global_labels["halt"] {
+                self.run_exception(6)
+                    .map_err(|_| anyhow::Error::msg("error ending segment..."));
+            }
             if self.is_kernel() && self.halt_offsets.contains(&pc) {
                 return Ok(());
             };
@@ -1216,7 +1213,6 @@ impl<'a> Interpreter<'a> {
         }
 
         self.generation_state.registers.program_counter = offset;
-
         if self.halt_offsets.contains(&offset) {
             self.running = false;
         }
@@ -1393,6 +1389,7 @@ impl<'a> Interpreter<'a> {
         let new_program_counter = u256_to_usize(handler_addr)?;
 
         let exc_info = U256::from(self.generation_state.registers.program_counter)
+            + (U256::from(self.generation_state.registers.is_kernel as u64) << 32)
             + (U256::from(self.generation_state.registers.gas_used) << 192);
 
         self.push(exc_info)?;

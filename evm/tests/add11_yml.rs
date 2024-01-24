@@ -151,6 +151,12 @@ fn add11_yml() -> anyhow::Result<()> {
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
+    let halt_label = 40129;
+    let mut registers_after = RegistersState::default();
+    registers_after.program_counter = halt_label;
+    registers_after.stack_top = 146028888070u64.into();
+    registers_after.stack_len = 0;
+    registers_after.gas_used = 32436;
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -168,7 +174,7 @@ fn add11_yml() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::default(),
+        registers_after,
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);

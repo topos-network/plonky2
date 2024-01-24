@@ -20,8 +20,10 @@ global exception_jumptable:
     // exception 5: stack overflow
     JUMPTABLE exc_stack_overflow
 
-    // exceptions 6 and 7: unused
-    JUMPTABLE panic
+    // exception 6: stopping for segmented proofs.
+    JUMPTABLE exc_stop
+
+    // exceptions 7: unused
     JUMPTABLE panic
 
 
@@ -163,6 +165,65 @@ global exc_stack_overflow_check_stack_length:
     %jumpi(fault_exception)
     PANIC
 
+global exc_stop:
+    // Here, we need to check that the final registers have the correct value.
+    // stack: trap_info
+    PUSH @SEGMENT_REGISTERS_STATES
+    %add_const(6)
+
+    // stack: addr_registers, trap_info
+    PUSH 1
+    PUSH @SEGMENT_STACK
+    GET_CONTEXT
+    %build_address
+    // stack: stack_top_before_exc_addr, addr_registers, trap_info
+    MLOAD_GENERAL
+    // stack: stack_top_before_exc, addr_registers, trap_info
+    DUP2 %add_const(3)
+    MLOAD_GENERAL
+    %assert_eq
+
+    // stack: addr_registers, trap_info
+    DUP2 PUSH 0xFFFFFFFF AND
+    // stack: program_counter, addr_registers, trap_info
+    DUP2
+    MLOAD_GENERAL
+    // stack: public_pc, program_counter, addr_registers, trap_info
+    %assert_eq
+
+    // stack: addr_registers, trap_info
+    DUP2 %shr_const(32)
+    PUSH 0xFFFFFFFF AND
+    // stack: is_kernel_mode, addr_registers, trap_info
+    DUP2 %increment
+    MLOAD_GENERAL
+    %assert_eq
+
+    // stack: addr_registers, trap_info
+    SWAP1 %shr_const(192)
+    PUSH 0xFFFFFFFF AND
+    // stack: gas_used, addr_registers
+    DUP2 %add_const(5)
+    MLOAD_GENERAL
+    %assert_eq
+
+    // stack: addr_registers
+    PUSH 2
+    %stack_length
+    SUB
+    // stack: stack_len_before_exc, addr_registers
+    DUP2 %add_const(2)
+    MLOAD_GENERAL
+    %assert_eq
+
+    // stack: addr_registers
+    %add_const(4)
+    MLOAD_GENERAL
+    // stack: stored_context
+    GET_CONTEXT
+    %assert_eq
+    // stack: (empty)
+    %jump(halt_final)
 
 // Given the exception trap info, load the opcode that caused the exception
 %macro opcode_from_exp_trap_info
