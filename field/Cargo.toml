@@ -10,11 +10,13 @@ edition = "2021"
 anyhow = { version = "1.0.40", default-features = false }
 itertools = { version = "0.11.0", default-features = false, features = ["use_alloc"] }
 num = { version = "0.4", default-features = false, features = ["alloc", "rand"] }
-plonky2_util = { path = "../util", default-features = false }
 rand = { version = "0.8.5", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
 static_assertions = { version = "1.1.0", default-features = false }
 unroll = { version = "0.1.5", default-features = false }
+
+# Local dependencies
+plonky2_util = { version = "0.2.0", path = "../util", default-features = false }
 
 # Display math equations properly in documentation
 [package.metadata.docs.rs]
