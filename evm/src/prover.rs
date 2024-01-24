@@ -38,6 +38,7 @@ use crate::stark::{PublicRegisterStates, Stark};
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
 use crate::witness::memory::MemoryAddress;
+use crate::witness::state::RegistersState;
 // #[cfg(test)]
 use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
@@ -56,7 +57,7 @@ where
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (traces, final_memory_values, public_values) = timed!(
+    let (traces, final_memory_values, final_registers, public_values) = timed!(
         timing,
         "generate all traces",
         generate_traces(all_stark, inputs, config, timing)?
@@ -68,6 +69,7 @@ where
         config,
         traces,
         final_memory_values,
+        final_registers,
         public_values,
         timing,
         abort_signal,
@@ -81,6 +83,7 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
     config: &StarkConfig,
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
     final_memory_values: Vec<Vec<F>>,
+    final_register_values: RegistersState,
     public_values: PublicValues,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
@@ -174,6 +177,7 @@ where
         ctl_challenges,
         public_values,
         final_memory_values: final_mem_values,
+        final_register_values,
     })
 }
 

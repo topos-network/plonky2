@@ -24,6 +24,7 @@ use crate::generation::MemBeforeValues;
 use crate::mem_before::mem_before_stark::MemBeforeStark;
 use crate::util::{get_h160, get_h256, get_u256, h2u};
 use crate::witness::memory::MemoryAddress;
+use crate::witness::state::RegistersState;
 
 /// A STARK proof for each table, plus some metadata used to create recursive wrapper proofs.
 #[derive(Debug, Clone)]
@@ -36,6 +37,8 @@ pub struct AllProof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, co
     pub public_values: PublicValues,
     /// Memory values at the end of the execution.
     pub final_memory_values: MemBeforeValues,
+    /// State of the registers at the end of the execution.
+    pub final_register_values: RegistersState,
 }
 
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> AllProof<F, C, D> {

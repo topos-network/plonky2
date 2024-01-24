@@ -270,6 +270,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 ) -> anyhow::Result<(
     [Vec<PolynomialValues<F>>; NUM_TABLES],
     Vec<Vec<F>>,
+    RegistersState,
     PublicValues,
 )> {
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
@@ -402,7 +403,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .traces
             .into_tables(all_stark, &mem_before_values, config, timing)
     );
-    Ok((tables, final_values, public_values))
+    Ok((tables, final_values, state.registers, public_values))
 }
 
 fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
