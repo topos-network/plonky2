@@ -88,6 +88,8 @@ impl PublicValues {
                     + BlockMetadataTarget::SIZE
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
                     - 1
         );
 
@@ -366,7 +368,7 @@ pub struct ExitKernel {
 }
 impl ExitKernel {
     pub fn from_public_inputs<F: RichField>(pis: &[F]) -> Self {
-        assert!(pis.len() == RegistersDataTarget::SIZE);
+        assert!(pis.len() == ExitKernelTarget::SIZE);
 
         let exit_kernel = get_u256(&pis[0..8]);
 
@@ -1102,7 +1104,7 @@ impl RegistersDataTarget {
                 builder.select(condition, rd0.stack_top[i], rd1.stack_top[i])
             }),
             context: builder.select(condition, rd0.context, rd1.context),
-            gas_used: builder.select(condition, rd0.context, rd1.context),
+            gas_used: builder.select(condition, rd0.gas_used, rd1.gas_used),
         }
     }
 

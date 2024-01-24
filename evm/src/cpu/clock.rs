@@ -28,7 +28,7 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 ) {
     let first_clock = builder.add_const_extension(lv.clock, F::NEG_ONE);
     // The clock is 0 at the beginning.
-    yield_constr.constraint_first_row(builder, lv.clock);
+    yield_constr.constraint_first_row(builder, first_clock);
     // The clock is incremented by 1 at each row.
     {
         let new_clock = builder.add_const_extension(lv.clock, F::ONE);

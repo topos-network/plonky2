@@ -41,8 +41,9 @@ use crate::cross_table_lookup::{
 use crate::generation::GenerationInputs;
 use crate::get_challenges::observe_public_values_target;
 use crate::proof::{
-    AllProof, BlockHashesTarget, BlockMetadataTarget, ExtraBlockData, ExtraBlockDataTarget,
-    PublicValues, PublicValuesTarget, StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
+    AllProof, BlockHashesTarget, BlockMetadataTarget, ExitKernelTarget, ExtraBlockData,
+    ExtraBlockDataTarget, PublicValues, PublicValuesTarget, RegistersDataTarget,
+    StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
 };
 use crate::prover::{check_abort_signal, prove};
 use crate::recursive_verifier::{
@@ -704,6 +705,28 @@ where
             &mut builder,
             lhs_public_values.trie_roots_after,
             rhs_public_values.trie_roots_before,
+        );
+
+        RegistersDataTarget::connect(
+            &mut builder,
+            public_values.registers_after.clone(),
+            rhs_public_values.registers_after.clone(),
+        );
+
+        RegistersDataTarget::connect(
+            &mut builder,
+            lhs_public_values.registers_after,
+            rhs_public_values.registers_before.clone(),
+        );
+        RegistersDataTarget::connect(
+            &mut builder,
+            lhs_public_values.registers_before,
+            public_values.registers_before.clone(),
+        );
+        ExitKernelTarget::connect(
+            &mut builder,
+            lhs_public_values.exit_kernel,
+            public_values.exit_kernel.clone(),
         );
 
         Self::connect_extra_public_values(
