@@ -285,7 +285,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
     let cpu_res = timed!(timing, "simulate CPU", simulate_cpu(&mut state));
-    if cpu_res.is_err() {
+    let final_registers = if cpu_res.is_err() {
         // Retrieve previous PC (before jumping to KernelPanic), to see if we reached `hash_final_tries`.
         // We will output debugging information on the final tries only if we got a root mismatch.
         let previous_pc = state
@@ -332,7 +332,10 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         }
 
         cpu_res?;
-    }
+        RegistersState::default()
+    } else {
+        cpu_res.unwrap()
+    };
 
     log::info!(
         "Trace lengths (before padding): {:?}",
@@ -403,18 +406,21 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .traces
             .into_tables(all_stark, &mem_before_values, config, timing)
     );
-    Ok((tables, final_values, state.registers, public_values))
+    Ok((tables, final_values, final_registers, public_values))
 }
 
-fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> {
+fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<RegistersState> {
     let halt_pc = KERNEL.global_labels["halt"];
     let halt_final_pc = KERNEL.global_labels["halt_final"];
+
+    let mut final_registers = RegistersState::default();
 
     loop {
         // If we've reached the kernel's halt routine, and our trace length is a power of 2, stop.
         let pc = state.registers.program_counter;
         let halt = state.registers.is_kernel && pc == halt_pc;
         if halt {
+            final_registers = state.registers;
             final_exception(state)?;
         }
         let halt_final = pc == halt_final_pc;
@@ -440,11 +446,12 @@ fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<()> 
 
             log::info!("CPU trace padded to {} cycles", state.traces.clock() - 1);
 
-            return Ok(());
+            return Ok(final_registers);
         }
 
         transition(state)?;
     }
+    Ok(final_registers)
 }
 
 fn simulate_cpu_between_labels_and_get_user_jumps<F: Field>(
