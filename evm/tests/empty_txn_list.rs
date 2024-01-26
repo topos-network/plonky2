@@ -98,12 +98,12 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
             16..17,
             9..11,
             11..13,
+            4..15,
+            8..11,
+            4..13,
+            13..18,
             4..5,
-            9..11,
-            12..13,
-            17..18,
-            4..5,
-            17..18,
+            12..18,
         ], // Minimal ranges to prove an empty list
         &config,
     );
@@ -148,6 +148,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     println!("first root proof done");
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
+    println!("verify done");
 
     // Test retrieved public values from the proof public inputs.
     let retrieved_public_values = PublicValues::from_public_inputs(&root_proof.public_inputs);
@@ -172,14 +173,19 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         PublicValues::from_public_inputs(&segmented_agg_proof.public_inputs);
     assert_eq!(retrieved_public_values, segmented_agg_public_values);
 
-    let (txn_proof, txn_public_values) =
-        all_circuits.prove_block(None, &segmented_agg_proof, segmented_agg_public_values)?;
+    println!("before txn proof");
+    let (txn_proof, txn_public_values) = all_circuits.prove_transaction_aggregation(
+        None,
+        &segmented_agg_proof,
+        segmented_agg_public_values,
+    )?;
     all_circuits.verify_block(&txn_proof)?;
 
     // Test retrieved public values from the proof public inputs.
     let retrieved_public_values = PublicValues::from_public_inputs(&txn_proof.public_inputs);
     assert_eq!(retrieved_public_values, txn_public_values);
 
+    println!("before block proof");
     let (block_proof, block_public_values) =
         all_circuits.prove_block(None, &txn_proof, txn_public_values)?;
     all_circuits.verify_block(&block_proof)?;

@@ -283,10 +283,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     };
 
     apply_metadata_and_tries_memops(&mut state, &inputs);
-    println!(
-        "registers before pc {:?}, halting label {:?}",
-        state.registers.program_counter, KERNEL.global_labels["halt"]
-    );
+
     let cpu_res = timed!(timing, "simulate CPU", simulate_cpu(&mut state));
     let final_registers = if cpu_res.is_err() {
         // Retrieve previous PC (before jumping to KernelPanic), to see if we reached `hash_final_tries`.
