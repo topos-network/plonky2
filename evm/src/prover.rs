@@ -62,6 +62,7 @@ where
         "generate all traces",
         generate_traces(all_stark, inputs, config, timing)?
     );
+
     check_abort_signal(abort_signal.clone())?;
 
     let proof = prove_with_traces(

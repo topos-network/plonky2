@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use itertools::Itertools;
+use itertools::{min, Itertools};
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
 use plonky2::field::polynomial::PolynomialValues;
@@ -238,6 +238,7 @@ impl<F: RichField + Extendable<D>, const D: usize> KeccakStark<F, D> {
         timing: &mut TimingTree,
     ) -> Vec<PolynomialValues<F>> {
         // Generate the witness, except for permuted columns in the lookup argument.
+        let min_rows = min_rows.max(16);
         let trace_rows = timed!(
             timing,
             "generate trace rows",

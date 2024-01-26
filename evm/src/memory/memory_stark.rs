@@ -224,7 +224,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
     fn fill_gaps(memory_ops: &mut Vec<MemoryOp>) {
         let max_rc = memory_ops.len().next_power_of_two() - 1;
         for (mut curr, mut next) in memory_ops.clone().into_iter().tuple_windows() {
-            let current_timestamp = curr.timestamp;
             if curr.address.context != next.address.context
                 || curr.address.segment != next.address.segment
             {
@@ -240,7 +239,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                     let mut dummy_address = next.address;
                     dummy_address.virt -= max_rc;
                     let dummy_read =
-                        MemoryOp::new_dummy_read(dummy_address, current_timestamp, U256::zero());
+                        MemoryOp::new_dummy_read(dummy_address, curr.timestamp, U256::zero());
                     memory_ops.push(dummy_read);
                     next = dummy_read;
                 }
@@ -249,17 +248,14 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                     let mut dummy_address = curr.address;
                     dummy_address.virt += max_rc + 1;
                     let dummy_read =
-                        MemoryOp::new_dummy_read(dummy_address, current_timestamp, U256::zero());
+                        MemoryOp::new_dummy_read(dummy_address, curr.timestamp, U256::zero());
                     memory_ops.push(dummy_read);
                     curr = dummy_read;
                 }
             } else {
-                while next.timestamp - current_timestamp > max_rc {
-                    let dummy_read = MemoryOp::new_dummy_read(
-                        curr.address,
-                        current_timestamp + max_rc,
-                        curr.value,
-                    );
+                while next.timestamp - curr.timestamp > max_rc {
+                    let dummy_read =
+                        MemoryOp::new_dummy_read(curr.address, curr.timestamp + max_rc, curr.value);
                     memory_ops.push(dummy_read);
                     curr = dummy_read;
                 }
@@ -309,7 +305,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             "generate trace rows",
             self.generate_trace_row_major(memory_ops)
         );
-
         // Extract final values for MemoryAfterStark.
         let mut final_values = Vec::<Vec<_>>::new();
         for i in 0..trace_rows.len() - 1 {

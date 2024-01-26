@@ -13,12 +13,16 @@ global main:
     // Therefore, the previous stack top is the first element stored in memory.
     MLOAD_GENERAL
 
-    // stack: stack_top_addr, 0
+    // stack: stack_top, 0
     PUSH 3 // The stack top is the third element stored in the RegisttersData segment.
     %mload_registers_data
-    // stack: pv_stack_top, stack_top_addr, 0
+    // stack: pv_stack_top, stack_top, 0
+    SUB
+    // If the stack length was previously 0, we do not need to check the previous stack top.
+    PUSH 3 %stack_length SUB
+    // stack: prev_stack_len, pv_stack_top - stack_top, stack_top_addr, 0
+    MUL
     %assert_eq
-    POP
 
     // Now, check stack length.
     %stack_length
