@@ -141,14 +141,11 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     let (final_root_proof, final_public_values) =
         all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None)?;
-    println!("final root proof done");
     all_circuits.verify_root(final_root_proof.clone())?;
     let (root_proof, public_values) =
         all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
-    println!("first root proof done");
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
-    println!("verify done");
 
     // Test retrieved public values from the proof public inputs.
     let retrieved_public_values = PublicValues::from_public_inputs(&root_proof.public_inputs);
@@ -173,19 +170,17 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         PublicValues::from_public_inputs(&segmented_agg_proof.public_inputs);
     assert_eq!(retrieved_public_values, segmented_agg_public_values);
 
-    println!("before txn proof");
     let (txn_proof, txn_public_values) = all_circuits.prove_transaction_aggregation(
         None,
         &segmented_agg_proof,
         segmented_agg_public_values,
     )?;
-    all_circuits.verify_block(&txn_proof)?;
+    all_circuits.verify_txn_aggregation(&txn_proof)?;
 
     // Test retrieved public values from the proof public inputs.
     let retrieved_public_values = PublicValues::from_public_inputs(&txn_proof.public_inputs);
     assert_eq!(retrieved_public_values, txn_public_values);
 
-    println!("before block proof");
     let (block_proof, block_public_values) =
         all_circuits.prove_block(None, &txn_proof, txn_public_values)?;
     all_circuits.verify_block(&block_proof)?;

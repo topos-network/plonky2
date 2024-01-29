@@ -813,7 +813,12 @@ where
             parent_pv.trie_roots_after,
             agg_pv.trie_roots_before,
         );
-
+        // Connect lhs `trie_roots_before` with public values `trie_roots_before`.
+        TrieRootsTarget::connect(
+            &mut builder,
+            public_values.trie_roots_before,
+            parent_pv.trie_roots_before,
+        );
         Self::connect_extra_public_values(
             &mut builder,
             &public_values.extra_block_data,
@@ -840,7 +845,7 @@ where
             agg_pv.exit_kernel.clone(),
         );
 
-        Self::connect_initial_final_segment(&mut builder, &public_values);
+        // Self::connect_initial_final_segment(&mut builder, &public_values);
 
         let cyclic_vk = builder.add_verifier_data_public_inputs();
         builder
@@ -1435,6 +1440,19 @@ where
             // Initialize some public inputs for correct connection between the first transaction and the current one.
             let mut nonzero_pis = HashMap::new();
 
+            // Initialize checkpoint state trie.
+            let checkpoint_state_trie_keys =
+                TrieRootsTarget::SIZE * 2 + BlockMetadataTarget::SIZE + BlockHashesTarget::SIZE
+                    ..TrieRootsTarget::SIZE * 2
+                        + BlockMetadataTarget::SIZE
+                        + BlockHashesTarget::SIZE
+                        + 8;
+            for (key, &value) in checkpoint_state_trie_keys.zip_eq(&h256_limbs::<F>(
+                public_values.extra_block_data.checkpoint_state_trie_root,
+            )) {
+                nonzero_pis.insert(key, value);
+            }
+
             // Initialize the first transaction roots before, and state root after.
             // At the start of the block, the transaction and receipt roots are empty.
             let state_trie_root_before_keys = 0..TrieRootsTarget::HASH_SIZE;
@@ -1466,6 +1484,24 @@ where
                 TrieRootsTarget::SIZE..TrieRootsTarget::SIZE + TrieRootsTarget::HASH_SIZE;
             for (key, &value) in state_trie_root_after_keys
                 .zip_eq(&h256_limbs::<F>(public_values.trie_roots_before.state_root))
+            {
+                nonzero_pis.insert(key, value);
+            }
+
+            let txn_trie_root_after_keys = TrieRootsTarget::SIZE + TrieRootsTarget::HASH_SIZE
+                ..TrieRootsTarget::SIZE + TrieRootsTarget::HASH_SIZE * 2;
+            for (key, &value) in txn_trie_root_after_keys
+                .clone()
+                .zip_eq(&h256_limbs::<F>(initial_trie))
+            {
+                nonzero_pis.insert(key, value);
+            }
+            let receipts_trie_root_after_keys = TrieRootsTarget::SIZE
+                + TrieRootsTarget::HASH_SIZE * 2
+                ..TrieRootsTarget::SIZE + TrieRootsTarget::HASH_SIZE * 3;
+            for (key, &value) in receipts_trie_root_after_keys
+                .clone()
+                .zip_eq(&h256_limbs::<F>(initial_trie))
             {
                 nonzero_pis.insert(key, value);
             }
