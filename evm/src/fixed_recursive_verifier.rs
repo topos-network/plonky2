@@ -1169,6 +1169,7 @@ where
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
         generation_inputs: GenerationInputs,
+        max_cpu_len: usize,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
@@ -1176,6 +1177,7 @@ where
             all_stark,
             config,
             generation_inputs,
+            max_cpu_len,
             timing,
             abort_signal.clone(),
         )?;

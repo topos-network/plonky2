@@ -266,6 +266,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     all_stark: &AllStark<F, D>,
     inputs: GenerationInputs,
     config: &StarkConfig,
+    max_cpu_len: usize,
     timing: &mut TimingTree,
 ) -> anyhow::Result<(
     [Vec<PolynomialValues<F>>; NUM_TABLES],
@@ -284,7 +285,11 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
-    let cpu_res = timed!(timing, "simulate CPU", simulate_cpu(&mut state));
+    let cpu_res = timed!(
+        timing,
+        "simulate CPU",
+        simulate_cpu(&mut state, max_cpu_len)
+    );
     let final_registers = if cpu_res.is_err() {
         // Retrieve previous PC (before jumping to KernelPanic), to see if we reached `hash_final_tries`.
         // We will output debugging information on the final tries only if we got a root mismatch.
@@ -409,7 +414,10 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     Ok((tables, final_values, final_registers, public_values))
 }
 
-fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<RegistersState> {
+fn simulate_cpu<F: Field>(
+    state: &mut GenerationState<F>,
+    max_cpu_len: usize,
+) -> anyhow::Result<RegistersState> {
     let halt_pc = KERNEL.global_labels["halt"];
     let halt_final_pc = KERNEL.global_labels["halt_final"];
     let mut final_registers = RegistersState::default();
@@ -418,8 +426,11 @@ fn simulate_cpu<F: Field>(state: &mut GenerationState<F>) -> anyhow::Result<Regi
         // If we've reached the kernel's halt routine, and our trace length is a power of 2, stop.
         let pc = state.registers.program_counter;
         let halt = state.registers.is_kernel && pc == halt_pc;
-        if halt {
+        // If the maximum trace length (minus some cycles for running `exc_stop`) is reached, or if we reached
+        // the halt routine, raise the stop exception.
+        if halt || state.traces.clock() == max_cpu_len - 100 {
             final_registers = state.registers;
+            println!("Current registers: {:?}", final_registers);
             final_exception(state)?;
         }
         let halt_final = pc == halt_final_pc;

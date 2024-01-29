@@ -172,7 +172,8 @@ global exc_stop:
     %add_const(6)
 
     // stack: addr_registers, trap_info
-    PUSH 1
+    %stack_length
+    %sub_const(3)
     PUSH @SEGMENT_STACK
     GET_CONTEXT
     %build_address
@@ -223,7 +224,12 @@ global exc_stop:
     GET_CONTEXT
     %assert_eq
     // stack: (empty)
-    %jump(halt_final)
+    PUSH 1
+    ISZERO
+
+global halt_final:
+    // Just for halting. Nothing is executed when this is reached.
+    PANIC
 
 // Given the exception trap info, load the opcode that caused the exception
 %macro opcode_from_exp_trap_info

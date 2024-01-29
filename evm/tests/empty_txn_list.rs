@@ -137,13 +137,20 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         assert_eq!(all_circuits, all_circuits_from_bytes);
     }
 
+    let max_cpu_len = 1 << 20;
     let mut timing = TimingTree::new("prove", log::Level::Info);
 
-    let (final_root_proof, final_public_values) =
-        all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None)?;
+    let (final_root_proof, final_public_values) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        final_inputs,
+        max_cpu_len,
+        &mut timing,
+        None,
+    )?;
     all_circuits.verify_root(final_root_proof.clone())?;
     let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
+        all_circuits.prove_root(&all_stark, &config, inputs, max_cpu_len, &mut timing, None)?;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 
