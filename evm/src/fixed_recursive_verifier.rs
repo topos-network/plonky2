@@ -504,8 +504,7 @@ where
         let root = Self::create_root_circuit(&by_table, stark_config);
         let segment_aggregation = Self::create_segmented_aggregation_circuit(&root);
         let txn_aggregation = Self::create_transaction_circuit(&segment_aggregation);
-        // let aggregation = Self::create_aggregation_circuit(&root);
-        let block = Self::create_block2_circuit(&txn_aggregation);
+        let block = Self::create_block_circuit(&txn_aggregation);
         Self {
             root,
             segment_aggregation,
@@ -886,7 +885,7 @@ where
         builder.connect(x.registers_before.program_counter, main_label);
     }
 
-    fn create_block2_circuit(agg: &BlockCircuitData<F, C, D>) -> BlockCircuitData<F, C, D> {
+    fn create_block_circuit(agg: &BlockCircuitData<F, C, D>) -> BlockCircuitData<F, C, D> {
         // Here, we have two block proofs and we aggregate them together.
         // The block circuit is similar to the agg circuit; both verify two inner proofs.
         let expected_common_data = CommonCircuitData {
@@ -963,80 +962,6 @@ where
         }
     }
 
-    fn create_aggregation_circuit(
-        root: &RootCircuitData<F, C, D>,
-    ) -> AggregationCircuitData<F, C, D> {
-        let mut builder = CircuitBuilder::<F, D>::new(root.circuit.common.config.clone());
-        let public_values = add_virtual_public_values(&mut builder);
-        let cyclic_vk = builder.add_verifier_data_public_inputs();
-        let lhs = Self::add_agg_child(&mut builder, root);
-        let rhs = Self::add_agg_child(&mut builder, root);
-
-        let lhs_public_values = lhs.public_values(&mut builder);
-        let rhs_public_values = rhs.public_values(&mut builder);
-        // Connect all block hash values
-        BlockHashesTarget::connect(
-            &mut builder,
-            public_values.block_hashes,
-            lhs_public_values.block_hashes,
-        );
-        BlockHashesTarget::connect(
-            &mut builder,
-            public_values.block_hashes,
-            rhs_public_values.block_hashes,
-        );
-        // Connect all block metadata values.
-        BlockMetadataTarget::connect(
-            &mut builder,
-            public_values.block_metadata,
-            lhs_public_values.block_metadata,
-        );
-        BlockMetadataTarget::connect(
-            &mut builder,
-            public_values.block_metadata,
-            rhs_public_values.block_metadata,
-        );
-        // Connect aggregation `trie_roots_before` with lhs `trie_roots_before`.
-        TrieRootsTarget::connect(
-            &mut builder,
-            public_values.trie_roots_before,
-            lhs_public_values.trie_roots_before,
-        );
-        // Connect aggregation `trie_roots_after` with rhs `trie_roots_after`.
-        TrieRootsTarget::connect(
-            &mut builder,
-            public_values.trie_roots_after,
-            rhs_public_values.trie_roots_after,
-        );
-        // Connect lhs `trie_roots_after` with rhs `trie_roots_before`.
-        TrieRootsTarget::connect(
-            &mut builder,
-            lhs_public_values.trie_roots_after,
-            rhs_public_values.trie_roots_before,
-        );
-
-        Self::connect_extra_public_values(
-            &mut builder,
-            &public_values.extra_block_data,
-            &lhs_public_values.extra_block_data,
-            &rhs_public_values.extra_block_data,
-        );
-
-        // Pad to match the root circuit's degree.
-        while log2_ceil(builder.num_gates()) < root.circuit.common.degree_bits() {
-            builder.add_gate(NoopGate, vec![]);
-        }
-
-        let circuit = builder.build::<C>();
-        AggregationCircuitData {
-            circuit,
-            lhs,
-            rhs,
-            public_values,
-            cyclic_vk,
-        }
-    }
-
     fn connect_extra_public_values(
         builder: &mut CircuitBuilder<F, D>,
         pvs: &ExtraBlockDataTarget,
@@ -1092,83 +1017,6 @@ where
             is_agg,
             agg_proof,
             evm_proof,
-        }
-    }
-
-    fn create_block_circuit(agg: &AggregationCircuitData<F, C, D>) -> BlockCircuitData<F, C, D> {
-        // The block circuit is similar to the agg circuit; both verify two inner proofs.
-        // We need to adjust a few things, but it's easier than making a new CommonCircuitData.
-        let expected_common_data = CommonCircuitData {
-            fri_params: FriParams {
-                degree_bits: 14,
-                ..agg.circuit.common.fri_params.clone()
-            },
-            ..agg.circuit.common.clone()
-        };
-
-        let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
-        let public_values = add_virtual_public_values(&mut builder);
-        let has_parent_block = builder.add_virtual_bool_target_safe();
-        let parent_block_proof = builder.add_virtual_proof_with_pis(&expected_common_data);
-        let agg_root_proof = builder.add_virtual_proof_with_pis(&agg.circuit.common);
-
-        // Connect block hashes
-        Self::connect_block_hashes(&mut builder, &parent_block_proof, &agg_root_proof);
-
-        let parent_pv = PublicValuesTarget::from_public_inputs(&parent_block_proof.public_inputs);
-        let agg_pv = PublicValuesTarget::from_public_inputs(&agg_root_proof.public_inputs);
-
-        // Connect block `trie_roots_before` with parent_pv `trie_roots_before`.
-        TrieRootsTarget::connect(
-            &mut builder,
-            public_values.trie_roots_before,
-            parent_pv.trie_roots_before,
-        );
-        // Connect the rest of block `public_values` with agg_pv.
-        TrieRootsTarget::connect(
-            &mut builder,
-            public_values.trie_roots_after,
-            agg_pv.trie_roots_after,
-        );
-        BlockMetadataTarget::connect(
-            &mut builder,
-            public_values.block_metadata,
-            agg_pv.block_metadata,
-        );
-        BlockHashesTarget::connect(
-            &mut builder,
-            public_values.block_hashes,
-            agg_pv.block_hashes,
-        );
-        ExtraBlockDataTarget::connect(
-            &mut builder,
-            public_values.extra_block_data,
-            agg_pv.extra_block_data,
-        );
-
-        // Make connections between block proofs, and check initial and final block values.
-        Self::connect_block_proof(&mut builder, has_parent_block, &parent_pv, &agg_pv);
-
-        let cyclic_vk = builder.add_verifier_data_public_inputs();
-        builder
-            .conditionally_verify_cyclic_proof_or_dummy::<C>(
-                has_parent_block,
-                &parent_block_proof,
-                &expected_common_data,
-            )
-            .expect("Failed to build cyclic recursion circuit");
-
-        let agg_verifier_data = builder.constant_verifier_data(&agg.circuit.verifier_only);
-        builder.verify_proof::<C>(&agg_root_proof, &agg_verifier_data, &agg.circuit.common);
-
-        let circuit = builder.build::<C>();
-        BlockCircuitData {
-            circuit,
-            has_parent_block,
-            parent_block_proof,
-            agg_root_proof,
-            public_values,
-            cyclic_vk,
         }
     }
 
@@ -1632,10 +1480,12 @@ where
             );
         }
 
-        txn_inputs.set_proof_with_pis_target(&self.block.agg_root_proof, agg_root_proof);
+        txn_inputs.set_proof_with_pis_target(&self.txn_aggregation.agg_root_proof, agg_root_proof);
 
-        txn_inputs
-            .set_verifier_data_target(&self.block.cyclic_vk, &self.block.circuit.verifier_only);
+        txn_inputs.set_verifier_data_target(
+            &self.txn_aggregation.cyclic_vk,
+            &self.txn_aggregation.circuit.verifier_only,
+        );
 
         // This is basically identical to this block public values, apart from the `trie_roots_before`,
         // the `txn_number_before` and the `gas_used_before`,
@@ -1670,14 +1520,14 @@ where
 
         set_public_value_targets(
             &mut txn_inputs,
-            &self.block.public_values,
+            &self.txn_aggregation.public_values,
             &txn_public_values,
         )
         .map_err(|_| {
             anyhow::Error::msg("Invalid conversion when setting public values targets.")
         })?;
 
-        let txn_proof = self.block.circuit.prove(txn_inputs)?;
+        let txn_proof = self.txn_aggregation.circuit.prove(txn_inputs)?;
         Ok((txn_proof, txn_public_values))
     }
 
