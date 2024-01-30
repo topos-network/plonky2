@@ -14,11 +14,14 @@ use plonky2::plonk::config::PoseidonGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
+use plonky2_evm::cpu::kernel::aggregator::KERNEL;
 use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::mpt::transaction_testing::{AddressOption, LegacyTransactionRlp};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
+use plonky2_evm::proof::{
+    BlockHashes, BlockMetadata, ExtraBlockData, MemCap, PublicValues, TrieRoots,
+};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
@@ -233,6 +236,8 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::new_last_registers_with_gas(42793),
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -435,7 +440,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         H256::from_str("0x0101010101010101010101010101010101010101010101010101010101010101")?;
     let mut block_hashes = vec![H256::default(); 256];
 
-    let halt_label = 40129;
+    let halt_label = KERNEL.global_labels["halt"];
     let mut registers_after = RegistersState::default();
     registers_after.program_counter = halt_label;
     registers_after.stack_top = 146028888070u64.into();
@@ -459,6 +464,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs_first = GenerationInputs {
@@ -472,14 +479,14 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &all_stark,
         &[
             16..17,
-            12..16,
-            14..18,
-            14..15,
-            9..11,
-            12..13,
-            17..20,
+            9..16,
+            11..18,
+            4..15,
+            8..11,
+            4..13,
+            13..20,
             4..5,
-            17..18,
+            12..18,
         ],
         &config,
     );
@@ -603,12 +610,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
 
-    let halt_label = 40129;
+    let halt_label = KERNEL.global_labels["halt"];
     let mut registers_after = RegistersState::default();
     registers_after.program_counter = halt_label;
     registers_after.stack_top = 146028888070u64.into();
     registers_after.stack_len = 0;
-    registers_after.gas_used = 45229;
+    registers_after.gas_used = 56705;
     let inputs = GenerationInputs {
         signed_txn: Some(txn_2.to_vec()),
         withdrawals: vec![],
@@ -627,6 +634,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs = GenerationInputs {
@@ -681,13 +690,11 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             final_public_values_second,
         )?;
     all_circuits.verify_segment_aggregation(&segment_agg_proof_second)?;
-
     let (txn_proof_first, txn_pv_first) = all_circuits.prove_transaction_aggregation(
         None,
         &segment_agg_proof_first,
         updated_agg_public_values_first,
     )?;
-
     let txn_pvs = PublicValues {
         trie_roots_before: txn_pv_first.trie_roots_before,
         extra_block_data: ExtraBlockData {
@@ -702,7 +709,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &segment_agg_proof_second,
         txn_pvs,
     )?;
-
     let (first_block_proof, _block_public_values) =
         all_circuits.prove_block(None, &txn_proof_second, txn_pv_second)?;
     all_circuits.verify_block(&first_block_proof)?;
@@ -727,12 +733,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let mut contract_code = HashMap::new();
     contract_code.insert(keccak(vec![]), vec![]);
 
-    let halt_label = 40129;
+    let halt_label = KERNEL.global_labels["halt"];
     let mut registers_after = RegistersState::default();
     registers_after.program_counter = halt_label;
     registers_after.stack_top = 146028888070u64.into();
     registers_after.stack_len = 0;
-    registers_after.gas_used = 45229;
+    registers_after.gas_used = 46667;
     let inputs = GenerationInputs {
         signed_txn: None,
         withdrawals: vec![],
@@ -760,6 +766,8 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs = GenerationInputs {

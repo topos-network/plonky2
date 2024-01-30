@@ -15,7 +15,7 @@ use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
 use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, MemCap, PublicValues, TrieRoots};
 use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 
@@ -83,6 +83,8 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs = GenerationInputs {
@@ -154,10 +156,24 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 
+    let first_mem_before = public_values.mem_before.mem_cap.clone();
+    let first_mem_after = public_values.mem_after.mem_cap.clone();
+    let final_mem_before = final_public_values.mem_before.mem_cap.clone();
+    let final_mem_after = final_public_values.mem_after.mem_cap.clone();
+
     // Test retrieved public values from the proof public inputs.
-    let retrieved_public_values = PublicValues::from_public_inputs(&root_proof.public_inputs);
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &root_proof.public_inputs,
+        first_mem_before.len(),
+        first_mem_after.len(),
+    );
     assert_eq!(retrieved_public_values, public_values);
-    let retrieved_public_values = PublicValues::from_public_inputs(&final_root_proof.public_inputs);
+
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &final_root_proof.public_inputs,
+        final_mem_before.len(),
+        final_mem_after.len(),
+    );
     assert_eq!(retrieved_public_values, final_public_values);
 
     // We can duplicate the proofs here because the state hasn't mutated.
@@ -173,8 +189,11 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     all_circuits.verify_segment_aggregation(&segmented_agg_proof)?;
 
     // Test retrieved public values from the proof public inputs.
-    let retrieved_public_values =
-        PublicValues::from_public_inputs(&segmented_agg_proof.public_inputs);
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &segmented_agg_proof.public_inputs,
+        segmented_agg_public_values.mem_before.mem_cap.len(),
+        segmented_agg_public_values.mem_before.mem_cap.len(),
+    );
     assert_eq!(retrieved_public_values, segmented_agg_public_values);
 
     let (txn_proof, txn_public_values) = all_circuits.prove_transaction_aggregation(
@@ -185,7 +204,11 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     all_circuits.verify_txn_aggregation(&txn_proof)?;
 
     // Test retrieved public values from the proof public inputs.
-    let retrieved_public_values = PublicValues::from_public_inputs(&txn_proof.public_inputs);
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &txn_proof.public_inputs,
+        txn_public_values.mem_before.mem_cap.len(),
+        txn_public_values.mem_before.mem_cap.len(),
+    );
     assert_eq!(retrieved_public_values, txn_public_values);
 
     let (block_proof, block_public_values) =
@@ -193,7 +216,11 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     all_circuits.verify_block(&block_proof)?;
 
     // Test retrieved public values from the proof public inputs.
-    let retrieved_public_values = PublicValues::from_public_inputs(&block_proof.public_inputs);
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &block_proof.public_inputs,
+        block_public_values.mem_before.mem_cap.len(),
+        block_public_values.mem_before.mem_cap.len(),
+    );
     assert_eq!(retrieved_public_values, block_public_values);
 
     // Get the verifier associated to these preprocessed circuits, and have it verify the block_proof.

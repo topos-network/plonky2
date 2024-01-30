@@ -29,7 +29,8 @@ use crate::generation::state::GenerationState;
 use crate::generation::trie_extractor::{get_receipt_trie, get_state_trie, get_txn_trie};
 use crate::memory::segments::Segment;
 use crate::proof::{
-    BlockHashes, BlockMetadata, ExitKernel, ExtraBlockData, PublicValues, RegistersData, TrieRoots,
+    BlockHashes, BlockMetadata, ExitKernel, ExtraBlockData, MemCap, PublicValues, RegistersData,
+    TrieRoots,
 };
 use crate::prover::{check_abort_signal, get_mem_after_value_from_row};
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
@@ -91,6 +92,9 @@ pub struct GenerationInputs {
     pub registers_before: RegistersState,
     /// State of the registers after the current execution.
     pub registers_after: RegistersState,
+
+    pub mem_before: MemCap,
+    pub mem_after: MemCap,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -420,6 +424,8 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         registers_before,
         registers_after,
         exit_kernel,
+        mem_before: inputs.mem_before,
+        mem_after: inputs.mem_after,
     };
 
     let (tables, final_values) = timed!(

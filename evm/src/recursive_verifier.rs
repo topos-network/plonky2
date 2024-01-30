@@ -9,8 +9,9 @@ use plonky2::fri::witness_util::set_fri_proof_target;
 use plonky2::gates::exponentiation::ExponentiationGate;
 use plonky2::gates::gate::GateRef;
 use plonky2::gates::noop::NoopGate;
-use plonky2::hash::hash_types::RichField;
+use plonky2::hash::hash_types::{HashOut, HashOutTarget, MerkleCapTarget, RichField};
 use plonky2::hash::hashing::PlonkyPermutation;
+use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::RecursiveChallenger;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::Target;
@@ -36,12 +37,13 @@ use crate::cross_table_lookup::{
 };
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::lookup::LookupCheckVarsTarget;
+use crate::mem_after;
 use crate::memory::segments::Segment;
 use crate::memory::VALUE_LIMBS;
 use crate::proof::{
     BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExitKernel,
-    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, PublicValues, PublicValuesTarget,
-    RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
+    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues,
+    PublicValuesTarget, RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
     StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata, TrieRoots,
     TrieRootsTarget,
 };
@@ -124,6 +126,7 @@ where
         buffer.write_target(self.zero_target)?;
         self.stark_proof_target.to_buffer(buffer)?;
         self.ctl_challenges_target.to_buffer(buffer)?;
+
         Ok(())
     }
 
@@ -139,6 +142,7 @@ where
         let zero_target = buffer.read_target()?;
         let stark_proof_target = StarkProofTarget::from_buffer(buffer)?;
         let ctl_challenges_target = GrandProductChallengeSet::from_buffer(buffer)?;
+
         Ok(Self {
             circuit,
             stark_proof_target,
@@ -743,6 +747,8 @@ fn eval_l_0_and_l_last_circuit<F: RichField + Extendable<D>, const D: usize>(
 
 pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
+    len_before: usize,
+    len_after: usize,
 ) -> PublicValuesTarget {
     let trie_roots_before = add_virtual_trie_roots(builder);
     let trie_roots_after = add_virtual_trie_roots(builder);
@@ -753,6 +759,13 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
     let registers_after = add_virtual_registers_data(builder);
     let exit_kernel = add_virtual_exit_kernel(builder);
 
+    let mem_before = MemCapTarget {
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_before)),
+    };
+    let mem_after = MemCapTarget {
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_after)),
+    };
+
     PublicValuesTarget {
         trie_roots_before,
         trie_roots_after,
@@ -762,6 +775,8 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
         registers_before,
         registers_after,
         exit_kernel,
+        mem_before,
+        mem_after,
     }
 }
 
@@ -994,6 +1009,16 @@ where
         &public_values_target.exit_kernel,
         &public_values.exit_kernel,
     )?;
+    set_mem_cap_target(
+        witness,
+        &public_values_target.mem_before,
+        &public_values.mem_before,
+    )?;
+    set_mem_cap_target(
+        witness,
+        &public_values_target.mem_after,
+        &public_values.mem_after,
+    )?;
 
     Ok(())
 }
@@ -1183,5 +1208,25 @@ where
 {
     witness.set_target_arr(&ek_target.exit_kernel, &u256_limbs(ek.exit_kernel));
 
+    Ok(())
+}
+
+pub(crate) fn set_mem_cap_target<F, W, const D: usize>(
+    witness: &mut W,
+    mc_target: &MemCapTarget,
+    mc: &MemCap,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    for i in 0..mc.mem_cap.len() {
+        witness.set_hash_target(
+            mc_target.mem_cap.0[i],
+            HashOut {
+                elements: mc.mem_cap[i].map(|elt| F::from_canonical_u64(elt.as_u64())),
+            },
+        );
+    }
     Ok(())
 }

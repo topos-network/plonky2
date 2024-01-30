@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use ethereum_types::{Address, H160, H256, U256};
 use itertools::Itertools;
 use plonky2::field::extension::{Extendable, FieldExtension};
@@ -6,12 +8,14 @@ use plonky2::fri::proof::{FriChallenges, FriChallengesTarget, FriProof, FriProof
 use plonky2::fri::structure::{
     FriOpeningBatch, FriOpeningBatchTarget, FriOpenings, FriOpeningsTarget,
 };
-use plonky2::hash::hash_types::{MerkleCapTarget, RichField};
+use plonky2::hash::hash_types::{
+    HashOut, HashOutTarget, MerkleCapTarget, RichField, NUM_HASH_OUT_ELTS,
+};
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::config::{GenericConfig, Hasher};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, GenericHashOut, Hasher};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
@@ -21,6 +25,7 @@ use crate::config::StarkConfig;
 use crate::cross_table_lookup::GrandProductChallengeSet;
 use crate::generation::mpt::TrieRootPtrs;
 use crate::generation::MemBeforeValues;
+use crate::mem_before;
 use crate::mem_before::mem_before_stark::MemBeforeStark;
 use crate::util::{get_h160, get_h256, get_u256, h2u};
 use crate::witness::memory::MemoryAddress;
@@ -75,13 +80,19 @@ pub struct PublicValues {
     pub registers_after: RegistersData,
     /// Exit kernel at the start of the proof.
     pub exit_kernel: ExitKernel,
+    pub mem_before: MemCap,
+    pub mem_after: MemCap,
 }
 
 impl PublicValues {
     /// Extracts public values from the given public inputs of a proof.
     /// Public values are always the first public inputs added to the circuit,
     /// so we can start extracting at index 0.
-    pub fn from_public_inputs<F: RichField>(pis: &[F]) -> Self {
+    pub fn from_public_inputs<F: RichField>(
+        pis: &[F],
+        len_before: usize,
+        len_after: usize,
+    ) -> Self {
         assert!(
             pis.len()
                 > TrieRootsTarget::SIZE * 2
@@ -146,6 +157,40 @@ impl PublicValues {
                     + RegistersDataTarget::SIZE * 2
                     + ExitKernelTarget::SIZE],
         );
+        let mem_before = MemCap::from_public_inputs(
+            &pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE * 2
+                + ExitKernelTarget::SIZE
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
+                    + len_before * NUM_HASH_OUT_ELTS],
+            len_before,
+        );
+        let mem_after = MemCap::from_public_inputs(
+            &pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE * 2
+                + ExitKernelTarget::SIZE
+                + len_before * NUM_HASH_OUT_ELTS
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
+                    + len_before * NUM_HASH_OUT_ELTS
+                    + len_after * NUM_HASH_OUT_ELTS],
+            len_after,
+        );
         // There are 3 elements per address, + 1 U256 for the memory value.
         Self {
             trie_roots_before,
@@ -156,6 +201,8 @@ impl PublicValues {
             registers_before,
             registers_after,
             exit_kernel,
+            mem_before,
+            mem_after,
         }
     }
 }
@@ -376,6 +423,26 @@ impl ExitKernel {
     }
 }
 
+/// Memory before/after cap.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MemCap {
+    /// STARK cap.
+    pub mem_cap: Vec<[U256; NUM_HASH_OUT_ELTS]>,
+}
+impl MemCap {
+    pub fn from_public_inputs<F: RichField>(pis: &[F], len: usize) -> Self {
+        let mem_cap = (0..len)
+            .map(|i| {
+                core::array::from_fn(|j| {
+                    U256::from(pis[pis.len() - 4 * (len - i) + j].to_canonical_u64())
+                })
+            })
+            .collect();
+
+        Self { mem_cap }
+    }
+}
+
 /// Memory values which are public.
 /// Note: All the larger integers are encoded with 32-bit limbs in little-endian order.
 #[derive(Eq, PartialEq, Debug)]
@@ -396,6 +463,10 @@ pub struct PublicValuesTarget {
     pub registers_after: RegistersDataTarget,
     /// Exit kernel at the start of the current proof.
     pub exit_kernel: ExitKernelTarget,
+    /// Memory before.
+    pub mem_before: MemCapTarget,
+    /// Memory after.
+    pub mem_after: MemCapTarget,
 }
 
 impl PublicValuesTarget {
@@ -495,6 +566,9 @@ impl PublicValuesTarget {
 
         buffer.write_target_array(&self.exit_kernel.exit_kernel)?;
 
+        buffer.write_target_merkle_cap(&self.mem_before.mem_cap)?;
+        buffer.write_target_merkle_cap(&self.mem_after.mem_cap)?;
+
         Ok(())
     }
 
@@ -559,6 +633,13 @@ impl PublicValuesTarget {
             exit_kernel: buffer.read_target_array()?,
         };
 
+        let mem_before = MemCapTarget {
+            mem_cap: buffer.read_target_merkle_cap()?,
+        };
+        let mem_after = MemCapTarget {
+            mem_cap: buffer.read_target_merkle_cap()?,
+        };
+
         Ok(Self {
             trie_roots_before,
             trie_roots_after,
@@ -568,13 +649,15 @@ impl PublicValuesTarget {
             registers_before,
             registers_after,
             exit_kernel,
+            mem_before,
+            mem_after,
         })
     }
 
     /// Extracts public value `Target`s from the given public input `Target`s.
     /// Public values are always the first public inputs added to the circuit,
     /// so we can start extracting at index 0.
-    pub(crate) fn from_public_inputs(pis: &[Target]) -> Self {
+    pub(crate) fn from_public_inputs(pis: &[Target], len_before: usize, len_after: usize) -> Self {
         assert!(
             pis.len()
                 > TrieRootsTarget::SIZE * 2
@@ -642,6 +725,40 @@ impl PublicValuesTarget {
                         + RegistersDataTarget::SIZE * 2
                         + ExitKernelTarget::SIZE],
             ),
+            mem_before: MemCapTarget::from_public_inputs(
+                &pis[TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
+                    ..TrieRootsTarget::SIZE * 2
+                        + BlockMetadataTarget::SIZE
+                        + BlockHashesTarget::SIZE
+                        + ExtraBlockDataTarget::SIZE
+                        + RegistersDataTarget::SIZE * 2
+                        + ExitKernelTarget::SIZE
+                        + len_before * NUM_HASH_OUT_ELTS],
+                len_before,
+            ),
+            mem_after: MemCapTarget::from_public_inputs(
+                &pis[TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
+                    + len_before * NUM_HASH_OUT_ELTS
+                    ..TrieRootsTarget::SIZE * 2
+                        + BlockMetadataTarget::SIZE
+                        + BlockHashesTarget::SIZE
+                        + ExtraBlockDataTarget::SIZE
+                        + RegistersDataTarget::SIZE * 2
+                        + ExitKernelTarget::SIZE
+                        + len_before * NUM_HASH_OUT_ELTS
+                        + len_after * NUM_HASH_OUT_ELTS],
+                len_after,
+            ),
         }
     }
 
@@ -701,6 +818,9 @@ impl PublicValuesTarget {
                 pv0.exit_kernel,
                 pv1.exit_kernel,
             ),
+            mem_before: MemCapTarget::select(builder, condition, pv0.mem_before, pv1.mem_before),
+
+            mem_after: MemCapTarget::select(builder, condition, pv0.mem_after, pv1.mem_after),
         }
     }
 }
@@ -1168,6 +1288,73 @@ impl ExitKernelTarget {
     ) {
         for i in 0..8 {
             builder.connect(ek0.exit_kernel[i], ek1.exit_kernel[i]);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemCapTarget {
+    /// Merkle cap.
+    pub mem_cap: MerkleCapTarget,
+}
+
+impl MemCapTarget {
+    /// Extracts the exit kernel `Target`s from the public input `Target`s.
+    /// The provided `pis` should start with the extra vblock data.
+    pub(crate) fn from_public_inputs(pis: &[Target], len: usize) -> Self {
+        let mem_values = &pis[0..len * NUM_HASH_OUT_ELTS];
+        let mem_cap = MerkleCapTarget {
+            0: (0..len)
+                .map(|i| HashOutTarget {
+                    elements: mem_values[i * NUM_HASH_OUT_ELTS..(i + 1) * NUM_HASH_OUT_ELTS]
+                        .try_into()
+                        .unwrap(),
+                })
+                .collect::<Vec<_>>(),
+        };
+
+        Self { mem_cap }
+    }
+
+    /// If `condition`, returns the exit kernel in `ek0`,
+    /// otherwise returns the exit kernel in `ek1`.
+    pub(crate) fn select<F: RichField + Extendable<D>, const D: usize>(
+        builder: &mut CircuitBuilder<F, D>,
+        condition: BoolTarget,
+        mc0: Self,
+        mc1: Self,
+    ) -> Self {
+        Self {
+            mem_cap: MerkleCapTarget {
+                0: (0..mc0.mem_cap.0.len())
+                    .map(|i| HashOutTarget {
+                        elements: (0..NUM_HASH_OUT_ELTS)
+                            .map(|j| {
+                                builder.select(
+                                    condition,
+                                    mc0.mem_cap.0[i].elements[j],
+                                    mc1.mem_cap.0[i].elements[j],
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .try_into()
+                            .unwrap(),
+                    })
+                    .collect::<Vec<_>>(),
+            },
+        }
+    }
+
+    /// Connects the exit kernel in `ek0` with the exit kernel in `ek1`.
+    pub(crate) fn connect<F: RichField + Extendable<D>, const D: usize>(
+        builder: &mut CircuitBuilder<F, D>,
+        mc0: Self,
+        mc1: Self,
+    ) {
+        for i in 0..mc0.mem_cap.0.len() {
+            for j in 0..NUM_HASH_OUT_ELTS {
+                builder.connect(mc0.mem_cap.0[i].elements[j], mc1.mem_cap.0[i].elements[j]);
+            }
         }
     }
 }
