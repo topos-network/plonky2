@@ -14,7 +14,7 @@ use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, MemCap, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
@@ -147,6 +147,8 @@ fn test_selfdestruct() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);

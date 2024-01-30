@@ -9,7 +9,7 @@ use plonky2::fri::witness_util::set_fri_proof_target;
 use plonky2::gates::exponentiation::ExponentiationGate;
 use plonky2::gates::gate::GateRef;
 use plonky2::gates::noop::NoopGate;
-use plonky2::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
+use plonky2::hash::hash_types::{HashOut, HashOutTarget, MerkleCapTarget, RichField};
 use plonky2::hash::hashing::PlonkyPermutation;
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::RecursiveChallenger;
@@ -41,7 +41,7 @@ use crate::memory::segments::Segment;
 use crate::memory::VALUE_LIMBS;
 use crate::proof::{
     BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExitKernel,
-    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, MemCapTarget, PublicValues,
+    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues,
     PublicValuesTarget, RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
     StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata, TrieRoots,
     TrieRootsTarget,
@@ -106,6 +106,7 @@ where
     pub(crate) init_challenger_state_target:
         <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation,
     pub(crate) zero_target: Target,
+    pub(crate) init_merkle_cap_target: MemCapTarget,
 }
 
 impl<F, C, const D: usize> StarkWrapperCircuit<F, C, D>
@@ -125,6 +126,8 @@ where
         buffer.write_target(self.zero_target)?;
         self.stark_proof_target.to_buffer(buffer)?;
         self.ctl_challenges_target.to_buffer(buffer)?;
+        buffer.write_target_merkle_cap(&self.init_merkle_cap_target.mem_cap)?;
+
         Ok(())
     }
 
@@ -140,12 +143,17 @@ where
         let zero_target = buffer.read_target()?;
         let stark_proof_target = StarkProofTarget::from_buffer(buffer)?;
         let ctl_challenges_target = GrandProductChallengeSet::from_buffer(buffer)?;
+        let init_merkle_cap_target = MemCapTarget {
+            mem_cap: buffer.read_target_merkle_cap()?,
+        };
+
         Ok(Self {
             circuit,
             stark_proof_target,
             ctl_challenges_target,
             init_challenger_state_target,
             zero_target,
+            init_merkle_cap_target,
         })
     }
 
@@ -302,6 +310,17 @@ where
 
     add_common_recursion_gates(&mut builder);
 
+    let init_merkle_cap_target = MemCapTarget {
+        mem_cap: proof_target.trace_cap.clone(),
+    };
+    MemCapTarget::connect(
+        &mut builder,
+        init_merkle_cap_target.clone(),
+        MemCapTarget {
+            mem_cap: proof_target.trace_cap.clone(),
+        },
+    );
+
     // Pad to the minimum degree.
     while log2_ceil(builder.num_gates()) < min_degree_bits {
         builder.add_gate(NoopGate, vec![]);
@@ -314,6 +333,7 @@ where
         ctl_challenges_target,
         init_challenger_state_target,
         zero_target,
+        init_merkle_cap_target,
     }
 }
 
@@ -755,11 +775,12 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
     let registers_before = add_virtual_registers_data(builder);
     let registers_after = add_virtual_registers_data(builder);
     let exit_kernel = add_virtual_exit_kernel(builder);
+
     let mem_before = MemCapTarget {
-        mem_cap: MerkleCapTarget(builder.add_virtual_hashes(len_before)),
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_before)),
     };
     let mem_after = MemCapTarget {
-        mem_cap: MerkleCapTarget(builder.add_virtual_hashes(len_after)),
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_after)),
     };
 
     PublicValuesTarget {
@@ -1005,23 +1026,33 @@ where
         &public_values_target.exit_kernel,
         &public_values.exit_kernel,
     )?;
+    set_mem_cap_target(
+        witness,
+        &public_values_target.mem_before,
+        &public_values.mem_before,
+    )?;
+    set_mem_cap_target(
+        witness,
+        &public_values_target.mem_after,
+        &public_values.mem_after,
+    )?;
 
     Ok(())
 }
 
-pub fn set_mem_cap<F, C: GenericConfig<D, F = F>, W, const D: usize>(
-    witness: &mut W,
-    mem_cap_target: &MemCapTarget,
-    mem_cap: &MerkleCap<F, C::Hasher>,
-) -> Result<(), ProgramError>
-where
-    F: RichField + Extendable<D>,
-    C::Hasher: AlgebraicHasher<F>,
-    W: Witness<F>,
-{
-    witness.set_cap_target(&mem_cap_target.mem_cap, mem_cap);
-    Ok(())
-}
+// pub fn set_mem_cap<F, C: GenericConfig<D, F = F>, W, const D: usize>(
+//     witness: &mut W,
+//     mem_cap_target: &MemCapTarget,
+//     mem_cap: &MerkleCap<F, C::Hasher>,
+// ) -> Result<(), ProgramError>
+// where
+//     F: RichField + Extendable<D>,
+//     C::Hasher: AlgebraicHasher<F>,
+//     W: Witness<F>,
+// {
+//     witness.set_cap_target(&mem_cap_target.mem_cap, mem_cap);
+//     Ok(())
+// }
 
 pub(crate) fn set_trie_roots_target<F, W, const D: usize>(
     witness: &mut W,
@@ -1208,5 +1239,26 @@ where
 {
     witness.set_target_arr(&ek_target.exit_kernel, &u256_limbs(ek.exit_kernel));
 
+    Ok(())
+}
+
+pub(crate) fn set_mem_cap_target<F, W, const D: usize>(
+    witness: &mut W,
+    mc_target: &MemCapTarget,
+    mc: &MemCap,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    W: Witness<F>,
+{
+    println!("in prover root mem_cap {:?}", mc.mem_cap);
+    for i in 0..mc.mem_cap.len() {
+        witness.set_hash_target(
+            mc_target.mem_cap.0[i],
+            HashOut {
+                elements: mc.mem_cap[i].map(|elt| F::from_canonical_u64(elt.as_u64())),
+            },
+        );
+    }
     Ok(())
 }

@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use ethereum_types::{Address, H160, H256, U256};
 use itertools::Itertools;
 use plonky2::field::extension::{Extendable, FieldExtension};
@@ -6,12 +8,14 @@ use plonky2::fri::proof::{FriChallenges, FriChallengesTarget, FriProof, FriProof
 use plonky2::fri::structure::{
     FriOpeningBatch, FriOpeningBatchTarget, FriOpenings, FriOpeningsTarget,
 };
-use plonky2::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField, NUM_HASH_OUT_ELTS};
+use plonky2::hash::hash_types::{
+    HashOut, HashOutTarget, MerkleCapTarget, RichField, NUM_HASH_OUT_ELTS,
+};
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::config::{GenericConfig, Hasher};
+use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, GenericHashOut, Hasher};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
@@ -21,6 +25,7 @@ use crate::config::StarkConfig;
 use crate::cross_table_lookup::GrandProductChallengeSet;
 use crate::generation::mpt::TrieRootPtrs;
 use crate::generation::MemBeforeValues;
+use crate::mem_before;
 use crate::mem_before::mem_before_stark::MemBeforeStark;
 use crate::util::{get_h160, get_h256, get_u256, h2u};
 use crate::witness::memory::MemoryAddress;
@@ -39,10 +44,6 @@ pub struct AllProof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, co
     pub final_memory_values: MemBeforeValues,
     /// State of the registers at the end of the execution.
     pub final_register_values: RegistersState,
-    /// Merkle cap of `MemBefore`.
-    pub mem_before_cap: MerkleCap<F, C::Hasher>,
-    /// Merkle cap of `MemAfter`.
-    pub mem_after_cap: MerkleCap<F, C::Hasher>,
 }
 
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> AllProof<F, C, D> {
@@ -79,13 +80,19 @@ pub struct PublicValues {
     pub registers_after: RegistersData,
     /// Exit kernel at the start of the proof.
     pub exit_kernel: ExitKernel,
+    pub mem_before: MemCap,
+    pub mem_after: MemCap,
 }
 
 impl PublicValues {
     /// Extracts public values from the given public inputs of a proof.
     /// Public values are always the first public inputs added to the circuit,
     /// so we can start extracting at index 0.
-    pub fn from_public_inputs<F: RichField>(pis: &[F]) -> Self {
+    pub fn from_public_inputs<F: RichField>(
+        pis: &[F],
+        len_before: usize,
+        len_after: usize,
+    ) -> Self {
         assert!(
             pis.len()
                 > TrieRootsTarget::SIZE * 2
@@ -150,6 +157,40 @@ impl PublicValues {
                     + RegistersDataTarget::SIZE * 2
                     + ExitKernelTarget::SIZE],
         );
+        let mem_before = MemCap::from_public_inputs(
+            &pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE * 2
+                + ExitKernelTarget::SIZE
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
+                    + len_before * NUM_HASH_OUT_ELTS],
+            len_before,
+        );
+        let mem_after = MemCap::from_public_inputs(
+            &pis[TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE * 2
+                + ExitKernelTarget::SIZE
+                + len_before * NUM_HASH_OUT_ELTS
+                ..TrieRootsTarget::SIZE * 2
+                    + BlockMetadataTarget::SIZE
+                    + BlockHashesTarget::SIZE
+                    + ExtraBlockDataTarget::SIZE
+                    + RegistersDataTarget::SIZE * 2
+                    + ExitKernelTarget::SIZE
+                    + len_before * NUM_HASH_OUT_ELTS
+                    + len_after * NUM_HASH_OUT_ELTS],
+            len_after,
+        );
         // There are 3 elements per address, + 1 U256 for the memory value.
         Self {
             trie_roots_before,
@@ -160,6 +201,8 @@ impl PublicValues {
             registers_before,
             registers_after,
             exit_kernel,
+            mem_before,
+            mem_after,
         }
     }
 }
@@ -377,6 +420,26 @@ impl ExitKernel {
         let exit_kernel = get_u256(&pis[0..8]);
 
         Self { exit_kernel }
+    }
+}
+
+/// Memory before/after cap.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MemCap {
+    /// STARK cap.
+    pub mem_cap: Vec<[U256; NUM_HASH_OUT_ELTS]>,
+}
+impl MemCap {
+    pub fn from_public_inputs<F: RichField>(pis: &[F], len: usize) -> Self {
+        let mem_cap = (0..len)
+            .map(|i| {
+                core::array::from_fn(|j| {
+                    U256::from(pis[pis.len() - 4 * (len - i) + j].to_canonical_u64())
+                })
+            })
+            .collect();
+
+        Self { mem_cap }
     }
 }
 
@@ -604,6 +667,18 @@ impl PublicValuesTarget {
                     - 1
         );
 
+        println!(
+            "len before {}, len_after {} full before {} NUM HASH OUT {}",
+            len_before,
+            len_after,
+            TrieRootsTarget::SIZE * 2
+                + BlockMetadataTarget::SIZE
+                + BlockHashesTarget::SIZE
+                + ExtraBlockDataTarget::SIZE
+                + RegistersDataTarget::SIZE * 2
+                + ExitKernelTarget::SIZE,
+            NUM_HASH_OUT_ELTS
+        );
         Self {
             trie_roots_before: TrieRootsTarget::from_public_inputs(&pis[0..TrieRootsTarget::SIZE]),
             trie_roots_after: TrieRootsTarget::from_public_inputs(

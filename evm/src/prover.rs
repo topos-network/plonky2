@@ -9,13 +9,13 @@ use plonky2::field::extension::Extendable;
 use plonky2::field::packable::Packable;
 use plonky2::field::packed::PackedField;
 use plonky2::field::polynomial::{PolynomialCoeffs, PolynomialValues};
-use plonky2::field::types::Field;
+use plonky2::field::types::{Field, PrimeField64};
 use plonky2::field::zero_poly_coset::ZeroPolyOnCoset;
 use plonky2::fri::oracle::PolynomialBatch;
 use plonky2::hash::hash_types::RichField;
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::Challenger;
-use plonky2::plonk::config::GenericConfig;
+use plonky2::plonk::config::{GenericConfig, GenericHashOut};
 use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 use plonky2::util::transpose;
@@ -34,7 +34,9 @@ use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
-use crate::proof::{AllProof, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata};
+use crate::proof::{
+    AllProof, MemCap, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata,
+};
 use crate::stark::{PublicRegisterStates, Stark};
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
@@ -58,7 +60,7 @@ where
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (traces, final_memory_values, final_registers, public_values) = timed!(
+    let (traces, final_memory_values, final_registers, mut public_values) = timed!(
         timing,
         "generate all traces",
         generate_traces(all_stark, inputs, config, timing)?
@@ -72,7 +74,7 @@ where
         traces,
         final_memory_values,
         final_registers,
-        public_values,
+        &mut public_values,
         timing,
         abort_signal,
     )?;
@@ -86,7 +88,7 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
     final_memory_values: Vec<Vec<F>>,
     final_register_values: RegistersState,
-    public_values: PublicValues,
+    public_values: &mut PublicValues,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
 ) -> Result<AllProof<F, C, D>>
@@ -165,6 +167,40 @@ where
         )?
     );
 
+    public_values.mem_before = MemCap {
+        mem_cap: mem_before_cap
+            .0
+            .iter()
+            .map(|h| {
+                h.to_vec()
+                    .iter()
+                    .map(|hi| hi.to_canonical_u64().into())
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    };
+    public_values.mem_after = MemCap {
+        mem_cap: mem_after_cap
+            .0
+            .iter()
+            .map(|h| {
+                h.to_vec()
+                    .iter()
+                    .map(|hi| hi.to_canonical_u64().into())
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    };
+
+    println!(
+        "mem_before: {:?}, mem_after {:?}",
+        public_values.mem_before, public_values.mem_after
+    );
+
     // #[cfg(test)]
     {
         check_ctls(
@@ -177,11 +213,9 @@ where
     Ok(AllProof {
         stark_proofs,
         ctl_challenges,
-        public_values,
+        public_values: public_values.clone(),
         final_memory_values: final_mem_values,
         final_register_values,
-        mem_before_cap,
-        mem_after_cap,
     })
 }
 

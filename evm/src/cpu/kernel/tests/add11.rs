@@ -17,7 +17,7 @@ use crate::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use crate::generation::rlp::all_rlp_prover_inputs_reversed;
 use crate::generation::TrieInputs;
 use crate::memory::segments::Segment;
-use crate::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use crate::proof::{BlockHashes, BlockMetadata, MemCap, TrieRoots};
 use crate::util::h2u;
 use crate::witness::state::RegistersState;
 use crate::GenerationInputs;
@@ -170,6 +170,8 @@ fn test_add11_yml() {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after: registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let initial_stack = vec![];
@@ -320,6 +322,8 @@ fn test_add11_yml_with_exception() {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let initial_stack = vec![];
