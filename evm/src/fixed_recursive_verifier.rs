@@ -14,6 +14,7 @@ use plonky2::fri::FriParams;
 use plonky2::gates::constant::ConstantGate;
 use plonky2::gates::noop::NoopGate;
 use plonky2::hash::hash_types::RichField;
+use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::RecursiveChallenger;
 use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
@@ -43,14 +44,14 @@ use crate::generation::GenerationInputs;
 use crate::get_challenges::observe_public_values_target;
 use crate::proof::{
     AllProof, BlockHashesTarget, BlockMetadataTarget, ExitKernelTarget, ExtraBlockData,
-    ExtraBlockDataTarget, PublicValues, PublicValuesTarget, RegistersDataTarget,
+    ExtraBlockDataTarget, MemCapTarget, PublicValues, PublicValuesTarget, RegistersDataTarget,
     StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
 };
 use crate::prover::{check_abort_signal, prove};
 use crate::recursive_verifier::{
     add_common_recursion_gates, add_virtual_public_values, get_memory_extra_looking_sum_circuit,
-    recursive_stark_circuit, set_public_value_targets, PlonkWrapperCircuit, PublicInputs,
-    StarkWrapperCircuit,
+    recursive_stark_circuit, set_mem_cap, set_public_value_targets, PlonkWrapperCircuit,
+    PublicInputs, StarkWrapperCircuit,
 };
 use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::h256_limbs;
@@ -236,9 +237,19 @@ impl<const D: usize> AggregationChildTarget<D> {
     fn public_values<F: RichField + Extendable<D>>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
+        len_before: usize,
+        len_after: usize,
     ) -> PublicValuesTarget {
-        let agg_pv = PublicValuesTarget::from_public_inputs(&self.agg_proof.public_inputs);
-        let evm_pv = PublicValuesTarget::from_public_inputs(&self.evm_proof.public_inputs);
+        let agg_pv = PublicValuesTarget::from_public_inputs(
+            &self.agg_proof.public_inputs,
+            len_before,
+            len_after,
+        );
+        let evm_pv = PublicValuesTarget::from_public_inputs(
+            &self.evm_proof.public_inputs,
+            len_before,
+            len_after,
+        );
         PublicValuesTarget::select(builder, self.is_agg, agg_pv, evm_pv)
     }
 }
@@ -540,9 +551,12 @@ where
         let inner_common_data: [_; NUM_TABLES] =
             core::array::from_fn(|i| &by_table[i].final_circuits()[0].common);
 
+        let cap_length_before = 1 << inner_common_data[7].fri_params.config.cap_height;
+        let cap_length_after = 1 << inner_common_data[8].fri_params.config.cap_height;
         let mut builder = CircuitBuilder::new(CircuitConfig::standard_recursion_config());
 
-        let public_values = add_virtual_public_values(&mut builder);
+        let public_values =
+            add_virtual_public_values(&mut builder, cap_length_before, cap_length_after);
 
         let recursive_proofs =
             core::array::from_fn(|i| builder.add_virtual_proof_with_pis(inner_common_data[i]));
@@ -554,6 +568,22 @@ where
         });
         let index_verifier_data = core::array::from_fn(|_i| builder.add_virtual_target());
 
+        // Connect Memory before and after the execution with
+        // the public values.
+        MemCapTarget::connect(
+            &mut builder,
+            public_values.mem_before.clone(),
+            MemCapTarget {
+                mem_cap: recursive_proofs[7].proof.wires_cap.clone(),
+            },
+        );
+        MemCapTarget::connect(
+            &mut builder,
+            public_values.mem_after.clone(),
+            MemCapTarget {
+                mem_cap: recursive_proofs[8].proof.wires_cap.clone(),
+            },
+        );
         let mut challenger = RecursiveChallenger::<F, C::Hasher, D>::new(&mut builder);
         for pi in &pis {
             for h in &pi.trace_cap {
@@ -669,15 +699,17 @@ where
     fn create_segmented_aggregation_circuit(
         root: &RootCircuitData<F, C, D>,
     ) -> AggregationCircuitData<F, C, D> {
+        let cap_before_len = root.proof_with_pis[7].proof.wires_cap.0.len();
+        let cap_after_len = root.proof_with_pis[8].proof.wires_cap.0.len();
         let mut builder = CircuitBuilder::<F, D>::new(root.circuit.common.config.clone());
-        let public_values = add_virtual_public_values(&mut builder);
+        let public_values = add_virtual_public_values(&mut builder, cap_before_len, cap_after_len);
         let cyclic_vk = builder.add_verifier_data_public_inputs();
 
         let parent_segment = Self::add_agg_child(&mut builder, root);
         let segment = Self::add_agg_child(&mut builder, root);
 
-        let parent_pv = parent_segment.public_values(&mut builder);
-        let segment_pv = segment.public_values(&mut builder);
+        let parent_pv = parent_segment.public_values(&mut builder, cap_before_len, cap_after_len);
+        let segment_pv = segment.public_values(&mut builder, cap_before_len, cap_after_len);
 
         // All the block metadata is the same for both segments. It is also the case for extra_block_data.
         TrieRootsTarget::connect(
@@ -751,6 +783,17 @@ where
             public_values.exit_kernel.clone(),
             parent_pv.exit_kernel.clone(),
         );
+        MemCapTarget::connect(
+            &mut builder,
+            public_values.mem_before.clone(),
+            parent_pv.mem_before.clone(),
+        );
+        MemCapTarget::connect(
+            &mut builder,
+            public_values.mem_after.clone(),
+            segment_pv.mem_after,
+        );
+        MemCapTarget::connect(&mut builder, parent_pv.mem_before, segment_pv.mem_before);
 
         // Pad to match the root circuit's degree.
         while log2_ceil(builder.num_gates()) < root.circuit.common.degree_bits() {
@@ -781,13 +824,16 @@ where
         };
 
         let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
-        let public_values = add_virtual_public_values(&mut builder);
+        let public_values = add_virtual_public_values(&mut builder, 0, 0);
         let has_parent_block = builder.add_virtual_bool_target_safe();
         let parent_txn_proof = builder.add_virtual_proof_with_pis(&expected_common_data);
         let agg_root_proof = builder.add_virtual_proof_with_pis(&agg.circuit.common);
 
-        let parent_pv = PublicValuesTarget::from_public_inputs(&parent_txn_proof.public_inputs);
-        let agg_pv = PublicValuesTarget::from_public_inputs(&agg_root_proof.public_inputs);
+        // We don't need `mem_before` and `mem_after` in transactions,
+        //  so we set the associated lengths to 0.
+        let parent_pv =
+            PublicValuesTarget::from_public_inputs(&parent_txn_proof.public_inputs, 0, 0);
+        let agg_pv = PublicValuesTarget::from_public_inputs(&agg_root_proof.public_inputs, 0, 0);
 
         // Connect all block hash values
         BlockHashesTarget::connect(
@@ -902,7 +948,7 @@ where
         };
 
         let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
-        let public_values = add_virtual_public_values(&mut builder);
+        let public_values = add_virtual_public_values(&mut builder, 0, 0);
         let has_parent_block = builder.add_virtual_bool_target_safe();
         let parent_block_proof = builder.add_virtual_proof_with_pis(&expected_common_data);
         let agg_root_proof = builder.add_virtual_proof_with_pis(&agg.circuit.common);
@@ -910,8 +956,11 @@ where
         // Connect block hashes
         Self::connect_block_hashes(&mut builder, &parent_block_proof, &agg_root_proof);
 
-        let parent_pv = PublicValuesTarget::from_public_inputs(&parent_block_proof.public_inputs);
-        let agg_pv = PublicValuesTarget::from_public_inputs(&agg_root_proof.public_inputs);
+        // We don't need `mem_before` and `mem_after` in blocks,
+        // so we set the associated lengths to 0.
+        let parent_pv =
+            PublicValuesTarget::from_public_inputs(&parent_block_proof.public_inputs, 0, 0);
+        let agg_pv = PublicValuesTarget::from_public_inputs(&agg_root_proof.public_inputs, 0, 0);
 
         // Connect block `trie_roots_before` with parent_pv `trie_roots_before`.
         TrieRootsTarget::connect(
@@ -1031,8 +1080,10 @@ where
         lhs: &ProofWithPublicInputsTarget<D>,
         rhs: &ProofWithPublicInputsTarget<D>,
     ) {
-        let lhs_public_values = PublicValuesTarget::from_public_inputs(&lhs.public_inputs);
-        let rhs_public_values = PublicValuesTarget::from_public_inputs(&rhs.public_inputs);
+        // We don't need `mem_before` and `mem_after` in blocks, so we set
+        // the associated lengths to 0.
+        let lhs_public_values = PublicValuesTarget::from_public_inputs(&lhs.public_inputs, 0, 0);
+        let rhs_public_values = PublicValuesTarget::from_public_inputs(&rhs.public_inputs, 0, 0);
         for i in 0..255 {
             for j in 0..8 {
                 builder.connect(
@@ -1171,7 +1222,12 @@ where
         generation_inputs: GenerationInputs,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
-    ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
+    ) -> anyhow::Result<(
+        ProofWithPublicInputs<F, C, D>,
+        PublicValues,
+        MerkleCap<F, <C as GenericConfig<D>>::Hasher>,
+        MerkleCap<F, <C as GenericConfig<D>>::Hasher>,
+    )> {
         let all_proof = prove::<F, C, D>(
             all_stark,
             config,
@@ -1224,9 +1280,25 @@ where
             anyhow::Error::msg("Invalid conversion when setting public values targets.")
         })?;
 
+        set_mem_cap::<F, C, _, D>(
+            &mut root_inputs,
+            &self.root.public_values.mem_before,
+            &all_proof.mem_before_cap,
+        );
+        set_mem_cap::<F, C, _, D>(
+            &mut root_inputs,
+            &self.root.public_values.mem_after,
+            &all_proof.mem_after_cap,
+        );
+
         let root_proof = self.root.circuit.prove(root_inputs)?;
 
-        Ok((root_proof, all_proof.public_values))
+        Ok((
+            root_proof,
+            all_proof.public_values,
+            all_proof.mem_before_cap,
+            all_proof.mem_after_cap,
+        ))
     }
 
     /// From an initial set of STARK proofs passed with their associated recursive table circuits,
@@ -1284,7 +1356,12 @@ where
         table_circuits: &[(RecursiveCircuitsForTableSize<F, C, D>, u8); NUM_TABLES],
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
-    ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
+    ) -> anyhow::Result<(
+        ProofWithPublicInputs<F, C, D>,
+        PublicValues,
+        MerkleCap<F, <C as GenericConfig<D>>::Hasher>,
+        MerkleCap<F, <C as GenericConfig<D>>::Hasher>,
+    )> {
         let mut root_inputs = PartialWitness::new();
 
         for table in 0..NUM_TABLES {
@@ -1317,9 +1394,25 @@ where
             anyhow::Error::msg("Invalid conversion when setting public values targets.")
         })?;
 
+        set_mem_cap::<F, C, _, D>(
+            &mut root_inputs,
+            &self.root.public_values.mem_before,
+            &all_proof.mem_before_cap,
+        );
+        set_mem_cap::<F, C, _, D>(
+            &mut root_inputs,
+            &self.root.public_values.mem_after,
+            &all_proof.mem_after_cap,
+        );
+
         let root_proof = self.root.circuit.prove(root_inputs)?;
 
-        Ok((root_proof, all_proof.public_values))
+        Ok((
+            root_proof,
+            all_proof.public_values,
+            all_proof.mem_before_cap,
+            all_proof.mem_after_cap,
+        ))
     }
 
     pub fn verify_root(&self, agg_proof: ProofWithPublicInputs<F, C, D>) -> anyhow::Result<()> {
@@ -1355,10 +1448,19 @@ where
         lhs_is_agg: bool,
         lhs_proof: &ProofWithPublicInputs<F, C, D>,
         lhs_public_values: PublicValues,
+        lhs_mem_before: MerkleCap<F, C::Hasher>,
+        lhs_mem_after: MerkleCap<F, C::Hasher>,
         rhs_is_agg: bool,
         rhs_proof: &ProofWithPublicInputs<F, C, D>,
         rhs_public_values: PublicValues,
-    ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
+        rhs_mem_before: MerkleCap<F, C::Hasher>,
+        rhs_mem_after: MerkleCap<F, C::Hasher>,
+    ) -> anyhow::Result<(
+        ProofWithPublicInputs<F, C, D>,
+        PublicValues,
+        MerkleCap<F, C::Hasher>,
+        MerkleCap<F, C::Hasher>,
+    )> {
         let mut agg_inputs = PartialWitness::new();
 
         agg_inputs.set_bool_target(self.segment_aggregation.lhs.is_agg, lhs_is_agg);
@@ -1402,9 +1504,24 @@ where
         .map_err(|_| {
             anyhow::Error::msg("Invalid conversion when setting public values targets.")
         })?;
+        set_mem_cap::<F, C, _, D>(
+            &mut agg_inputs,
+            &self.segment_aggregation.public_values.mem_before,
+            &lhs_mem_before,
+        );
+        set_mem_cap::<F, C, _, D>(
+            &mut agg_inputs,
+            &self.segment_aggregation.public_values.mem_after,
+            &rhs_mem_after,
+        );
 
         let aggregation_proof = self.segment_aggregation.circuit.prove(agg_inputs)?;
-        Ok((aggregation_proof, agg_public_values))
+        Ok((
+            aggregation_proof,
+            agg_public_values,
+            lhs_mem_before,
+            lhs_mem_after,
+        ))
     }
 
     pub fn verify_segment_aggregation(

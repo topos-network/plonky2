@@ -482,13 +482,13 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     );
 
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
-    let (root_proof_first, public_values_first) =
+    let (root_proof_first, public_values_first, first_mem_before, first_mem_after) =
         all_circuits.prove_root(&all_stark, &config, inputs_first, &mut timing, None)?;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
 
-    let (final_root_proof_first, final_public_values_first) =
+    let (final_root_proof_first, final_public_values_first, final_mem_before, final_mem_after) =
         all_circuits.prove_root(&all_stark, &config, final_inputs_first, &mut timing, None)?;
     all_circuits.verify_root(final_root_proof_first.clone())?;
     // The gas used and transaction number are fed to the next transaction, so the two proofs can be correctly aggregated.
@@ -620,37 +620,57 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
-    let (root_proof_second, public_values_second) =
+    let (root_proof_second, public_values_second, first_mem_before_second, first_mem_after_second) =
         all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None.clone())?;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof_second.clone())?;
 
-    let (final_root_proof_second, final_public_values_second) =
-        all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None.clone())?;
+    let (
+        final_root_proof_second,
+        final_public_values_second,
+        final_mem_before_second,
+        final_mem_after_second,
+    ) = all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None.clone())?;
 
     all_circuits.verify_root(final_root_proof_second.clone())?;
 
-    let (segment_agg_proof_first, updated_agg_public_values_first) = all_circuits
-        .prove_segment_aggregation(
-            false,
-            &root_proof_first,
-            public_values_first,
-            false,
-            &final_root_proof_first,
-            final_public_values_first,
-        )?;
+    let (
+        segment_agg_proof_first,
+        updated_agg_public_values_first,
+        _segment_mem_before_first,
+        _segment_mem_after_first,
+    ) = all_circuits.prove_segment_aggregation(
+        false,
+        &root_proof_first,
+        public_values_first,
+        first_mem_before,
+        first_mem_after,
+        false,
+        &final_root_proof_first,
+        final_public_values_first,
+        final_mem_before,
+        final_mem_after,
+    )?;
     all_circuits.verify_segment_aggregation(&segment_agg_proof_first)?;
 
-    let (segment_agg_proof_second, updated_agg_public_values_second) = all_circuits
-        .prove_segment_aggregation(
-            false,
-            &root_proof_second,
-            public_values_second,
-            false,
-            &final_root_proof_second,
-            final_public_values_second,
-        )?;
+    let (
+        segment_agg_proof_second,
+        updated_agg_public_values_second,
+        _segment_mem_before_second,
+        _segment_mem_after_second,
+    ) = all_circuits.prove_segment_aggregation(
+        false,
+        &root_proof_second,
+        public_values_second,
+        first_mem_before_second,
+        first_mem_after_second,
+        false,
+        &final_root_proof_second,
+        final_public_values_second,
+        final_mem_before_second,
+        final_mem_after_second,
+    )?;
     all_circuits.verify_segment_aggregation(&segment_agg_proof_second)?;
 
     let (txn_proof_first, txn_pv_first) = all_circuits.prove_transaction_aggregation(
@@ -739,23 +759,28 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         ..inputs.clone()
     };
 
-    let (root_proof, public_values) =
+    let (root_proof, public_values, first_mem_before, first_mem_after) =
         all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
     all_circuits.verify_root(root_proof.clone())?;
 
-    let (final_root_proof, final_public_values) =
+    let (final_root_proof, final_public_values, final_mem_before, final_mem_after) =
         all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None)?;
     all_circuits.verify_root(final_root_proof.clone())?;
 
     // We can just duplicate the initial proof as the state didn't change.
-    let (segment_agg_proof, updated_agg_public_values) = all_circuits.prove_segment_aggregation(
-        false,
-        &root_proof,
-        public_values.clone(),
-        false,
-        &final_root_proof,
-        final_public_values,
-    )?;
+    let (segment_agg_proof, updated_agg_public_values, _segment_mem_before, _segment_mem_after) =
+        all_circuits.prove_segment_aggregation(
+            false,
+            &root_proof,
+            public_values.clone(),
+            first_mem_before,
+            first_mem_after,
+            false,
+            &final_root_proof,
+            final_public_values,
+            final_mem_before,
+            final_mem_after,
+        )?;
     all_circuits.verify_segment_aggregation(&segment_agg_proof)?;
 
     let (second_txn_proof, second_txn_pvs) = all_circuits.prove_transaction_aggregation(

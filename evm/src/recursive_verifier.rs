@@ -9,8 +9,9 @@ use plonky2::fri::witness_util::set_fri_proof_target;
 use plonky2::gates::exponentiation::ExponentiationGate;
 use plonky2::gates::gate::GateRef;
 use plonky2::gates::noop::NoopGate;
-use plonky2::hash::hash_types::RichField;
+use plonky2::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
 use plonky2::hash::hashing::PlonkyPermutation;
+use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::RecursiveChallenger;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::Target;
@@ -40,8 +41,8 @@ use crate::memory::segments::Segment;
 use crate::memory::VALUE_LIMBS;
 use crate::proof::{
     BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExitKernel,
-    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, PublicValues, PublicValuesTarget,
-    RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
+    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, MemCapTarget, PublicValues,
+    PublicValuesTarget, RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
     StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata, TrieRoots,
     TrieRootsTarget,
 };
@@ -743,6 +744,8 @@ fn eval_l_0_and_l_last_circuit<F: RichField + Extendable<D>, const D: usize>(
 
 pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
+    len_before: usize,
+    len_after: usize,
 ) -> PublicValuesTarget {
     let trie_roots_before = add_virtual_trie_roots(builder);
     let trie_roots_after = add_virtual_trie_roots(builder);
@@ -752,6 +755,12 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
     let registers_before = add_virtual_registers_data(builder);
     let registers_after = add_virtual_registers_data(builder);
     let exit_kernel = add_virtual_exit_kernel(builder);
+    let mem_before = MemCapTarget {
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes(len_before)),
+    };
+    let mem_after = MemCapTarget {
+        mem_cap: MerkleCapTarget(builder.add_virtual_hashes(len_after)),
+    };
 
     PublicValuesTarget {
         trie_roots_before,
@@ -762,6 +771,8 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
         registers_before,
         registers_after,
         exit_kernel,
+        mem_before,
+        mem_after,
     }
 }
 
@@ -995,6 +1006,20 @@ where
         &public_values.exit_kernel,
     )?;
 
+    Ok(())
+}
+
+pub fn set_mem_cap<F, C: GenericConfig<D, F = F>, W, const D: usize>(
+    witness: &mut W,
+    mem_cap_target: &MemCapTarget,
+    mem_cap: &MerkleCap<F, C::Hasher>,
+) -> Result<(), ProgramError>
+where
+    F: RichField + Extendable<D>,
+    C::Hasher: AlgebraicHasher<F>,
+    W: Witness<F>,
+{
+    witness.set_cap_target(&mem_cap_target.mem_cap, mem_cap);
     Ok(())
 }
 

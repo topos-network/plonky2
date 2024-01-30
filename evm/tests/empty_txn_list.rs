@@ -139,10 +139,10 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     let mut timing = TimingTree::new("prove", log::Level::Info);
 
-    let (final_root_proof, final_public_values) =
+    let (final_root_proof, final_public_values, final_mem_before, final_mem_after) =
         all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None)?;
     all_circuits.verify_root(final_root_proof.clone())?;
-    let (root_proof, public_values) =
+    let (root_proof, public_values, first_mem_before, first_mem_after) =
         all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
@@ -154,15 +154,23 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     assert_eq!(retrieved_public_values, final_public_values);
 
     // We can duplicate the proofs here because the state hasn't mutated.
-    let (segmented_agg_proof, segmented_agg_public_values) = all_circuits
-        .prove_segment_aggregation(
-            false,
-            &root_proof,
-            public_values.clone(),
-            false,
-            &final_root_proof,
-            final_public_values,
-        )?;
+    let (
+        segmented_agg_proof,
+        segmented_agg_public_values,
+        _segmented_mem_before,
+        _segmented_mem_after,
+    ) = all_circuits.prove_segment_aggregation(
+        false,
+        &root_proof,
+        public_values.clone(),
+        first_mem_before,
+        first_mem_after,
+        false,
+        &final_root_proof,
+        final_public_values,
+        final_mem_before,
+        final_mem_after,
+    )?;
     all_circuits.verify_segment_aggregation(&segmented_agg_proof)?;
 
     // Test retrieved public values from the proof public inputs.
