@@ -179,7 +179,15 @@ fn add11_yml() -> anyhow::Result<()> {
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 20;
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, max_cpu_len, &mut timing, None)?;
+    let (proof, _) = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)
@@ -310,15 +318,13 @@ fn add11_segments() -> anyhow::Result<()> {
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
-    // let halt_label = 40129;
     let mut registers_after = RegistersState::default();
-    // registers_after.program_counter = 37117;
-    registers_after.program_counter = 37113;
+    registers_after.program_counter = 37132;
     registers_after.stack_top =
         U256::from_str("8DCCDA9EB5514ED782BBB99F3242A02392AC8AF280E18762B78EF6029B3635E1")?;
     registers_after.stack_len = 19;
     registers_after.gas_used = 106525;
-    let inputs = GenerationInputs {
+    let mut inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
         tries: tries_before,
@@ -340,10 +346,46 @@ fn add11_segments() -> anyhow::Result<()> {
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 15;
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, max_cpu_len, &mut timing, None)?;
+    let (proof, next_state) = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs.clone(),
+        max_cpu_len,
+        None,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
-    verify_proof(&all_stark, proof, &config)
+    verify_proof(&all_stark, proof.clone(), &config)?;
+
+    // Second segment.
+    inputs.registers_before = proof.final_register_values;
+    println!("Final register values: {:?}", inputs.registers_before);
+    println!("Second clock start: {:?}", next_state.traces.clock());
+    inputs.memory_before = proof.final_memory_values;
+    inputs.registers_after = RegistersState {
+        program_counter: 40158,
+        is_kernel: true,
+        stack_len: 0,
+        stack_top: 0.into(),
+        is_stack_top_read: false,
+        check_overflow: false,
+        context: 0,
+        gas_used: 32436,
+    };
+
+    let (second_proof, _) = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        Some(next_state),
+        &mut timing,
+        None,
+    )?;
+
+    verify_proof(&all_stark, second_proof, &config)
 }
 
 fn init_logger() {

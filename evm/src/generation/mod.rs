@@ -31,11 +31,12 @@ use crate::memory::segments::Segment;
 use crate::proof::{
     BlockHashes, BlockMetadata, ExitKernel, ExtraBlockData, PublicValues, RegistersData, TrieRoots,
 };
-use crate::prover::check_abort_signal;
+use crate::prover::{check_abort_signal, get_mem_after_value_from_row};
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
 use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp};
 use crate::witness::state::RegistersState;
+use crate::witness::traces::Traces;
 use crate::witness::transition::{final_exception, transition};
 
 pub mod mpt;
@@ -262,25 +263,40 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
     state.traces.memory_ops.extend(ops);
 }
 
-pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
+pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     all_stark: &AllStark<F, D>,
     inputs: GenerationInputs,
     config: &StarkConfig,
     max_cpu_len: usize,
+    previous_state: Option<GenerationState<F>>,
     timing: &mut TimingTree,
 ) -> anyhow::Result<(
     [Vec<PolynomialValues<F>>; NUM_TABLES],
     Vec<Vec<F>>,
     RegistersState,
     PublicValues,
+    GenerationState<F>,
 )> {
-    let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
-        .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
+    let mut state = match previous_state {
+        Some(s) => {
+            let mut new_state = s;
+            new_state.registers = inputs.registers_before;
+            new_state
+        }
+        None => {
+            let mut new_state =
+                GenerationState::<F>::new(inputs.clone(), &KERNEL.code).map_err(|err| {
+                    anyhow!("Failed to parse all the initial prover inputs: {:?}", err)
+                })?;
 
-    state.registers = RegistersState {
-        program_counter: state.registers.program_counter,
-        is_kernel: state.registers.is_kernel,
-        ..inputs.registers_before
+            new_state.registers = RegistersState {
+                program_counter: new_state.registers.program_counter,
+                is_kernel: new_state.registers.is_kernel,
+                ..inputs.registers_before
+            };
+
+            new_state
+        }
     };
 
     apply_metadata_and_tries_memops(&mut state, &inputs);
@@ -347,6 +363,8 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         state.traces.get_lengths()
     );
 
+    let mut next_state = state.soft_clone();
+
     let read_metadata = |field| state.memory.read_global_metadata(field);
     let trie_roots_before = TrieRoots {
         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
@@ -411,7 +429,19 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .traces
             .into_tables(all_stark, &mem_before_values, config, timing)
     );
-    Ok((tables, final_values, final_registers, public_values))
+
+    // Reconstruct the new memory_before from the final values.
+    next_state.inputs.memory_before = final_values
+        .iter()
+        .map(|row| get_mem_after_value_from_row(row))
+        .collect::<Vec<_>>();
+    Ok((
+        tables,
+        final_values,
+        final_registers,
+        public_values,
+        next_state,
+    ))
 }
 
 fn simulate_cpu<F: Field>(
@@ -430,12 +460,21 @@ fn simulate_cpu<F: Field>(
         // the halt routine, raise the stop exception.
         if halt || state.traces.clock() == max_cpu_len - 100 {
             final_registers = state.registers;
+            // If `stack_len` is 0, `stack_top` still contains a residual value.
+            if final_registers.stack_len == 0 {
+                final_registers.stack_top = 0.into();
+            }
             println!("Current registers: {:?}", final_registers);
             final_exception(state)?;
         }
         let halt_final = pc == halt_final_pc;
         if halt_final {
             log::info!("CPU halted after {} cycles", state.traces.clock());
+            log::info!(
+                "halt label at {}, halt_final label at {}",
+                halt_pc,
+                halt_final_pc
+            );
 
             // Padding
             let mut row = CpuColumnsView::<F>::default();

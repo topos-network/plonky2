@@ -295,7 +295,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                 filter: true,
                 timestamp: 0,
                 address: mem_before_values[i].0,
-                kind: crate::witness::memory::MemoryOpKind::Read,
+                kind: crate::witness::memory::MemoryOpKind::Write,
                 value: mem_before_values[i].1,
             });
         }

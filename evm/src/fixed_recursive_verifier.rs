@@ -1173,11 +1173,12 @@ where
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
-        let all_proof = prove::<F, C, D>(
+        let (all_proof, _) = prove::<F, C, D>(
             all_stark,
             config,
             generation_inputs,
             max_cpu_len,
+            None,
             timing,
             abort_signal.clone(),
         )?;

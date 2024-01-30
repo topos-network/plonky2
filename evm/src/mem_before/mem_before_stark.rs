@@ -41,7 +41,7 @@ pub(crate) fn ctl_data<F: Field>() -> Vec<Column<F>> {
 /// - the initilized address (context, segment, virt),
 /// - the value in u32 limbs.
 pub(crate) fn ctl_data_memory<F: Field>() -> Vec<Column<F>> {
-    let mut res = vec![Column::constant(F::ONE)]; // IS_READ
+    let mut res = vec![Column::constant(F::ZERO)]; // IS_READ
     res.extend(Column::singles([ADDR_CONTEXT, ADDR_SEGMENT, ADDR_VIRTUAL]).collect_vec());
     res.extend(Column::singles((0..8).map(value_limb)));
     res.push(Column::constant(F::ZERO)); // TIMESTAMP

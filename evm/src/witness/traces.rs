@@ -33,7 +33,7 @@ pub(crate) struct TraceCheckpoint {
 }
 
 #[derive(Debug)]
-pub(crate) struct Traces<T: Copy> {
+pub struct Traces<T: Copy> {
     pub(crate) arithmetic_ops: Vec<arithmetic::Operation>,
     pub(crate) byte_packing_ops: Vec<BytePackingOp>,
     pub(crate) cpu: Vec<CpuColumnsView<T>>,
@@ -161,7 +161,7 @@ impl<T: Copy> Traces<T> {
         self.keccak_sponge_ops.push(op);
     }
 
-    pub(crate) fn clock(&self) -> usize {
+    pub fn clock(&self) -> usize {
         self.cpu.len() + 1
     }
 

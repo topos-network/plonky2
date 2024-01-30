@@ -31,6 +31,7 @@ use crate::cross_table_lookup::{
     GrandProductChallengeSet,
 };
 use crate::evaluation_frame::StarkEvaluationFrame;
+use crate::generation::state::GenerationState;
 use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
@@ -51,18 +52,26 @@ pub fn prove<F, C, const D: usize>(
     config: &StarkConfig,
     inputs: GenerationInputs,
     max_cpu_len: usize,
+    previous_state: Option<GenerationState<F>>,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<AllProof<F, C, D>>
+) -> Result<(AllProof<F, C, D>, GenerationState<F>)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (traces, final_memory_values, final_registers, public_values) = timed!(
+    let (traces, final_memory_values, final_registers, public_values, next_state) = timed!(
         timing,
         "generate all traces",
-        generate_traces(all_stark, inputs, config, max_cpu_len, timing)?
+        generate_traces(
+            all_stark,
+            inputs,
+            config,
+            max_cpu_len,
+            previous_state,
+            timing
+        )?
     );
 
     check_abort_signal(abort_signal.clone())?;
@@ -77,7 +86,7 @@ where
         timing,
         abort_signal,
     )?;
-    Ok(proof)
+    Ok((proof, next_state))
 }
 
 /// Compute all STARK proofs.
@@ -363,7 +372,7 @@ where
     ))
 }
 
-fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAddress, U256) {
+pub(crate) fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAddress, U256) {
     // The row has shape (1, context, segment, virt, [values]) where [values] are 8 32-bit elements representing one U256 word.
     let mem_address = MemoryAddress {
         context: row[1].to_canonical_u64() as usize,

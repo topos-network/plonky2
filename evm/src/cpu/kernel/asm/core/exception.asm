@@ -171,8 +171,17 @@ global exc_stop:
     PUSH @SEGMENT_REGISTERS_STATES
     %add_const(6)
 
+    // Is the current stack_len is 2, then the stack was empty before the exception and there's no stack top.
     // stack: addr_registers, trap_info
     %stack_length
+    // stack: stack_len, addr_registers, trap_info
+    %eq_const(2)
+    // stack: stack_len == 2, addr_registers, trap_info
+    %jumpi(exc_stop_ctd)
+
+    // stack: addr_registers, trap_info
+    %stack_length
+    // stack: stack_len, addr_registers, trap_info
     %sub_const(3)
     PUSH @SEGMENT_STACK
     GET_CONTEXT
@@ -184,6 +193,7 @@ global exc_stop:
     MLOAD_GENERAL
     %assert_eq
 
+exc_stop_ctd:
     // stack: addr_registers, trap_info
     DUP2 PUSH 0xFFFFFFFF AND
     // stack: program_counter, addr_registers, trap_info
