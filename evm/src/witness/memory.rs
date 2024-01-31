@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ethereum_types::U256;
 
 use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
@@ -164,9 +166,13 @@ pub(crate) struct MemoryState {
 
 impl MemoryState {
     pub(crate) fn new(kernel_code: &[u8]) -> Self {
-        let code_u256s = kernel_code.iter().map(|&x| x.into()).collect();
         let mut result = Self::default();
-        result.contexts[0].segments[Segment::Code.unscale()].content = code_u256s;
+        let mut code_address = MemoryAddress::new(0, Segment::Code, 0);
+        let code_u256s = kernel_code.iter().map(|&byte| {
+            result.set(code_address, byte.into());
+            code_address.virt += 1;
+        });
+
         result
     }
 
@@ -262,21 +268,21 @@ impl Default for MemoryContextState {
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct MemorySegmentState {
-    pub(crate) content: Vec<U256>,
+    pub(crate) content: HashMap<usize, U256>,
 }
 
 impl MemorySegmentState {
     pub(crate) fn get(&self, virtual_addr: usize) -> U256 {
-        self.content
-            .get(virtual_addr)
-            .copied()
-            .unwrap_or(U256::zero())
+        match self.content.get(&virtual_addr).copied() {
+            Some(value) => value,
+            None => {
+                self.content.insert(virtual_addr, U256::zero());
+                U256::zero()
+            }
+        }
     }
 
     pub(crate) fn set(&mut self, virtual_addr: usize, value: U256) {
-        if virtual_addr >= self.content.len() {
-            self.content.resize(virtual_addr + 1, U256::zero());
-        }
-        self.content[virtual_addr] = value;
+        self.content.insert(virtual_addr, value);
     }
 }
