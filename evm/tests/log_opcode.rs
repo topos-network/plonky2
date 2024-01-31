@@ -14,14 +14,11 @@ use plonky2::plonk::config::PoseidonGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
-use plonky2_evm::cpu::kernel::aggregator::KERNEL;
 use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::mpt::transaction_testing::{AddressOption, LegacyTransactionRlp};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{
-    BlockHashes, BlockMetadata, ExtraBlockData, MemCap, PublicValues, TrieRoots,
-};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
@@ -236,8 +233,6 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after: RegistersState::new_last_registers_with_gas(42793),
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -440,12 +435,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         H256::from_str("0x0101010101010101010101010101010101010101010101010101010101010101")?;
     let mut block_hashes = vec![H256::default(); 256];
 
-    let halt_label = KERNEL.global_labels["halt"];
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 167785;
     let inputs_first = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -463,14 +452,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
+        registers_after: RegistersState::new_last_registers_with_gas(167785),
     };
 
     let final_inputs_first = GenerationInputs {
-        registers_before: registers_after,
-        registers_after,
+        registers_before: inputs_first.registers_after,
+        registers_after: inputs_first.registers_after,
         ..inputs_first.clone()
     };
 
@@ -610,12 +597,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
 
-    let halt_label = KERNEL.global_labels["halt"];
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 56705;
     let inputs = GenerationInputs {
         signed_txn: Some(txn_2.to_vec()),
         withdrawals: vec![],
@@ -633,14 +614,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
+        registers_after: RegistersState::new_last_registers_with_gas(56705),
     };
 
     let final_inputs = GenerationInputs {
-        registers_before: registers_after,
-        registers_after,
+        registers_before: inputs.registers_after,
+        registers_after: inputs.registers_after,
         ..inputs.clone()
     };
 
@@ -733,12 +712,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let mut contract_code = HashMap::new();
     contract_code.insert(keccak(vec![]), vec![]);
 
-    let halt_label = KERNEL.global_labels["halt"];
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 46667;
     let inputs = GenerationInputs {
         signed_txn: None,
         withdrawals: vec![],
@@ -765,14 +738,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
+        registers_after: RegistersState::new_last_registers_with_gas(46667),
     };
 
     let final_inputs = GenerationInputs {
-        registers_before: registers_after,
-        registers_after,
+        registers_before: inputs.registers_after,
+        registers_after: inputs.registers_after,
         ..inputs.clone()
     };
 

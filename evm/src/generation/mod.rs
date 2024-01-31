@@ -92,9 +92,6 @@ pub struct GenerationInputs {
     pub registers_before: RegistersState,
     /// State of the registers after the current execution.
     pub registers_after: RegistersState,
-
-    pub mem_before: MemCap,
-    pub mem_after: MemCap,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -424,8 +421,8 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         registers_before,
         registers_after,
         exit_kernel,
-        mem_before: inputs.mem_before,
-        mem_after: inputs.mem_after,
+        mem_before: MemCap { mem_cap: vec![] },
+        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let (tables, final_values) = timed!(

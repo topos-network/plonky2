@@ -15,7 +15,7 @@ use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
 use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, MemCap, PublicValues, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
 use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 
@@ -52,12 +52,6 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
 
-    let halt_label = 40129;
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 2783;
     let mut initial_block_hashes = vec![H256::default(); 256];
     initial_block_hashes[255] = H256::from_uint(&0x200.into());
     let inputs = GenerationInputs {
@@ -82,14 +76,12 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
+        registers_after: RegistersState::new_last_registers_with_gas(2783),
     };
 
     let final_inputs = GenerationInputs {
-        registers_before: registers_after,
-        registers_after,
+        registers_before: inputs.registers_after,
+        registers_after: inputs.registers_after,
         ..inputs.clone()
     };
 
