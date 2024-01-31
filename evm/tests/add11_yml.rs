@@ -151,12 +151,7 @@ fn add11_yml() -> anyhow::Result<()> {
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
-    let halt_label = 40129;
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 32436;
+
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -174,7 +169,7 @@ fn add11_yml() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
+        registers_after: RegistersState::new_last_registers_with_gas(32436),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -364,16 +359,7 @@ fn add11_segments() -> anyhow::Result<()> {
     println!("Final register values: {:?}", inputs.registers_before);
     println!("Second clock start: {:?}", next_state.traces.clock());
     inputs.memory_before = proof.final_memory_values;
-    inputs.registers_after = RegistersState {
-        program_counter: 40158,
-        is_kernel: true,
-        stack_len: 0,
-        stack_top: 0.into(),
-        is_stack_top_read: false,
-        check_overflow: false,
-        context: 0,
-        gas_used: 32436,
-    };
+    inputs.registers_after = RegistersState::new_last_registers_with_gas(32436);
 
     let (second_proof, _) = prove::<F, C, D>(
         &all_stark,

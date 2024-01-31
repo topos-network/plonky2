@@ -160,12 +160,6 @@ fn test_erc20() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
 
-    let halt_label = 40129;
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 41931;
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -183,12 +177,20 @@ fn test_erc20() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
+        registers_after: RegistersState::new_last_registers_with_gas(41931),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 20;
-    let (proof, _) = prove::<F, C, D>(&all_stark, &config, inputs, max_cpu_len, None, &mut timing, None)?;
+    let (proof, _) = prove::<F, C, D>(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)

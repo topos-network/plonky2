@@ -161,12 +161,6 @@ fn test_erc721() -> anyhow::Result<()> {
         block_bloom: bloom.try_into().unwrap(),
     };
 
-    let halt_label = 40129;
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = halt_label;
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 45229;
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -184,7 +178,7 @@ fn test_erc721() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after,
+        registers_after: RegistersState::new_last_registers_with_gas(45229),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
