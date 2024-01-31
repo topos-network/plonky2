@@ -143,17 +143,10 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     let (final_root_proof, final_public_values) =
         all_circuits.prove_root(&all_stark, &config, final_inputs, &mut timing, None)?;
-    println!(
-        "root proof final mem before {:?} after {:?}",
-        final_public_values.mem_before, final_public_values.mem_after
-    );
+
     all_circuits.verify_root(final_root_proof.clone())?;
     let (root_proof, public_values) =
         all_circuits.prove_root(&all_stark, &config, inputs, &mut timing, None)?;
-    println!(
-        "root proof first mem before {:?} after {:?}",
-        public_values.mem_before, public_values.mem_after
-    );
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 

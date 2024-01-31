@@ -44,8 +44,8 @@ use crate::generation::GenerationInputs;
 use crate::get_challenges::observe_public_values_target;
 use crate::proof::{
     AllProof, BlockHashesTarget, BlockMetadataTarget, ExitKernelTarget, ExtraBlockData,
-    ExtraBlockDataTarget, MemCapTarget, PublicValues, PublicValuesTarget, RegistersDataTarget,
-    StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
+    ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues, PublicValuesTarget,
+    RegistersDataTarget, StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
 };
 use crate::prover::{check_abort_signal, prove};
 use crate::recursive_verifier::{
@@ -512,15 +512,10 @@ where
             mem_before,
             mem_after,
         ];
-        println!("before creating root");
         let root = Self::create_root_circuit(&by_table, stark_config);
-        println!("created root");
         let segment_aggregation = Self::create_segmented_aggregation_circuit(&root);
-        println!("created seg agg");
         let txn_aggregation = Self::create_transaction_circuit(&segment_aggregation);
-        println!("created txn agg");
         let block = Self::create_block_circuit(&txn_aggregation);
-        println!("created block agg");
         Self {
             root,
             segment_aggregation,
@@ -667,42 +662,18 @@ where
             );
         }
 
-        let init_merkle_caps: [_; NUM_TABLES] =
-            core::array::from_fn(|i| by_table[i].init_merkle_caps());
-        let mut possible_merkle_before = init_merkle_caps[7]
-            .iter()
-            .map(|&val| val.clone())
-            .collect::<Vec<_>>();
-        while !possible_merkle_before.len().is_power_of_two() {
-            possible_merkle_before.push(possible_merkle_before[0].clone());
-        }
-        let mut possible_merkle_after = init_merkle_caps[8]
-            .iter()
-            .map(|&val| val.clone())
-            .collect::<Vec<_>>();
-        while !possible_merkle_after.len().is_power_of_two() {
-            possible_merkle_after.push(possible_merkle_after[0].clone());
-        }
         let merkle_before =
-            builder.random_access_merkle_cap(index_verifier_data[7], possible_merkle_before);
+            MemCapTarget::from_public_inputs(&recursive_proofs[7].public_inputs, cap_length_before);
         let merkle_after =
-            builder.random_access_merkle_cap(index_verifier_data[8], possible_merkle_after);
+            MemCapTarget::from_public_inputs(&recursive_proofs[8].public_inputs, cap_length_after);
         // Connect Memory before and after the execution with
         // the public values.
         MemCapTarget::connect(
             &mut builder,
             public_values.mem_before.clone(),
-            MemCapTarget {
-                mem_cap: merkle_before,
-            },
+            merkle_before,
         );
-        MemCapTarget::connect(
-            &mut builder,
-            public_values.mem_after.clone(),
-            MemCapTarget {
-                mem_cap: merkle_after,
-            },
-        );
+        MemCapTarget::connect(&mut builder, public_values.mem_after.clone(), merkle_after);
         // We want EVM root proofs to have the exact same structure as aggregation proofs, so we add
         // public inputs for cyclic verification, even though they'll be ignored.
         let cyclic_vk = builder.add_verifier_data_public_inputs();
@@ -1102,7 +1073,6 @@ where
         root: &RootCircuitData<F, C, D>,
     ) -> AggregationChildTarget<D> {
         let common = &root.circuit.common;
-        println!("common num pis {:?}", common.num_public_inputs);
         let root_vk = builder.constant_verifier_data(&root.circuit.verifier_only);
         let is_agg = builder.add_virtual_bool_target_safe();
         let agg_proof = builder.add_virtual_proof_with_pis(common);
@@ -1293,22 +1263,6 @@ where
                 })?
                 .shrink(stark_proof, &all_proof.ctl_challenges)?;
 
-            root_inputs.set_cap_target(
-                &table_circuits
-                    .by_stark_size
-                    .get(&original_degree_bits)
-                    .ok_or_else(|| {
-                        anyhow!(format!(
-                            "Missing preprocessed circuits for {:?} table with size {}.",
-                            Table::all()[table],
-                            original_degree_bits,
-                        ))
-                    })?
-                    .initial_wrapper
-                    .init_merkle_cap_target
-                    .mem_cap,
-                &stark_proof.proof.trace_cap,
-            );
             let index_verifier_data = table_circuits
                 .by_stark_size
                 .keys()
@@ -1329,7 +1283,6 @@ where
             &self.segment_aggregation.circuit.verifier_only,
         );
 
-        println!("all proof pvs {:?}", all_proof.public_values.mem_before);
         set_public_value_targets(
             &mut root_inputs,
             &self.root.public_values,
@@ -1962,13 +1915,6 @@ where
             })
             .collect()
     }
-
-    fn init_merkle_caps(&self) -> Vec<&MerkleCapTarget> {
-        self.by_stark_size
-            .values()
-            .map(|chain| &chain.initial_wrapper.init_merkle_cap_target.mem_cap)
-            .collect()
-    }
 }
 
 /// A chain of shrinking wrapper circuits, ending with a final circuit with `degree_bits`
@@ -2116,7 +2062,6 @@ where
         let mut proof = self
             .initial_wrapper
             .prove(stark_proof_with_metadata, ctl_challenges)?;
-        println!("init value {:?}", stark_proof_with_metadata.proof.trace_cap);
 
         for wrapper_circuit in &self.shrinking_wrappers {
             proof = wrapper_circuit.prove(&proof)?;

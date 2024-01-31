@@ -667,18 +667,6 @@ impl PublicValuesTarget {
                     - 1
         );
 
-        println!(
-            "len before {}, len_after {} full before {} NUM HASH OUT {}",
-            len_before,
-            len_after,
-            TrieRootsTarget::SIZE * 2
-                + BlockMetadataTarget::SIZE
-                + BlockHashesTarget::SIZE
-                + ExtraBlockDataTarget::SIZE
-                + RegistersDataTarget::SIZE * 2
-                + ExitKernelTarget::SIZE,
-            NUM_HASH_OUT_ELTS
-        );
         Self {
             trie_roots_before: TrieRootsTarget::from_public_inputs(&pis[0..TrieRootsTarget::SIZE]),
             trie_roots_after: TrieRootsTarget::from_public_inputs(

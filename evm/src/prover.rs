@@ -196,11 +196,6 @@ where
             .collect::<Vec<_>>(),
     };
 
-    println!(
-        "mem_before: {:?}, mem_after {:?}",
-        public_values.mem_before, public_values.mem_after
-    );
-
     // #[cfg(test)]
     {
         check_ctls(
