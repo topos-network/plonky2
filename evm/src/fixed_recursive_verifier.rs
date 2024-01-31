@@ -897,7 +897,7 @@ where
             agg_pv.exit_kernel.clone(),
         );
 
-        // Self::connect_initial_final_segment(&mut builder, &public_values);
+        Self::connect_initial_final_segment(&mut builder, &public_values);
 
         let cyclic_vk = builder.add_verifier_data_public_inputs();
         builder

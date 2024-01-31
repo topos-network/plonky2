@@ -170,8 +170,6 @@ fn test_add11_yml() {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after: registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let initial_stack = vec![];
@@ -322,8 +320,6 @@ fn test_add11_yml_with_exception() {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let initial_stack = vec![];

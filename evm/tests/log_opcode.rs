@@ -19,9 +19,7 @@ use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::mpt::transaction_testing::{AddressOption, LegacyTransactionRlp};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{
-    BlockHashes, BlockMetadata, ExtraBlockData, MemCap, PublicValues, TrieRoots,
-};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
@@ -242,8 +240,6 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -461,8 +457,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs_first = GenerationInputs {
@@ -618,8 +612,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs = GenerationInputs {
@@ -737,8 +729,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs = GenerationInputs {

@@ -15,7 +15,7 @@ use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
 use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, MemCap, PublicValues, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
 use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 
@@ -83,8 +83,6 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
         registers_after,
-        mem_before: MemCap { mem_cap: vec![] },
-        mem_after: MemCap { mem_cap: vec![] },
     };
 
     let final_inputs = GenerationInputs {
