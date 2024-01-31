@@ -7,6 +7,7 @@ use std::ops::Range;
 use anyhow::bail;
 use eth_trie_utils::partial_trie::PartialTrie;
 use ethereum_types::{BigEndianHash, H160, H256, U256, U512};
+use itertools::Itertools;
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
 
@@ -187,9 +188,9 @@ impl<'a> Interpreter<'a> {
         let initial_stack_len = initial_stack.len();
         result.generation_state.registers.stack_len = initial_stack_len;
         if !initial_stack.is_empty() {
-            result.generation_state.registers.stack_top = initial_stack[initial_stack_len - 1];
-            *result.stack_segment_mut() = initial_stack;
-            result.stack_segment_mut().truncate(initial_stack_len - 1);
+            let mut initial_stack_segment = initial_stack.clone();
+            result.generation_state.registers.stack_top = initial_stack_segment.pop().unwrap();
+            result.set_current_memory_segment(Segment::Stack, initial_stack_segment);
         }
 
         result
@@ -347,18 +348,20 @@ impl<'a> Interpreter<'a> {
                         self.generation_state.memory.contexts[context].segments
                             [Segment::Stack.unscale()]
                         .content
-                        .pop();
+                        .remove_entry(&(self.stack_len() - 1));
+                        self.generation_state.registers.stack_len -= 1;
                     }
                     InterpreterMemOpKind::Pop(value, context) => {
                         self.generation_state.memory.contexts[context].segments
                             [Segment::Stack.unscale()]
                         .content
-                        .push(value)
+                        .insert(self.stack_len(), value);
+                        self.generation_state.registers.stack_len += 1;
                     }
                     InterpreterMemOpKind::Write(value, context, segment, offset) => {
                         self.generation_state.memory.contexts[context].segments
                             [segment >> SEGMENT_SCALING_FACTOR] // we need to unscale the segment value
-                            .content[offset] = value
+                            .set(offset, value);
                     }
                 }
             }
@@ -373,8 +376,8 @@ impl<'a> Interpreter<'a> {
         } = checkpoint.registers;
         self.set_is_kernel(kernel_mode);
         self.set_context(context);
-        self.generation_state.registers = registers;
         self.roll_memory_back(checkpoint.mem_len);
+        self.generation_state.registers = registers;
     }
 
     fn handle_error(&mut self, err: ProgramError) -> anyhow::Result<()> {
@@ -441,9 +444,8 @@ impl<'a> Interpreter<'a> {
 
     fn code_slice(&self, n: usize) -> Vec<u8> {
         let pc = self.generation_state.registers.program_counter;
-        self.code().content[pc..pc + n]
-            .iter()
-            .map(|u256| u256.byte(0))
+        (pc..pc + n)
+            .map(|i| self.code().get(i).byte(0))
             .collect::<Vec<_>>()
     }
 
@@ -459,7 +461,7 @@ impl<'a> Interpreter<'a> {
             .set(field.unscale(), value);
     }
 
-    pub(crate) fn get_txn_data(&self) -> &[U256] {
+    pub(crate) fn get_txn_data(&self) -> &HashMap<usize, U256> {
         &self.generation_state.memory.contexts[0].segments[Segment::TxnData.unscale()].content
     }
 
@@ -502,25 +504,38 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn get_trie_data(&self) -> &[U256] {
+    pub(crate) fn get_trie_data(&self) -> &HashMap<usize, U256> {
         &self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
     }
 
-    pub(crate) fn get_trie_data_mut(&mut self) -> &mut Vec<U256> {
+    pub(crate) fn get_trie_data_mut(&mut self) -> &mut HashMap<usize, U256> {
         &mut self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
     }
 
     pub(crate) fn get_memory_segment(&self, segment: Segment) -> Vec<U256> {
         self.generation_state.memory.contexts[0].segments[segment.unscale()]
             .content
-            .clone()
+            .iter()
+            .sorted_unstable_by_key(|pair| pair.0)
+            .map(|pair| *pair.1)
+            .collect()
+    }
+
+    pub(crate) fn get_current_memory_segment(&self, segment: Segment) -> Vec<U256> {
+        self.generation_state.memory.contexts[self.context()].segments[segment.unscale()]
+            .content
+            .iter()
+            .sorted_unstable_by_key(|pair| pair.0)
+            .map(|pair| *pair.1)
+            .collect()
     }
 
     pub(crate) fn get_memory_segment_bytes(&self, segment: Segment) -> Vec<u8> {
         self.generation_state.memory.contexts[0].segments[segment.unscale()]
             .content
             .iter()
-            .map(|x| x.low_u32() as u8)
+            .sorted_unstable_by_key(|pair| pair.0)
+            .map(|pair| pair.1.low_u32() as u8)
             .collect()
     }
 
@@ -528,7 +543,10 @@ impl<'a> Interpreter<'a> {
         self.generation_state.memory.contexts[self.context()].segments
             [Segment::KernelGeneral.unscale()]
         .content
-        .clone()
+        .iter()
+        .sorted_unstable_by_key(|pair| pair.0)
+        .map(|pair| *pair.1)
+        .collect()
     }
 
     pub(crate) fn get_kernel_general_memory(&self) -> Vec<U256> {
@@ -541,17 +559,46 @@ impl<'a> Interpreter<'a> {
 
     pub(crate) fn set_current_general_memory(&mut self, memory: Vec<U256>) {
         let context = self.context();
-        self.generation_state.memory.contexts[context].segments[Segment::KernelGeneral.unscale()]
-            .content = memory;
+        // self.generation_state.memory.contexts[context].segments[Segment::KernelGeneral.unscale()]
+        //     .content
+        //     .clear();
+        let mut address = MemoryAddress::new(context, Segment::KernelGeneral, 0);
+        memory.iter().map(|&val| {
+            self.generation_state.memory.set(address, val);
+            address.virt += 1;
+        });
     }
 
     pub(crate) fn set_memory_segment(&mut self, segment: Segment, memory: Vec<U256>) {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()].content = memory;
+        let mut address = MemoryAddress::new(0, segment, 0);
+        memory.iter().map(|&val| {
+            self.generation_state.memory.set(address, val);
+            address.virt += 1;
+        });
+    }
+
+    pub(crate) fn set_current_memory_segment(&mut self, segment: Segment, memory: Vec<U256>) {
+        let mut address = MemoryAddress::new(self.context(), segment, 0);
+        memory.iter().map(|&val| {
+            self.generation_state.memory.set(address, val);
+            address.virt += 1;
+        });
     }
 
     pub(crate) fn set_memory_segment_bytes(&mut self, segment: Segment, memory: Vec<u8>) {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()].content =
-            memory.into_iter().map(U256::from).collect();
+        let mut address = MemoryAddress::new(0, segment, 0);
+        memory.iter().map(|&val| {
+            self.generation_state.memory.set(address, U256::from(val));
+            address.virt += 1;
+        });
+    }
+
+    pub(crate) fn set_current_memory_segment_bytes(&mut self, segment: Segment, memory: Vec<u8>) {
+        let mut address = MemoryAddress::new(self.context(), segment, 0);
+        memory.iter().map(|&val| {
+            self.generation_state.memory.set(address, U256::from(val));
+            address.virt += 1;
+        });
     }
 
     pub(crate) fn set_rlp_memory(&mut self, rlp: Vec<u8>) {
@@ -574,8 +621,7 @@ impl<'a> Interpreter<'a> {
             ),
             code.len().into(),
         );
-        self.generation_state.memory.contexts[context].segments[Segment::Code.unscale()].content =
-            code.into_iter().map(U256::from).collect();
+        self.set_current_memory_segment_bytes(Segment::Code, code);
     }
 
     pub(crate) fn set_memory_multi_addresses(&mut self, addrs: &[(MemoryAddress, U256)]) {
@@ -585,8 +631,7 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn get_jumpdest_bits(&self, context: usize) -> Vec<bool> {
-        self.generation_state.memory.contexts[context].segments[Segment::JumpdestBits.unscale()]
-            .content
+        self.get_current_memory_segment(Segment::JumpdestBits)
             .iter()
             .map(|x| x.bit(0))
             .collect()
@@ -603,10 +648,7 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn stack(&self) -> Vec<U256> {
         match self.stack_len().cmp(&1) {
             Ordering::Greater => {
-                let mut stack = self.generation_state.memory.contexts[self.context()].segments
-                    [Segment::Stack.unscale()]
-                .content
-                .clone();
+                let mut stack = self.get_current_memory_segment(Segment::Stack);
                 stack.truncate(self.stack_len() - 1);
                 stack.push(
                     self.stack_top()
@@ -624,7 +666,7 @@ impl<'a> Interpreter<'a> {
             }
         }
     }
-    fn stack_segment_mut(&mut self) -> &mut Vec<U256> {
+    fn stack_segment_mut(&mut self) -> &mut HashMap<usize, U256> {
         let context = self.context();
         &mut self.generation_state.memory.contexts[context].segments[Segment::Stack.unscale()]
             .content
@@ -1192,9 +1234,12 @@ impl<'a> Interpreter<'a> {
             return Err(ProgramError::StackUnderflow);
         }
         let to_swap = stack_peek(&self.generation_state, n as usize)?;
-        let old_value = self.stack_segment_mut()[len - n as usize - 1];
+        let old_address = MemoryAddress::new(self.context(), Segment::Stack, len - n as usize - 1);
+        let old_value = self.generation_state.memory.get(old_address);
 
-        self.stack_segment_mut()[len - n as usize - 1] = self.stack_top()?;
+        self.generation_state
+            .memory
+            .set(old_address, self.stack_top()?);
         let mem_write_op = InterpreterMemOpKind::Write(
             old_value,
             self.context(),
@@ -1226,9 +1271,8 @@ impl<'a> Interpreter<'a> {
         let new_sp = self.generation_state.memory.get(new_sp_addr).as_usize();
 
         if new_sp > 0 {
-            let new_stack_top = self.generation_state.memory.contexts[new_ctx].segments
-                [Segment::Stack.unscale()]
-            .content[new_sp - 1];
+            let new_stack_top_addr = MemoryAddress::new(new_ctx, Segment::Stack, new_sp - 1);
+            let new_stack_top = self.generation_state.memory.get(new_stack_top_addr);
             self.generation_state.registers.stack_top = new_stack_top;
         }
         self.set_context(new_ctx);

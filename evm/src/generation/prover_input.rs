@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use anyhow::{bail, Error};
 use ethereum_types::{BigEndianHash, H256, U256, U512};
+// use hashbrown::HashMap;
 use itertools::{enumerate, Itertools};
 use num_bigint::BigUint;
 use plonky2::field::extension::Extendable;
