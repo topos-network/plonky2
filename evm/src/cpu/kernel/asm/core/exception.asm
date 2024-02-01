@@ -170,30 +170,43 @@ global exc_stop:
     // stack: trap_info
     PUSH @SEGMENT_REGISTERS_STATES
     %add_const(6)
-
     // Is the current stack_len is 2, then the stack was empty before the exception and there's no stack top.
     // stack: addr_registers, trap_info
+    PUSH 3 
     %stack_length
-    // stack: stack_len, addr_registers, trap_info
-    %eq_const(2)
-    // stack: stack_len == 2, addr_registers, trap_info
-    %jumpi(exc_stop_ctd)
+    SUB
+    // First, check the stack length.
+    // stack: stack_len-2 = stack_len_before_exc, addr_registers, trap_info
+    DUP2 %add_const(2)
+    MLOAD_GENERAL
+    // stack: stored_stack_length, stack_len_before_exc, addr_registers, trap_info
+    DUP2 %assert_eq
 
-    // stack: addr_registers, trap_info
-    %stack_length
-    // stack: stack_len, addr_registers, trap_info
-    %sub_const(3)
+    // Now, check that we end up with the correct stack_top.
+    // stack: stack_len_before_exc, addr_registers, trap_info
+    DUP1 PUSH 0 LT
+    // stack: 0 < stack_len_before_exc, stack_len_before_exc, addr_registers, trap_info
+    PUSH 1 DUP3 SUB
+    // stack: stack_len_before_exc - 1, 0 < stack_len_before_exc, stack_len_before_exc, addr_registers, trap_info
+    MUL
+    // If the previous stack length is 0, we load the first value in the stack segment:
+    // we do not need to constrain the value in that case, so this is just to avoid a jumpi.
+    // Not having a jumpi provides a constant number of operations, which is better for segmentation.
+    // stack: (stack_len_before_exc - 1) * (0 < stack_len_before_exc), stack_len_before_exc, addr_registers, trap_info
     PUSH @SEGMENT_STACK
     GET_CONTEXT
     %build_address
-    // stack: stack_top_before_exc_addr, addr_registers, trap_info
+    // stack: stack_top_before_exc_addr, stack_len_before_exc, addr_registers, trap_info
     MLOAD_GENERAL
-    // stack: stack_top_before_exc, addr_registers, trap_info
-    DUP2 %add_const(3)
+    // stack: stack_top_before_exc, stack_len_before_exc, addr_registers, trap_info
+    DUP3 %add_const(3)
     MLOAD_GENERAL
-    %assert_eq
+    // stack: stored_stack_top, stack_top_before_exc, stack_len_before_exc, addr_registers, trap_info
+    SUB MUL
+    // stack: (stored_stack_top - stack_top_before_exc) * stack_len_before_exc, addr_registers, trap_info
+    %assert_zero
 
-exc_stop_ctd:
+    // Check the program counter.
     // stack: addr_registers, trap_info
     DUP2 PUSH 0xFFFFFFFF AND
     // stack: program_counter, addr_registers, trap_info
@@ -202,6 +215,7 @@ exc_stop_ctd:
     // stack: public_pc, program_counter, addr_registers, trap_info
     %assert_eq
 
+    // Check is_kernel_mode.
     // stack: addr_registers, trap_info
     DUP2 %shr_const(32)
     PUSH 0xFFFFFFFF AND
@@ -210,6 +224,7 @@ exc_stop_ctd:
     MLOAD_GENERAL
     %assert_eq
 
+    // Check the gas used.
     // stack: addr_registers, trap_info
     SWAP1 %shr_const(192)
     PUSH 0xFFFFFFFF AND
@@ -218,15 +233,7 @@ exc_stop_ctd:
     MLOAD_GENERAL
     %assert_eq
 
-    // stack: addr_registers
-    PUSH 2
-    %stack_length
-    SUB
-    // stack: stack_len_before_exc, addr_registers
-    DUP2 %add_const(2)
-    MLOAD_GENERAL
-    %assert_eq
-
+    // Check the context.
     // stack: addr_registers
     %add_const(4)
     MLOAD_GENERAL

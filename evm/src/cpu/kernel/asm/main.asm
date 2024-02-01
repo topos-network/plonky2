@@ -2,66 +2,82 @@ global main:
     // Initialise the shift table
     %shift_table_init
     
+    PUSH @SEGMENT_REGISTERS_STATES
+    // stack: addr_registers
     // First, set the registers correctly and verify their values.
-    // Check stack_top
-    PUSH 0 // stack top is now stored in memory.
+    PUSH 2
+    %stack_length SUB
+    // stack: prev_stack_len, addr_registers
+    // First, check the stack length.
+    DUP1
+    DUP3 %add_const(2) 
+    // stack: stack_len_addr, prev_stack_len, prev_stack_len, addr_registers
+    MLOAD_GENERAL
+    %assert_eq
+
+    // Now, we want to check the stack top. For this, we load
+    // the value at offset (prev_stack_len - 1) * (stack_len > 0),
+    // since we do not constrain the stack top when the stack is empty.
+    // stack: prev_stack_len, addr_registers
+    DUP1 PUSH 0 LT
+    // stack: 0 < prev_stack_len, prev_stack_len, addr_registers
+    PUSH 1 DUP3 SUB
+    // stack: prev_stack_len - 1, 0 < prev_stack_len, prev_stack_len, addr_registers
+    MUL
     PUSH @SEGMENT_STACK
     GET_CONTEXT
-    %build_address_no_offset
-    // stack: stack_top_addr, 0
-    // MLOAD_GENERAL starts by popping the address, and 0 becomes the new stack top.
-    // Therefore, the previous stack top is the first element stored in memory.
+    %build_address
+    // stack: stack_top_addr, prev_stack_len, addr_registers
     MLOAD_GENERAL
 
-    // stack: stack_top, 0
-    PUSH 3 // The stack top is the third element stored in the RegisttersData segment.
-    %mload_registers_data
-    // stack: pv_stack_top, stack_top, 0
+    // stack: stack_top, prev_stack_len, addr_registers
+    DUP3 %add_const(3)
+    MLOAD_GENERAL
+    // stack: pv_stack_top, stack_top, prev_stack_len, addr_registers
     SUB
     // If the stack length was previously 0, we do not need to check the previous stack top.
-    PUSH 3 %stack_length SUB
-    // stack: prev_stack_len, pv_stack_top - stack_top, stack_top_addr, 0
     MUL
-    %assert_eq
-
-    // Now, check stack length.
-    %stack_length
-    // stack: stack_length
-    PUSH 2 %mload_registers_data
-    %assert_eq
+    // stack: (pv_stack_top - stack_top) * prev_stack_len, addr_registers
+    %assert_zero
 
     // Check the context.
     GET_CONTEXT
-    // stack: context
-    PUSH 4 %mload_registers_data
+    // stack: context, addr_registers
+    DUP2 %add_const(4)
+    MLOAD_GENERAL
+    // stack: stored_context, context, addr_registers
     %assert_eq
 
-    PUSH 12 // offset of the current exit kernel.
-    %mload_registers_data
-    // stack: exit_info
+    // Check the program counter.
+    DUP1 %add_const(12)
+    // stack: exit_info_addr, addr_registers
+    MLOAD_GENERAL
+    // stack: exit_info, addr_registers
     // Now, get the program counter.
     // The program counter is written in the first 32 bits of exit_info.
     DUP1 PUSH 0xFFFFFFFF AND
-    PUSH @SEGMENT_REGISTERS_STATES
-    MLOAD_GENERAL
-    // stack: stored_pc, program_counter, exit_info
+    // stack: program_counter, exit_info, addr_registers
+    DUP3 MLOAD_GENERAL
+    // stack: stored_pc, program_counter, exit_info, addr_registers
     %assert_eq
 
     // Check is_kernel_mode.
     // is_kernel_mode is written in the next 32 bits of exit_info.
     DUP1 %shr_const(32)
     PUSH 0xFFFFFFFF AND
-    // stack: is_kernel_mode, exit_info
-    PUSH 1 %mload_registers_data
+    // stack: is_kernel_mode, exit_info, addr_registers
+    DUP3 %increment MLOAD_GENERAL
     %assert_eq
 
     // Check the gas used.
     // The gas is written in the last 32 bits of exit_info.
-    // stack: exit_info
-    DUP1 %shr_const(192)
+    // stack: exit_info, addr_registers
+    SWAP1
+    // stack: addr_registers, exit_info
+    DUP2 %shr_const(192)
     PUSH 0xFFFFFFFF AND
-    // stack: gas_used, exit_info
-    PUSH 5 %mload_registers_data
+    // stack: gas_used, addr_registers, exit_info
+    SWAP1 %add_const(5) MLOAD_GENERAL
     %assert_eq
 
     // stack: exit_info

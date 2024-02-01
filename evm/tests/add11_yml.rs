@@ -314,11 +314,12 @@ fn add11_segments() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
     let mut registers_after = RegistersState::default();
-    registers_after.program_counter = 37132;
-    registers_after.stack_top =
-        U256::from_str("8DCCDA9EB5514ED782BBB99F3242A02392AC8AF280E18762B78EF6029B3635E1")?;
+    registers_after.program_counter = 38449;
+    // registers_after.stack_top =
+    //     U256::from_str("935852d10c5b867956b2510993783318919b958bda86c162ec26d4d56797e35e")?;
+    registers_after.stack_top = U256::from(2);
     registers_after.stack_len = 19;
-    registers_after.gas_used = 106525;
+    registers_after.gas_used = 106479;
     let mut inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
