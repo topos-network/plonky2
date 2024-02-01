@@ -96,6 +96,7 @@ fn test_withdrawals() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
+        true,
         &mut timing,
         None,
     )?;

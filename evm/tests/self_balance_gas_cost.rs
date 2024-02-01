@@ -205,6 +205,7 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
+        true,
         &mut timing,
         None,
     )?;

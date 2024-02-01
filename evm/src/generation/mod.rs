@@ -270,6 +270,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     config: &StarkConfig,
     max_cpu_len: usize,
     previous_state: Option<GenerationState<F>>,
+    is_first_proof: bool,
     timing: &mut TimingTree,
 ) -> anyhow::Result<(
     [Vec<PolynomialValues<F>>; NUM_TABLES],
@@ -300,6 +301,29 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         }
     };
 
+    let mem_before_values = if is_first_proof {
+        let mut addr = MemoryAddress {
+            context: 0,
+            segment: Segment::ShiftTable.unscale(),
+            virt: 0,
+        };
+        let mut val = U256::from(1); // 2^0
+        let mut shift_table = (0..256)
+            .map(|i| {
+                let value = (addr, val);
+                state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
+                    .content
+                    .push(val);
+                let tmp_adddr = addr.increment();
+                val <<= 1;
+                value
+            })
+            .collect::<Vec<_>>();
+        shift_table.extend(inputs.memory_before.clone());
+        shift_table
+    } else {
+        inputs.memory_before.clone()
+    };
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
     let cpu_res = timed!(
@@ -390,7 +414,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         gas_used_after,
     };
 
-    let mem_before_values: Vec<(MemoryAddress, U256)> = inputs.memory_before;
     let registers_before = RegistersData {
         program_counter: inputs.registers_before.program_counter.into(),
         is_kernel: (inputs.registers_before.is_kernel as u64).into(),

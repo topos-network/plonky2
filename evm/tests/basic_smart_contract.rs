@@ -218,6 +218,7 @@ fn test_basic_smart_contract() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
+        true,
         &mut timing,
         None,
     )?;

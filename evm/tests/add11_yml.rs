@@ -9,17 +9,17 @@ use ethereum_types::{Address, BigEndianHash, H256, U256};
 use hex_literal::hex;
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::plonk::config::KeccakGoldilocksConfig;
+use plonky2::plonk::config::{KeccakGoldilocksConfig, PoseidonGoldilocksConfig};
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::witness::state::RegistersState;
-use plonky2_evm::Node;
+use plonky2_evm::{AllRecursiveCircuits, Node};
 
 type F = GoldilocksField;
 const D: usize = 2;
@@ -180,6 +180,7 @@ fn add11_yml() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
+        true,
         &mut timing,
         None,
     )?;
@@ -189,8 +190,12 @@ fn add11_yml() -> anyhow::Result<()> {
 }
 
 #[test]
-fn add11_segments() -> anyhow::Result<()> {
+fn add11_segments_aggreg() -> anyhow::Result<()> {
     init_logger();
+
+    type F = GoldilocksField;
+    const D: usize = 2;
+    type C = PoseidonGoldilocksConfig;
 
     let all_stark = AllStark::<F, D>::default();
     let config = StarkConfig::standard_fast_config();
@@ -314,12 +319,10 @@ fn add11_segments() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
     let mut registers_after = RegistersState::default();
-    registers_after.program_counter = 38449;
-    // registers_after.stack_top =
-    //     U256::from_str("935852d10c5b867956b2510993783318919b958bda86c162ec26d4d56797e35e")?;
-    registers_after.stack_top = U256::from(2);
-    registers_after.stack_len = 19;
-    registers_after.gas_used = 106479;
+    registers_after.program_counter = 38395;
+    registers_after.stack_top = U256::from(8);
+    registers_after.stack_len = 18;
+    registers_after.gas_used = 112615;
     let mut inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -340,39 +343,112 @@ fn add11_segments() -> anyhow::Result<()> {
         registers_after,
     };
 
+    let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
+        &all_stark,
+        &[
+            16..17,
+            13..14,
+            15..16,
+            10..15,
+            8..11,
+            9..13,
+            18..19,
+            8..18,
+            12..18,
+        ], // Minimal ranges to prove an empty list
+        &config,
+    );
+
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 15;
+
+    let (root_proof, public_values) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        inputs.clone(),
+        max_cpu_len,
+        None,
+        true,
+        &mut timing,
+        None,
+    )?;
+    timing.filter(Duration::from_millis(100)).print();
+
+    all_circuits.verify_root(root_proof.clone())?;
+
     let (proof, next_state) = prove::<F, C, D>(
         &all_stark,
         &config,
         inputs.clone(),
         max_cpu_len,
         None,
+        true,
         &mut timing,
         None,
     )?;
-    timing.filter(Duration::from_millis(100)).print();
-
     verify_proof(&all_stark, proof.clone(), &config)?;
 
     // Second segment.
     inputs.registers_before = proof.final_register_values;
-    println!("Final register values: {:?}", inputs.registers_before);
-    println!("Second clock start: {:?}", next_state.traces.clock());
+
     inputs.memory_before = proof.final_memory_values;
     inputs.registers_after = RegistersState::new_last_registers_with_gas(32436);
 
-    let (second_proof, _) = prove::<F, C, D>(
+    let (second_root_proof, second_public_values) = all_circuits.prove_root(
         &all_stark,
         &config,
         inputs,
         max_cpu_len,
         Some(next_state),
+        false,
         &mut timing,
         None,
     )?;
 
-    verify_proof(&all_stark, second_proof, &config)
+    all_circuits.verify_root(second_root_proof.clone())?;
+
+    let first_mem_before = public_values.mem_before.mem_cap.clone();
+    let first_mem_after = public_values.mem_after.mem_cap.clone();
+
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &root_proof.public_inputs,
+        first_mem_before.len(),
+        first_mem_after.len(),
+    );
+    assert_eq!(retrieved_public_values, public_values);
+
+    let (segmented_agg_proof, segmented_agg_public_values) = all_circuits
+        .prove_segment_aggregation(
+            false,
+            &root_proof,
+            public_values.clone(),
+            false,
+            &second_root_proof,
+            second_public_values,
+        )?;
+    all_circuits.verify_segment_aggregation(&segmented_agg_proof)?;
+    // Test retrieved public values from the proof public inputs.
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &segmented_agg_proof.public_inputs,
+        segmented_agg_public_values.mem_before.mem_cap.len(),
+        segmented_agg_public_values.mem_before.mem_cap.len(),
+    );
+    assert_eq!(retrieved_public_values, segmented_agg_public_values);
+
+    let (txn_proof, txn_public_values) = all_circuits.prove_transaction_aggregation(
+        None,
+        &segmented_agg_proof,
+        segmented_agg_public_values,
+    )?;
+    // Test retrieved public values from the proof public inputs.
+    let retrieved_public_values = PublicValues::from_public_inputs(
+        &txn_proof.public_inputs,
+        txn_public_values.mem_before.mem_cap.len(),
+        txn_public_values.mem_before.mem_cap.len(),
+    );
+    assert_eq!(retrieved_public_values, txn_public_values);
+
+    all_circuits.verify_txn_aggregation(&txn_proof)
 }
 
 fn init_logger() {

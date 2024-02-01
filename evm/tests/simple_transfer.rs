@@ -167,6 +167,7 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
+        true,
         &mut timing,
         None,
     )?;
