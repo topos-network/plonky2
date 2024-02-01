@@ -79,7 +79,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         registers_after: RegistersState::new_last_registers_with_gas(2783),
     };
 
-    let final_inputs = GenerationInputs {
+    let mut final_inputs = GenerationInputs {
         registers_before: inputs.registers_after,
         registers_after: inputs.registers_after,
         ..inputs.clone()
@@ -90,14 +90,14 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         &all_stark,
         &[
             16..17,
-            9..11,
-            11..13,
+            8..10,
+            7..11,
             4..15,
             8..11,
             4..13,
-            13..18,
-            4..5,
-            12..18,
+            11..18,
+            8..18,
+            10..18,
         ], // Minimal ranges to prove an empty list
         &config,
     );
@@ -134,18 +134,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     let max_cpu_len = 1 << 20;
     let mut timing = TimingTree::new("prove", log::Level::Info);
 
-    let (final_root_proof, final_public_values) = all_circuits.prove_root(
-        &all_stark,
-        &config,
-        final_inputs,
-        max_cpu_len,
-        None,
-        false,
-        &mut timing,
-        None,
-    )?;
-    all_circuits.verify_root(final_root_proof.clone())?;
-    let (root_proof, public_values) = all_circuits.prove_root(
+    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_root(
         &all_stark,
         &config,
         inputs,
@@ -157,6 +146,20 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     )?;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
+
+    final_inputs.memory_before = final_mem_values;
+
+    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        final_inputs,
+        max_cpu_len,
+        Some(next_state),
+        false,
+        &mut timing,
+        None,
+    )?;
+    all_circuits.verify_root(final_root_proof.clone())?;
 
     let first_mem_before = public_values.mem_before.mem_cap.clone();
     let first_mem_after = public_values.mem_after.mem_cap.clone();

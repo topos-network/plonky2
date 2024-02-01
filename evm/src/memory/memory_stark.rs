@@ -239,7 +239,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                     let mut dummy_address = next.address;
                     dummy_address.virt -= max_rc;
                     let dummy_read =
-                        MemoryOp::new_dummy_read(dummy_address, curr.timestamp, U256::zero());
+                        MemoryOp::new_dummy_read(dummy_address, curr.timestamp + 1, U256::zero());
                     memory_ops.push(dummy_read);
                     next = dummy_read;
                 }
@@ -248,7 +248,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
                     let mut dummy_address = curr.address;
                     dummy_address.virt += max_rc + 1;
                     let dummy_read =
-                        MemoryOp::new_dummy_read(dummy_address, curr.timestamp, U256::zero());
+                        MemoryOp::new_dummy_read(dummy_address, curr.timestamp + 1, U256::zero());
                     memory_ops.push(dummy_read);
                     curr = dummy_read;
                 }

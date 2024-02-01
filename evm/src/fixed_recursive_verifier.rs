@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use eth_trie_utils::partial_trie::{HashedPartialTrie, Node, PartialTrie};
+use ethereum_types::U256;
 use hashbrown::HashMap;
 use itertools::{zip_eq, Itertools};
 use plonky2::field::extension::Extendable;
@@ -56,6 +57,7 @@ use crate::recursive_verifier::{
 };
 use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::h256_limbs;
+use crate::witness::memory::MemoryAddress;
 
 /// The recursion threshold. We end a chain of recursive proofs once we reach this size.
 const THRESHOLD_DEGREE_BITS: usize = 13;
@@ -1241,8 +1243,13 @@ where
         is_first_segment: bool,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
-    ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
-        let (all_proof, _) = prove::<F, C, D>(
+    ) -> anyhow::Result<(
+        ProofWithPublicInputs<F, C, D>,
+        PublicValues,
+        GenerationState<F>,
+        Vec<(MemoryAddress, U256)>,
+    )> {
+        let (all_proof, next_state) = prove::<F, C, D>(
             all_stark,
             config,
             generation_inputs,
@@ -1301,7 +1308,12 @@ where
 
         let root_proof = self.root.circuit.prove(root_inputs)?;
 
-        Ok((root_proof, all_proof.public_values))
+        Ok((
+            root_proof,
+            all_proof.public_values,
+            next_state,
+            all_proof.final_memory_values,
+        ))
     }
 
     /// From an initial set of STARK proofs passed with their associated recursive table circuits,
