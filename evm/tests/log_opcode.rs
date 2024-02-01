@@ -485,6 +485,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         inputs_first,
         max_cpu_len,
+        None,
         &mut timing,
         None,
     )?;
@@ -497,6 +498,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         final_inputs_first,
         max_cpu_len,
+        None,
         &mut timing,
         None,
     )?;
@@ -630,6 +632,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
+        None,
         &mut timing,
         None.clone(),
     )?;
@@ -642,6 +645,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         final_inputs,
         max_cpu_len,
+        None,
         &mut timing,
         None.clone(),
     )?;
@@ -747,8 +751,15 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         ..inputs.clone()
     };
 
-    let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, max_cpu_len, &mut timing, None)?;
+    let (root_proof, public_values) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        &mut timing,
+        None,
+    )?;
     all_circuits.verify_root(root_proof.clone())?;
 
     let (final_root_proof, final_public_values) = all_circuits.prove_root(
@@ -756,6 +767,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         final_inputs,
         max_cpu_len,
+        None,
         &mut timing,
         None,
     )?;

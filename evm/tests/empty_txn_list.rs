@@ -139,12 +139,20 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         &config,
         final_inputs,
         max_cpu_len,
+        None,
         &mut timing,
         None,
     )?;
     all_circuits.verify_root(final_root_proof.clone())?;
-    let (root_proof, public_values) =
-        all_circuits.prove_root(&all_stark, &config, inputs, max_cpu_len, &mut timing, None)?;
+    let (root_proof, public_values) = all_circuits.prove_root(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        &mut timing,
+        None,
+    )?;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 

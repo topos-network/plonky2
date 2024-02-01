@@ -40,6 +40,7 @@ use crate::cross_table_lookup::{
     get_grand_product_challenge_set_target, verify_cross_table_lookups_circuit, CrossTableLookup,
     GrandProductChallengeSet,
 };
+use crate::generation::state::GenerationState;
 use crate::generation::GenerationInputs;
 use crate::get_challenges::observe_public_values_target;
 use crate::proof::{
@@ -1236,6 +1237,7 @@ where
         config: &StarkConfig,
         generation_inputs: GenerationInputs,
         max_cpu_len: usize,
+        previous_state: Option<GenerationState<F>>,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
@@ -1244,7 +1246,7 @@ where
             config,
             generation_inputs,
             max_cpu_len,
-            None,
+            previous_state,
             timing,
             abort_signal.clone(),
         )?;
