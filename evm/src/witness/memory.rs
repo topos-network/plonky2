@@ -241,6 +241,17 @@ impl MemoryState {
     pub(crate) fn read_global_metadata(&self, field: GlobalMetadata) -> U256 {
         self.get(MemoryAddress::new_bundle(U256::from(field as usize)).unwrap())
     }
+
+    pub(crate) fn read_memory_vec(&self, addr: MemoryAddress, len: usize) -> Vec<U256> {
+        let mut curr_addr = addr;
+        (0..len)
+            .map(|_| {
+                let val = self.get(curr_addr);
+                curr_addr.virt += 1;
+                val
+            })
+            .collect()
+    }
 }
 
 impl Default for MemoryState {

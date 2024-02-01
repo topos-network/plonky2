@@ -461,8 +461,8 @@ impl<'a> Interpreter<'a> {
             .set(field.unscale(), value);
     }
 
-    pub(crate) fn get_txn_data(&self) -> &HashMap<usize, U256> {
-        &self.generation_state.memory.contexts[0].segments[Segment::TxnData.unscale()].content
+    pub(crate) fn get_txn_data(&self) -> &Vec<U256> {
+        &self.get_memory_segment(Segment::TxnData)
     }
 
     pub(crate) fn get_context_metadata_field(&self, ctx: usize, field: ContextMetadata) -> U256 {
@@ -504,13 +504,13 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn get_trie_data(&self) -> &HashMap<usize, U256> {
-        &self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
+    pub(crate) fn get_trie_data(&self) -> Vec<U256> {
+        self.get_memory_segment(Segment::TrieData)
     }
 
-    pub(crate) fn get_trie_data_mut(&mut self) -> &mut HashMap<usize, U256> {
-        &mut self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
-    }
+    // pub(crate) fn get_trie_data_mut(&mut self) -> &mut HashMap<usize, U256> {
+    //     &mut self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
+    // }
 
     pub(crate) fn get_memory_segment(&self, segment: Segment) -> Vec<U256> {
         self.generation_state.memory.contexts[0].segments[segment.unscale()]

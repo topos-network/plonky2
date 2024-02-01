@@ -12,6 +12,7 @@ use crate::cpu::kernel::tests::mpt::{
 };
 use crate::generation::mpt::AccountRlp;
 use crate::generation::TrieInputs;
+use crate::memory::segments::Segment;
 use crate::Node;
 
 #[test]
@@ -180,7 +181,7 @@ fn test_state_trie(
 
     // Next, execute mpt_insert_state_trie.
     interpreter.generation_state.registers.program_counter = mpt_insert_state_trie;
-    let trie_data = interpreter.get_trie_data_mut();
+    let mut trie_data = interpreter.get_trie_data();
     if trie_data.is_empty() {
         // In the assembly we skip over 0, knowing trie_data[0] = 0 by default.
         // Since we don't explicitly set it to 0, we need to do so here.
@@ -195,6 +196,7 @@ fn test_state_trie(
     trie_data.push(H256::zero().into_uint());
     trie_data.push(account.code_hash.into_uint());
     let trie_data_len = trie_data.len().into();
+    interpreter.set_memory_segment(Segment::TrieData, trie_data);
     interpreter.set_global_metadata_field(GlobalMetadata::TrieDataSize, trie_data_len);
     interpreter
         .push(0xDEADBEEFu32.into())

@@ -200,12 +200,12 @@ impl<F: Field> GenerationState<F> {
         m_start_loc: usize,
     ) -> (Vec<U256>, Vec<U256>) {
         let n = self.memory.contexts.len();
-        let a = &self.memory.contexts[n - 1].segments[Segment::KernelGeneral.unscale()].content
-            [a_start_loc..a_start_loc + len];
-        let b = &self.memory.contexts[n - 1].segments[Segment::KernelGeneral.unscale()].content
-            [b_start_loc..b_start_loc + len];
-        let m = &self.memory.contexts[n - 1].segments[Segment::KernelGeneral.unscale()].content
-            [m_start_loc..m_start_loc + len];
+        let addr_a = MemoryAddress::new(n - 1, Segment::KernelGeneral, a_start_loc);
+        let a = &self.memory.read_memory_vec(addr_a, len);
+        let addr_b = MemoryAddress::new(n - 1, Segment::KernelGeneral, b_start_loc);
+        let b = &self.memory.read_memory_vec(addr_b, len);
+        let addr_m = MemoryAddress::new(n - 1, Segment::KernelGeneral, m_start_loc);
+        let m = &self.memory.read_memory_vec(addr_m, len);
 
         let a_biguint = mem_vec_to_biguint(a);
         let b_biguint = mem_vec_to_biguint(b);
