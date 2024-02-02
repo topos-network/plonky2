@@ -233,7 +233,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
             log::debug!(
                 "Computed state trie: {:?}",
-                get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr)
+                get_state_trie::<HashedPartialTrie>(&mut state.memory, state_trie_ptr)
             );
 
             let txn_trie_ptr = u256_to_usize(
@@ -244,7 +244,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("Transactions trie pointer is too large to fit in a usize."))?;
             log::debug!(
                 "Computed transactions trie: {:?}",
-                get_txn_trie::<HashedPartialTrie>(&state.memory, txn_trie_ptr)
+                get_txn_trie::<HashedPartialTrie>(&mut state.memory, txn_trie_ptr)
             );
 
             let receipt_trie_ptr = u256_to_usize(
@@ -255,7 +255,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("Receipts trie pointer is too large to fit in a usize."))?;
             log::debug!(
                 "Computed receipts trie: {:?}",
-                get_receipt_trie::<HashedPartialTrie>(&state.memory, receipt_trie_ptr)
+                get_receipt_trie::<HashedPartialTrie>(&mut state.memory, receipt_trie_ptr)
             );
         }
 
@@ -267,7 +267,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         state.traces.get_lengths()
     );
 
-    let read_metadata = |field| state.memory.read_global_metadata(field);
+    let mut read_metadata = |field| state.memory.read_global_metadata(field);
     let trie_roots_before = TrieRoots {
         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
         transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestBefore)),

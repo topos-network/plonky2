@@ -9,6 +9,7 @@ use eth_trie_utils::partial_trie::PartialTrie;
 use ethereum_types::{BigEndianHash, H160, H256, U256, U512};
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
+use ripemd::digest::typenum::NonZero;
 
 use super::assembler::BYTES_PER_OFFSET;
 use super::utils::u256_from_bool;
@@ -31,30 +32,12 @@ use crate::witness::memory::{MemoryAddress, MemoryContextState, MemorySegmentSta
 use crate::witness::operation::{Operation, CONTEXT_SCALING_FACTOR};
 use crate::witness::state::RegistersState;
 use crate::witness::transition::decode;
-use crate::witness::util::stack_peek;
+use crate::witness::util::{push_no_write, stack_peek};
 
 type F = GoldilocksField;
 
 /// Halt interpreter execution whenever a jump to this offset is done.
 const DEFAULT_HALT_OFFSET: usize = 0xdeadbeef;
-
-impl MemoryState {
-    pub(crate) fn mload_general(&self, context: usize, segment: Segment, offset: usize) -> U256 {
-        self.get(MemoryAddress::new(context, segment, offset))
-    }
-
-    fn mstore_general(
-        &mut self,
-        context: usize,
-        segment: Segment,
-        offset: usize,
-        value: U256,
-    ) -> InterpreterMemOpKind {
-        let old_value = self.mload_general(context, segment, offset);
-        self.set(MemoryAddress::new(context, segment, offset), value);
-        InterpreterMemOpKind::Write(old_value, context, segment as usize, offset)
-    }
-}
 
 pub(crate) struct Interpreter<'a> {
     pub(crate) generation_state: GenerationState<F>,
@@ -131,14 +114,11 @@ pub(crate) fn run<'a>(
     Ok(interpreter)
 }
 
-/// Different types of Memory operations in the interpreter, and the data required to revert them.
+#[derive(Debug)]
+/// Different types of Memory operations in the interpreter.
 enum InterpreterMemOpKind {
-    /// We need to provide the context.
-    Push(usize),
-    /// If we pop a certain value, we need to push it back to the correct context when reverting.
-    Pop(U256, usize),
-    /// If we write a value at a certain address, we need to write the old value back when reverting.
-    Write(U256, usize, usize, usize),
+    Read(U256, MemoryAddress),
+    Write(U256, MemoryAddress),
 }
 
 impl<'a> Interpreter<'a> {
@@ -188,7 +168,10 @@ impl<'a> Interpreter<'a> {
         result.generation_state.registers.stack_len = initial_stack_len;
         if !initial_stack.is_empty() {
             result.generation_state.registers.stack_top = initial_stack[initial_stack_len - 1];
-            *result.stack_segment_mut() = initial_stack;
+            *result.stack_segment_mut() = initial_stack
+                .iter()
+                .map(|&elt| Some(elt))
+                .collect::<Vec<_>>();
             result.stack_segment_mut().truncate(initial_stack_len - 1);
         }
 
@@ -325,6 +308,89 @@ impl<'a> Interpreter<'a> {
         self.set_memory_multi_addresses(&block_hashes_fields);
     }
 
+    fn interpreter_pop<const N: usize>(&mut self) -> Result<[U256; N], ProgramError> {
+        if self.stack_len() < N {
+            return Err(ProgramError::StackUnderflow);
+        }
+        let new_stack_top = if self.generation_state.registers.stack_len == N {
+            None
+        } else {
+            Some(stack_peek(&self.generation_state, N)?)
+        };
+        let result = core::array::from_fn(|i| {
+            if i == 0 {
+                self.stack_top().unwrap()
+            } else {
+                let address =
+                    MemoryAddress::new(self.context(), Segment::Stack, self.stack_len() - 1 - i);
+                let val = self.generation_state.memory.get(address);
+                self.memops.push(InterpreterMemOpKind::Read(val, address));
+                val
+            }
+        });
+
+        self.generation_state.registers.stack_len -= N;
+
+        if let Some(val) = new_stack_top {
+            self.generation_state.registers.stack_top = val;
+        }
+
+        Ok(result)
+    }
+
+    fn interpreter_push_no_write(&mut self, val: U256) -> Result<(), ProgramError> {
+        self.generation_state.registers.stack_top = val;
+        self.generation_state.registers.stack_len += 1;
+
+        Ok(())
+    }
+
+    fn interpreter_push_with_write(&mut self, val: U256) -> Result<(), ProgramError> {
+        if !self.is_kernel() && self.stack_len() >= MAX_USER_STACK_SIZE {
+            return Err(ProgramError::StackOverflow);
+        }
+
+        if self.stack_len() > 0 {
+            let addr = MemoryAddress::new(self.context(), Segment::Stack, self.stack_len() - 1);
+            self.memops.push(InterpreterMemOpKind::Write(
+                self.stack_top().expect("Stack is not empty."),
+                addr,
+            ));
+        }
+        self.interpreter_push_no_write(val);
+
+        Ok(())
+    }
+
+    // Does NOT change the memory. All queued operations will be applied at the end of the transition step.
+    pub(crate) fn mload_queue(&mut self, context: usize, segment: Segment, offset: usize) -> U256 {
+        let address = MemoryAddress::new(context, segment, offset);
+        let val = self.generation_state.memory.get(address);
+        self.memops.push(InterpreterMemOpKind::Read(val, address));
+        val
+    }
+
+    // Does NOT change the memory. All queued operations will be applied at the end of the transition step.
+    fn mstore_queue(&mut self, context: usize, segment: Segment, offset: usize, value: U256) {
+        self.memops.push(InterpreterMemOpKind::Write(
+            value,
+            MemoryAddress::new(context, segment, offset),
+        ));
+    }
+
+    fn apply_memops(&mut self, len: usize) -> Result<(), anyhow::Error> {
+        for memop in self.memops[len..].iter() {
+            match memop {
+                &InterpreterMemOpKind::Read(val, addr) => {}
+                &InterpreterMemOpKind::Write(val, addr) => {
+                    self.generation_state.memory.set(addr, val)
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn checkpoint(&self) -> InterpreterCheckpoint {
         let registers = InterpreterRegistersState {
             kernel_mode: self.is_kernel(),
@@ -337,34 +403,6 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn roll_memory_back(&mut self, len: usize) {
-        // We roll the memory back until `memops` reaches length `len`.
-        debug_assert!(self.memops.len() >= len);
-        while self.memops.len() > len {
-            if let Some(op) = self.memops.pop() {
-                match op {
-                    InterpreterMemOpKind::Push(context) => {
-                        self.generation_state.memory.contexts[context].segments
-                            [Segment::Stack.unscale()]
-                        .content
-                        .pop();
-                    }
-                    InterpreterMemOpKind::Pop(value, context) => {
-                        self.generation_state.memory.contexts[context].segments
-                            [Segment::Stack.unscale()]
-                        .content
-                        .push(value)
-                    }
-                    InterpreterMemOpKind::Write(value, context, segment, offset) => {
-                        self.generation_state.memory.contexts[context].segments
-                            [segment >> SEGMENT_SCALING_FACTOR] // we need to unscale the segment value
-                            .content[offset] = value
-                    }
-                }
-            }
-        }
-    }
-
     fn rollback(&mut self, checkpoint: InterpreterCheckpoint) {
         let InterpreterRegistersState {
             kernel_mode,
@@ -374,7 +412,6 @@ impl<'a> Interpreter<'a> {
         self.set_is_kernel(kernel_mode);
         self.set_context(context);
         self.generation_state.registers = registers;
-        self.roll_memory_back(checkpoint.mem_len);
     }
 
     fn handle_error(&mut self, err: ProgramError) -> anyhow::Result<()> {
@@ -402,8 +439,9 @@ impl<'a> Interpreter<'a> {
 
             let checkpoint = self.checkpoint();
             let result = self.run_opcode();
+
             match result {
-                Ok(()) => Ok(()),
+                Ok(()) => self.apply_memops(checkpoint.mem_len),
                 Err(e) => {
                     if self.is_kernel() {
                         let offset_name =
@@ -412,7 +450,7 @@ impl<'a> Interpreter<'a> {
                             "{:?} in kernel at pc={}, stack={:?}, memory={:?}",
                             e,
                             offset_name,
-                            self.stack(),
+                            self.generation_state.stack(),
                             self.generation_state.memory.contexts[0].segments
                                 [Segment::KernelGeneral.unscale()]
                             .content,
@@ -443,7 +481,7 @@ impl<'a> Interpreter<'a> {
         let pc = self.generation_state.registers.program_counter;
         self.code().content[pc..pc + n]
             .iter()
-            .map(|u256| u256.byte(0))
+            .map(|u256| u256.unwrap_or_default().byte(0))
             .collect::<Vec<_>>()
     }
 
@@ -459,8 +497,9 @@ impl<'a> Interpreter<'a> {
             .set(field.unscale(), value);
     }
 
-    pub(crate) fn get_txn_data(&self) -> &[U256] {
-        &self.generation_state.memory.contexts[0].segments[Segment::TxnData.unscale()].content
+    pub(crate) fn get_txn_data(&self) -> Vec<U256> {
+        self.generation_state.memory.contexts[0].segments[Segment::TxnData.unscale()]
+            .return_content()
     }
 
     pub(crate) fn get_context_metadata_field(&self, ctx: usize, field: ContextMetadata) -> U256 {
@@ -502,33 +541,34 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn get_trie_data(&self) -> &[U256] {
-        &self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
+    pub(crate) fn get_trie_data(&self) -> Vec<U256> {
+        self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()]
+            .content
+            .iter()
+            .filter_map(|&elt| elt)
+            .collect::<Vec<_>>()
     }
 
-    pub(crate) fn get_trie_data_mut(&mut self) -> &mut Vec<U256> {
+    pub(crate) fn get_trie_data_mut(&mut self) -> &mut Vec<Option<U256>> {
         &mut self.generation_state.memory.contexts[0].segments[Segment::TrieData.unscale()].content
     }
 
     pub(crate) fn get_memory_segment(&self, segment: Segment) -> Vec<U256> {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()]
-            .content
-            .clone()
+        self.generation_state.memory.contexts[0].segments[segment.unscale()].return_content()
     }
 
     pub(crate) fn get_memory_segment_bytes(&self, segment: Segment) -> Vec<u8> {
         self.generation_state.memory.contexts[0].segments[segment.unscale()]
             .content
             .iter()
-            .map(|x| x.low_u32() as u8)
+            .map(|x| x.unwrap_or_default().low_u32() as u8)
             .collect()
     }
 
     pub(crate) fn get_current_general_memory(&self) -> Vec<U256> {
         self.generation_state.memory.contexts[self.context()].segments
             [Segment::KernelGeneral.unscale()]
-        .content
-        .clone()
+        .return_content()
     }
 
     pub(crate) fn get_kernel_general_memory(&self) -> Vec<U256> {
@@ -542,16 +582,19 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn set_current_general_memory(&mut self, memory: Vec<U256>) {
         let context = self.context();
         self.generation_state.memory.contexts[context].segments[Segment::KernelGeneral.unscale()]
-            .content = memory;
+            .content = memory.iter().map(|&val| Some(val)).collect();
     }
 
     pub(crate) fn set_memory_segment(&mut self, segment: Segment, memory: Vec<U256>) {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()].content = memory;
+        self.generation_state.memory.contexts[0].segments[segment.unscale()].content =
+            memory.iter().map(|&val| Some(val)).collect();
     }
 
     pub(crate) fn set_memory_segment_bytes(&mut self, segment: Segment, memory: Vec<u8>) {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()].content =
-            memory.into_iter().map(U256::from).collect();
+        self.generation_state.memory.contexts[0].segments[segment.unscale()].content = memory
+            .into_iter()
+            .map(|val| Some(U256::from(val)))
+            .collect();
     }
 
     pub(crate) fn set_rlp_memory(&mut self, rlp: Vec<u8>) {
@@ -575,7 +618,7 @@ impl<'a> Interpreter<'a> {
             code.len().into(),
         );
         self.generation_state.memory.contexts[context].segments[Segment::Code.unscale()].content =
-            code.into_iter().map(U256::from).collect();
+            code.into_iter().map(|val| Some(U256::from(val))).collect();
     }
 
     pub(crate) fn set_memory_multi_addresses(&mut self, addrs: &[(MemoryAddress, U256)]) {
@@ -588,7 +631,7 @@ impl<'a> Interpreter<'a> {
         self.generation_state.memory.contexts[context].segments[Segment::JumpdestBits.unscale()]
             .content
             .iter()
-            .map(|x| x.bit(0))
+            .map(|x| x.unwrap_or_default().bit(0))
             .collect()
     }
 
@@ -606,7 +649,15 @@ impl<'a> Interpreter<'a> {
                 let mut stack = self.generation_state.memory.contexts[self.context()].segments
                     [Segment::Stack.unscale()]
                 .content
-                .clone();
+                .iter()
+                .filter_map(|&opt_elt| {
+                    if let Some(elt) = opt_elt {
+                        Some(elt)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
                 stack.truncate(self.stack_len() - 1);
                 stack.push(
                     self.stack_top()
@@ -624,7 +675,7 @@ impl<'a> Interpreter<'a> {
             }
         }
     }
-    fn stack_segment_mut(&mut self) -> &mut Vec<U256> {
+    fn stack_segment_mut(&mut self) -> &mut Vec<Option<U256>> {
         let context = self.context();
         &mut self.generation_state.memory.contexts[context].segments[Segment::Stack.unscale()]
             .content
@@ -642,6 +693,7 @@ impl<'a> Interpreter<'a> {
         output
     }
 
+    // Actually pushes in memory. Only used for tests.
     pub(crate) fn push(&mut self, x: U256) -> Result<(), ProgramError> {
         if !self.is_kernel() && self.stack_len() >= MAX_USER_STACK_SIZE {
             return Err(ProgramError::StackOverflow);
@@ -656,22 +708,24 @@ impl<'a> Interpreter<'a> {
         }
         self.generation_state.registers.stack_top = x;
         self.generation_state.registers.stack_len += 1;
-        self.memops.push(InterpreterMemOpKind::Push(self.context()));
 
         Ok(())
     }
 
-    fn push_bool(&mut self, x: bool) -> Result<(), ProgramError> {
-        self.push(if x { U256::one() } else { U256::zero() })
+    // fn push_bool(&mut self, x: bool) -> Result<(), ProgramError> {
+    //     self.push(if x { U256::one() } else { U256::zero() })
+    // }
+
+    fn push_bool_no_write(&mut self, x: bool) -> Result<(), ProgramError> {
+        self.interpreter_push_no_write(if x { U256::one() } else { U256::zero() });
+
+        Ok(())
     }
 
+    /// Actually popping the memory. Only used in tests.
     pub(crate) fn pop(&mut self) -> Result<U256, ProgramError> {
         let result = stack_peek(&self.generation_state, 0);
 
-        if let Ok(val) = result {
-            self.memops
-                .push(InterpreterMemOpKind::Pop(val, self.context()));
-        }
         if self.stack_len() > 1 {
             let top = stack_peek(&self.generation_state, 1).unwrap();
             self.generation_state.registers.stack_top = top;
@@ -760,8 +814,8 @@ impl<'a> Interpreter<'a> {
             0x5a => self.run_syscall(opcode, 0, true),  // "GAS",
             0x5b => self.run_jumpdest(),                // "JUMPDEST",
             x if (0x5f..0x80).contains(&x) => self.run_push(x - 0x5f), // "PUSH"
-            x if (0x80..0x90).contains(&x) => self.run_dup(x - 0x7f), // "DUP"
-            x if (0x90..0xa0).contains(&x) => self.run_swap(x - 0x8f), // "SWAP"
+            x if (0x80..0x90).contains(&x) => self.run_dup(x & 0xf), // "DUP"
+            x if (0x90..0xa0).contains(&x) => self.run_swap(x & 0xf), // "SWAP"
             0xa0 => self.run_syscall(opcode, 2, false), // "LOG0",
             0xa1 => self.run_syscall(opcode, 3, false), // "LOG1",
             0xa2 => self.run_syscall(opcode, 4, false), // "LOG2",
@@ -771,7 +825,7 @@ impl<'a> Interpreter<'a> {
                 log::warn!(
                     "Kernel panic at {}, stack = {:?}, memory = {:?}",
                     KERNEL.offset_name(self.generation_state.registers.program_counter),
-                    self.stack(),
+                    self.generation_state.stack(),
                     self.get_kernel_general_memory()
                 );
                 Err(ProgramError::KernelPanic)
@@ -812,7 +866,11 @@ impl<'a> Interpreter<'a> {
             .debug_offsets
             .contains(&self.generation_state.registers.program_counter)
         {
-            println!("At {}, stack={:?}", self.offset_name(), self.stack());
+            println!(
+                "At {}, stack={:?}",
+                self.offset_name(),
+                self.generation_state.stack()
+            );
         } else if let Some(label) = self.offset_label() {
             println!("At {label}");
         }
@@ -847,63 +905,62 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_add(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(x.overflowing_add(y).0)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(x.overflowing_add(y).0)
     }
 
     fn run_mul(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(x.overflowing_mul(y).0)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(x.overflowing_mul(y).0)
     }
 
     fn run_sub(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(x.overflowing_sub(y).0)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(x.overflowing_sub(y).0)
     }
 
     fn run_addfp254(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()? % BN_BASE;
-        let y = self.pop()? % BN_BASE;
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
         // BN_BASE is 254-bit so addition can't overflow
-        self.push((x + y) % BN_BASE)
+        self.interpreter_push_no_write((x + y) % BN_BASE)
     }
 
     fn run_mulfp254(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(
             U256::try_from(x.full_mul(y) % BN_BASE)
                 .expect("BN_BASE is 254 bit so the U512 fits in a U256"),
         )
     }
 
     fn run_subfp254(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()? % BN_BASE;
-        let y = self.pop()? % BN_BASE;
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
         // BN_BASE is 254-bit so addition can't overflow
-        self.push((x + (BN_BASE - y)) % BN_BASE)
+        self.interpreter_push_no_write((x + (BN_BASE - y)) % BN_BASE)
     }
 
     fn run_div(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(if y.is_zero() { U256::zero() } else { x / y })
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(if y.is_zero() { U256::zero() } else { x / y })
     }
 
     fn run_mod(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(if y.is_zero() { U256::zero() } else { x % y })
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(if y.is_zero() { U256::zero() } else { x % y })
     }
 
     fn run_addmod(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        let z = self.pop()?;
-        self.push(if z.is_zero() {
+        let vals = self.interpreter_pop::<3>()?;
+        let (x, y, z) = (vals[0], vals[1], vals[2]);
+        self.interpreter_push_no_write(if z.is_zero() {
             z
         } else {
             let (x, y, z) = (U512::from(x), U512::from(y), U512::from(z));
@@ -913,10 +970,9 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_submod(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        let z = self.pop()?;
-        self.push(if z.is_zero() {
+        let vals = self.interpreter_pop::<3>()?;
+        let (x, y, z) = (vals[0], vals[1], vals[2]);
+        self.interpreter_push_no_write(if z.is_zero() {
             z
         } else {
             let (x, y, z) = (U512::from(x), U512::from(y), U512::from(z));
@@ -926,10 +982,9 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_mulmod(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        let z = self.pop()?;
-        self.push(if z.is_zero() {
+        let vals = self.interpreter_pop::<3>()?;
+        let (x, y, z) = (vals[0], vals[1], vals[2]);
+        self.interpreter_push_no_write(if z.is_zero() {
             z
         } else {
             U256::try_from(x.full_mul(y) % z)
@@ -938,66 +993,66 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_lt(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push_bool(x < y)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.push_bool_no_write(x < y)
     }
 
     fn run_gt(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push_bool(x > y)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.push_bool_no_write(x > y)
     }
 
     fn run_eq(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push_bool(x == y)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.push_bool_no_write(x == y)
     }
 
     fn run_iszero(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        self.push_bool(x.is_zero())
+        let x = self.interpreter_pop::<1>()?[0];
+        self.push_bool_no_write(x.is_zero())
     }
 
     fn run_and(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(x & y)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(x & y)
     }
 
     fn run_or(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(x | y)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(x | y)
     }
 
     fn run_xor(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let y = self.pop()?;
-        self.push(x ^ y)
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, y) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(x ^ y)
     }
 
     fn run_not(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        self.push(!x)
+        let x = self.interpreter_pop::<1>()?[0];
+        self.interpreter_push_no_write(!x)
     }
 
     fn run_byte(&mut self) -> anyhow::Result<(), ProgramError> {
-        let i = self.pop()?;
-        let x = self.pop()?;
+        let vals = self.interpreter_pop::<2>()?;
+        let (i, x) = (vals[0], vals[1]);
         let result = if i < 32.into() {
             x.byte(31 - i.as_usize())
         } else {
             0
         };
-        self.push(result.into())
+        self.interpreter_push_no_write(result.into())
     }
 
     fn run_shl(&mut self) -> anyhow::Result<(), ProgramError> {
-        let shift = self.pop()?;
-        let value = self.pop()?;
-        self.push(if shift < U256::from(256usize) {
+        let vals = self.interpreter_pop::<2>()?;
+        let (shift, value) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(if shift < U256::from(256usize) {
             value << shift
         } else {
             U256::zero()
@@ -1005,27 +1060,23 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_shr(&mut self) -> anyhow::Result<(), ProgramError> {
-        let shift = self.pop()?;
-        let value = self.pop()?;
-        self.push(value >> shift)
+        let vals = self.interpreter_pop::<2>()?;
+        let (shift, value) = (vals[0], vals[1]);
+        self.interpreter_push_no_write(value >> shift)
     }
 
     fn run_keccak_general(&mut self) -> anyhow::Result<(), ProgramError> {
-        let addr = self.pop()?;
+        let vals = self.interpreter_pop::<2>()?;
+        let (addr, size) = (vals[0], vals[1]);
+        println!("addr {:?}, size {:?}", addr, size);
         let (context, segment, offset) = unpack_address!(addr);
 
-        let size = self.pop()?.as_usize();
-        let bytes = (offset..offset + size)
-            .map(|i| {
-                self.generation_state
-                    .memory
-                    .mload_general(context, segment, i)
-                    .byte(0)
-            })
+        let bytes = (offset..offset + size.as_usize())
+            .map(|i| self.mload_queue(context, segment, i).byte(0))
             .collect::<Vec<_>>();
         println!("Hashing {:?}", &bytes);
         let hash = keccak(bytes);
-        self.push(U256::from_big_endian(hash.as_bytes()))
+        self.interpreter_push_no_write(U256::from_big_endian(hash.as_bytes()))
     }
 
     fn run_prover_input(&mut self) -> Result<(), ProgramError> {
@@ -1036,11 +1087,11 @@ impl<'a> Interpreter<'a> {
                 ProverInputError::InvalidMptInput,
             ))?;
         let output = self.generation_state.prover_input(prover_input_fn)?;
-        self.push(output)
+        self.interpreter_push_with_write(output)
     }
 
     fn run_pop(&mut self) -> anyhow::Result<(), ProgramError> {
-        self.pop().map(|_| ())
+        self.interpreter_pop::<1>().map(|_| ())
     }
 
     fn run_syscall(
@@ -1080,7 +1131,7 @@ impl<'a> Interpreter<'a> {
 
         self.set_is_kernel(true);
         self.generation_state.registers.gas_used = 0;
-        self.push(syscall_info)
+        self.interpreter_push_with_write(syscall_info)
     }
 
     fn set_jumpdest_bit(&mut self, x: U256) -> U256 {
@@ -1100,7 +1151,7 @@ impl<'a> Interpreter<'a> {
         }
     }
     fn run_jump(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
+        let x = self.interpreter_pop::<1>()?[0];
 
         let jumpdest_bit = self.set_jumpdest_bit(x);
 
@@ -1117,8 +1168,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_jumpi(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
-        let b = self.pop()?;
+        let vals = self.interpreter_pop::<2>()?;
+        let (x, b) = (vals[0], vals[1]);
         if !b.is_zero() {
             let x: u32 = x
                 .try_into()
@@ -1134,7 +1185,7 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_pc(&mut self) -> anyhow::Result<(), ProgramError> {
-        self.push(
+        self.interpreter_push_with_write(
             (self
                 .generation_state
                 .registers
@@ -1172,46 +1223,59 @@ impl<'a> Interpreter<'a> {
     fn run_push(&mut self, num_bytes: u8) -> anyhow::Result<(), ProgramError> {
         let x = U256::from_big_endian(&self.code_slice(num_bytes as usize));
         self.incr(num_bytes as usize);
-        self.push(x)
+        self.interpreter_push_with_write(x)
     }
 
     fn run_dup(&mut self, n: u8) -> anyhow::Result<(), ProgramError> {
-        let len = self.stack_len();
-        if !self.is_kernel() && len >= MAX_USER_STACK_SIZE {
+        let old_len = self.stack_len();
+        if !self.is_kernel() && old_len >= MAX_USER_STACK_SIZE {
             return Err(ProgramError::StackOverflow);
         }
-        if n as usize > self.stack_len() {
+        if n as usize >= self.stack_len() {
             return Err(ProgramError::StackUnderflow);
         }
-        self.push(stack_peek(&self.generation_state, n as usize - 1)?)
+
+        // We first write the old top in memory.
+        let top = self.stack_top().expect("Stack is not empty.");
+        let context = self.context();
+        let old_top_addr = old_len - 1;
+        self.mstore_queue(context, Segment::Stack, old_top_addr, top);
+
+        // Then we read the value to dup in memory.
+        // The value we want to queue_read might not be written in memory yet (it's `stack_top`` if n = 0).
+        // This is why we will manually craft the memory operation instead of using `mload_queue`.
+        let dup_addr_lo = old_len - 1 - n as usize;
+        let dup_val = stack_peek(&self.generation_state, n as usize).expect("Stack is big enough.");
+        self.memops.push(InterpreterMemOpKind::Read(
+            dup_val,
+            MemoryAddress::new(context, Segment::Stack, dup_addr_lo),
+        ));
+
+        // Finally we push the dup value.
+        self.interpreter_push_no_write(dup_val);
+        Ok(())
     }
 
     fn run_swap(&mut self, n: u8) -> anyhow::Result<(), ProgramError> {
-        let len = self.stack_len();
-        if n as usize >= len {
-            return Err(ProgramError::StackUnderflow);
-        }
-        let to_swap = stack_peek(&self.generation_state, n as usize)?;
-        let old_value = self.stack_segment_mut()[len - n as usize - 1];
+        let other_addr_lo = self
+            .stack_len()
+            .checked_sub(2 + (n as usize))
+            .ok_or(ProgramError::StackUnderflow)?;
+        let [old_top] = self.interpreter_pop::<1>()?;
 
-        self.stack_segment_mut()[len - n as usize - 1] = self.stack_top()?;
-        let mem_write_op = InterpreterMemOpKind::Write(
-            old_value,
-            self.context(),
-            Segment::Stack.unscale(),
-            len - n as usize - 1,
-        );
-        self.memops.push(mem_write_op);
-        self.generation_state.registers.stack_top = to_swap;
+        let other_value = self.mload_queue(self.context(), Segment::Stack, other_addr_lo);
+        self.mstore_queue(self.context(), Segment::Stack, other_addr_lo, old_top);
+
+        self.interpreter_push_no_write(other_value);
         Ok(())
     }
 
     fn run_get_context(&mut self) -> anyhow::Result<(), ProgramError> {
-        self.push(U256::from(self.context()) << CONTEXT_SCALING_FACTOR)
+        self.interpreter_push_with_write(U256::from(self.context()) << CONTEXT_SCALING_FACTOR)
     }
 
     fn run_set_context(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.pop()?;
+        let x = self.interpreter_pop::<1>()?[0];
         let new_ctx = (x >> CONTEXT_SCALING_FACTOR).as_usize();
         let sp_to_save = self.stack_len().into();
 
@@ -1228,7 +1292,8 @@ impl<'a> Interpreter<'a> {
         if new_sp > 0 {
             let new_stack_top = self.generation_state.memory.contexts[new_ctx].segments
                 [Segment::Stack.unscale()]
-            .content[new_sp - 1];
+            .content[new_sp - 1]
+                .unwrap_or_default();
             self.generation_state.registers.stack_top = new_stack_top;
         }
         self.set_context(new_ctx);
@@ -1237,51 +1302,40 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_mload_general(&mut self) -> anyhow::Result<(), ProgramError> {
-        let addr = self.pop()?;
+        let addr = self.interpreter_pop::<1>()?[0];
         let (context, segment, offset) = unpack_address!(addr);
-        let value = self
-            .generation_state
-            .memory
-            .mload_general(context, segment, offset);
+        let value = self.mload_queue(context, segment, offset);
         assert!(value.bits() <= segment.bit_range());
-        self.push(value)
+        self.interpreter_push_no_write(value)
     }
 
     fn run_mload_32bytes(&mut self) -> anyhow::Result<(), ProgramError> {
-        let addr = self.pop()?;
+        let vals = self.interpreter_pop::<2>()?;
+        let (addr, len) = (vals[0], vals[1]);
         let (context, segment, offset) = unpack_address!(addr);
-        let len = self.pop()?.as_usize();
+        let len = len.as_usize();
         if len > 32 {
             return Err(ProgramError::IntegerTooLarge);
         }
         let bytes: Vec<u8> = (0..len)
-            .map(|i| {
-                self.generation_state
-                    .memory
-                    .mload_general(context, segment, offset + i)
-                    .low_u32() as u8
-            })
+            .map(|i| self.mload_queue(context, segment, offset + i).low_u32() as u8)
             .collect();
         let value = U256::from_big_endian(&bytes);
-        self.push(value)
+        self.interpreter_push_no_write(value)
     }
 
     fn run_mstore_general(&mut self) -> anyhow::Result<(), ProgramError> {
-        let value = self.pop()?;
-        let addr = self.pop()?;
+        let vals = self.interpreter_pop::<2>()?;
+        let (value, addr) = (vals[0], vals[1]);
         let (context, segment, offset) = unpack_address!(addr);
-        let memop = self
-            .generation_state
-            .memory
-            .mstore_general(context, segment, offset, value);
-        self.memops.push(memop);
+        let memop = self.mstore_queue(context, segment, offset, value);
         Ok(())
     }
 
     fn run_mstore_32bytes(&mut self, n: u8) -> anyhow::Result<(), ProgramError> {
-        let addr = self.pop()?;
+        let vals = self.interpreter_pop::<2>()?;
+        let (addr, value) = (vals[0], vals[1]);
         let (context, segment, offset) = unpack_address!(addr);
-        let value = self.pop()?;
 
         let mut bytes = vec![0; 32];
         value.to_little_endian(&mut bytes);
@@ -1289,20 +1343,14 @@ impl<'a> Interpreter<'a> {
         bytes.reverse();
 
         for (i, &byte) in bytes.iter().enumerate() {
-            let memop = self.generation_state.memory.mstore_general(
-                context,
-                segment,
-                offset + i,
-                byte.into(),
-            );
-            self.memops.push(memop);
+            let memop = self.mstore_queue(context, segment, offset + i, byte.into());
         }
 
-        self.push(addr + U256::from(n))
+        self.interpreter_push_no_write(addr + U256::from(n))
     }
 
     fn run_exit_kernel(&mut self) -> anyhow::Result<(), ProgramError> {
-        let kexit_info = self.pop()?;
+        let kexit_info = self.interpreter_pop::<1>()?[0];
 
         let kexit_info_u64 = kexit_info.0[0];
         let program_counter = kexit_info_u64 as u32 as usize;
@@ -1341,7 +1389,7 @@ impl<'a> Interpreter<'a> {
         let exc_info = U256::from(self.generation_state.registers.program_counter)
             + (U256::from(self.generation_state.registers.gas_used) << 192);
 
-        self.push(exc_info)?;
+        self.interpreter_push_with_write(exc_info)?;
 
         // Set registers before pushing to the stack; in particular, we need to set kernel mode so we
         // can't incorrectly trigger a stack overflow. However, note that we have to do it _after_ we
