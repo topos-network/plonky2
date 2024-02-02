@@ -165,7 +165,7 @@ pub(crate) struct MemoryState {
 
 impl MemoryState {
     pub(crate) fn new(kernel_code: &[u8]) -> Self {
-        let code_u256s = kernel_code.iter().map(|&x| x.into()).collect();
+        let code_u256s = kernel_code.iter().map(|&x| Some(x.into())).collect();
         let mut result = Self::default();
         result.contexts[0].segments[Segment::Code.unscale()].content = code_u256s;
         result
@@ -263,7 +263,7 @@ impl Default for MemoryContextState {
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct MemorySegmentState {
-    pub(crate) content: Vec<U256>,
+    pub(crate) content: Vec<Option<U256>>,
 }
 
 impl MemorySegmentState {
@@ -271,13 +271,21 @@ impl MemorySegmentState {
         self.content
             .get(virtual_addr)
             .copied()
-            .unwrap_or(U256::zero())
+            .unwrap_or_default()
+            .unwrap_or_default()
     }
 
     pub(crate) fn set(&mut self, virtual_addr: usize, value: U256) {
         if virtual_addr >= self.content.len() {
-            self.content.resize(virtual_addr + 1, U256::zero());
+            self.content.resize(virtual_addr + 1, None);
         }
-        self.content[virtual_addr] = value;
+        self.content[virtual_addr] = Some(value);
+    }
+
+    pub(crate) fn return_content(&self) -> Vec<U256> {
+        self.content
+            .iter()
+            .map(|&val| val.unwrap_or_default())
+            .collect()
     }
 }

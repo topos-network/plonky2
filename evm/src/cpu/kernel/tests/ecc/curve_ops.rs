@@ -175,11 +175,7 @@ mod bn {
 
         let mut computed_table = Vec::new();
         for i in 0..32 {
-            computed_table.push(
-                int.generation_state
-                    .memory
-                    .mload_general(0, Segment::BnTableQ, i),
-            );
+            computed_table.push(int.mload_queue(0, Segment::BnTableQ, i));
         }
 
         let table = u256ify([
