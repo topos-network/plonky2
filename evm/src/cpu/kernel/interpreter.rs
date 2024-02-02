@@ -28,7 +28,7 @@ use crate::util::{h2u, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
 use crate::witness::gas::gas_to_charge;
 use crate::witness::memory::{MemoryAddress, MemoryContextState, MemorySegmentState, MemoryState};
-use crate::witness::operation::{Operation, CONTEXT_SCALING_FACTOR};
+use crate::witness::operation::{generate_keccak_general, Operation, CONTEXT_SCALING_FACTOR};
 use crate::witness::state::RegistersState;
 use crate::witness::transition::decode;
 use crate::witness::util::stack_peek;
@@ -1011,21 +1011,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_keccak_general(&mut self) -> anyhow::Result<(), ProgramError> {
-        let addr = self.pop()?;
-        let (context, segment, offset) = unpack_address!(addr);
-
-        let size = self.pop()?.as_usize();
-        let bytes = (offset..offset + size)
-            .map(|i| {
-                self.generation_state
-                    .memory
-                    .mload_general(context, segment, i)
-                    .byte(0)
-            })
-            .collect::<Vec<_>>();
-        println!("Hashing {:?}", &bytes);
-        let hash = keccak(bytes);
-        self.push(U256::from_big_endian(hash.as_bytes()))
+        generate_keccak_general(&mut self.generation_state)?;
+        Ok(())
     }
 
     fn run_prover_input(&mut self) -> Result<(), ProgramError> {

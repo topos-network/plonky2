@@ -25,8 +25,8 @@ use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp, MemoryOpKin
 use crate::witness::operation::MemoryChannel::GeneralPurpose;
 use crate::witness::transition::fill_stack_fields;
 use crate::witness::util::{
-    keccak_sponge_log, mem_read_gp_with_log_and_fill, mem_write_gp_log_and_fill,
-    stack_pop_with_log_and_fill,
+    keccak_sponge_log, mem_read_gp_with_log_and_fill, mem_write_gp_log_and_fill, stack_pop,
+    stack_pop_log_and_fill, stack_pop_with_log_and_fill,
 };
 use crate::{arithmetic, logic};
 
@@ -128,11 +128,19 @@ pub(crate) fn generate_ternary_arithmetic_op<F: Field>(
     Ok(())
 }
 
-pub(crate) fn generate_keccak_general<F: Field>(
+pub(crate) fn generate_keccak_general_with_log_and_fill<F: Field>(
     state: &mut GenerationState<F>,
     mut row: CpuColumnsView<F>,
 ) -> Result<(), ProgramError> {
-    let [(addr, _), (len, log_in1)] = stack_pop_with_log_and_fill::<2, _>(state, &mut row)?;
+    let (val_addr, base_address, input) = generate_keccak_general(state)?;
+    generate_keccak_general_log_and_fill(state, row, val_addr, base_address, input)
+}
+
+pub(crate) fn generate_keccak_general<F: Field>(
+    state: &mut GenerationState<F>,
+) -> Result<([(U256, MemoryAddress); 2], MemoryAddress, Vec<u8>), ProgramError> {
+    let val_addr = stack_pop::<2, _>(state)?;
+    let [(addr, _), (len, _)] = val_addr;
     let len = u256_to_usize(len)?;
 
     let base_address = MemoryAddress::new_bundle(addr)?;
@@ -150,6 +158,17 @@ pub(crate) fn generate_keccak_general<F: Field>(
 
     let hash = keccak(&input);
     push_no_write(state, hash.into_uint());
+    Ok((val_addr, base_address, input))
+}
+
+pub(crate) fn generate_keccak_general_log_and_fill<F: Field>(
+    state: &mut GenerationState<F>,
+    mut row: CpuColumnsView<F>,
+    val_addr: [(U256, MemoryAddress); 2],
+    base_address: MemoryAddress,
+    input: Vec<u8>,
+) -> Result<(), ProgramError> {
+    let [_, (_, log_in1)] = stack_pop_log_and_fill(state, &mut row, val_addr)?;
 
     keccak_sponge_log(state, base_address, input);
 

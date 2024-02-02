@@ -274,7 +274,7 @@ fn perform_op<F: Field>(
         }
         Operation::BinaryArithmetic(op) => generate_binary_arithmetic_op(op, state, row)?,
         Operation::TernaryArithmetic(op) => generate_ternary_arithmetic_op(op, state, row)?,
-        Operation::KeccakGeneral => generate_keccak_general(state, row)?,
+        Operation::KeccakGeneral => generate_keccak_general_with_log_and_fill(state, row)?,
         Operation::ProverInput => generate_prover_input(state, row)?,
         Operation::Pop => generate_pop(state, row)?,
         Operation::Jump => generate_jump(state, row)?,

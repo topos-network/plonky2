@@ -107,7 +107,26 @@ pub(crate) fn mem_read_with_log<F: Field>(
     address: MemoryAddress,
     state: &GenerationState<F>,
 ) -> (U256, MemoryOp) {
+    let val = mem_read(channel, address, state);
+    let op = mem_read_log(channel, address, state, val);
+    (val, op)
+}
+
+pub(crate) fn mem_read<F: Field>(
+    channel: MemoryChannel,
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+) -> U256 {
     let val = state.memory.get(address);
+    val
+}
+
+pub(crate) fn mem_read_log<F: Field>(
+    channel: MemoryChannel,
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+    val: U256,
+) -> MemoryOp {
     let op = MemoryOp::new(
         channel,
         state.traces.clock(),
@@ -115,7 +134,7 @@ pub(crate) fn mem_read_with_log<F: Field>(
         MemoryOpKind::Read,
         val,
     );
-    (val, op)
+    op
 }
 
 pub(crate) fn mem_write_log<F: Field>(
@@ -138,12 +157,33 @@ pub(crate) fn mem_read_code_with_log_and_fill<F: Field>(
     state: &GenerationState<F>,
     row: &mut CpuColumnsView<F>,
 ) -> (u8, MemoryOp) {
-    let (val, op) = mem_read_with_log(MemoryChannel::Code, address, state);
-
-    let val_u8 = to_byte_checked(val);
-    row.opcode_bits = to_bits_le(val_u8);
+    let (val_u8, val) = mem_read_code(address, state);
+    let op = mem_read_code_log(address, state, row, val, val_u8);
 
     (val_u8, op)
+}
+
+pub(crate) fn mem_read_code<F: Field>(
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+) -> (u8, U256) {
+    let val = mem_read(MemoryChannel::Code, address, state);
+
+    let val_u8 = to_byte_checked(val);
+    (val_u8, val)
+}
+
+pub(crate) fn mem_read_code_log<F: Field>(
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+    row: &mut CpuColumnsView<F>,
+    val: U256,
+    val_u8: u8,
+) -> MemoryOp {
+    let op = mem_read_log(MemoryChannel::Code, address, state, val);
+
+    row.opcode_bits = to_bits_le(val_u8);
+    op
 }
 
 pub(crate) fn mem_read_gp_with_log_and_fill<F: Field>(
@@ -152,7 +192,29 @@ pub(crate) fn mem_read_gp_with_log_and_fill<F: Field>(
     state: &GenerationState<F>,
     row: &mut CpuColumnsView<F>,
 ) -> (U256, MemoryOp) {
-    let (val, op) = mem_read_with_log(MemoryChannel::GeneralPurpose(n), address, state);
+    let val = mem_read_gp(n, address, state);
+    let op = mem_read_gp_log_and_fill(n, address, state, row, val);
+
+    (val, op)
+}
+
+pub(crate) fn mem_read_gp<F: Field>(
+    n: usize,
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+) -> U256 {
+    let val = mem_read(MemoryChannel::GeneralPurpose(n), address, state);
+    val
+}
+
+pub(crate) fn mem_read_gp_log_and_fill<F: Field>(
+    n: usize,
+    address: MemoryAddress,
+    state: &GenerationState<F>,
+    row: &mut CpuColumnsView<F>,
+    val: U256,
+) -> MemoryOp {
+    let op = mem_read_log(MemoryChannel::GeneralPurpose(n), address, state, val);
     let val_limbs: [u64; 4] = val.0;
 
     let channel = &mut row.mem_channels[n];
@@ -167,7 +229,7 @@ pub(crate) fn mem_read_gp_with_log_and_fill<F: Field>(
         channel.value[2 * i + 1] = F::from_canonical_u32((limb >> 32) as u32);
     }
 
-    (val, op)
+    op
 }
 
 pub(crate) fn mem_write_gp_log_and_fill<F: Field>(
@@ -221,6 +283,34 @@ pub(crate) fn stack_pop_with_log_and_fill<const N: usize, F: Field>(
     state: &mut GenerationState<F>,
     row: &mut CpuColumnsView<F>,
 ) -> Result<[(U256, MemoryOp); N], ProgramError> {
+    let vals_addrs = stack_pop(state)?;
+    let result = stack_pop_log_and_fill(state, row, vals_addrs)?;
+
+    Ok(result)
+}
+
+pub(crate) fn stack_pop_log_and_fill<const N: usize, F: Field>(
+    state: &mut GenerationState<F>,
+    row: &mut CpuColumnsView<F>,
+    val_addr: [(U256, MemoryAddress); N],
+) -> Result<[(U256, MemoryOp); N], ProgramError> {
+    let result = core::array::from_fn(|i| {
+        if i == 0 {
+            (val_addr[i].0, DUMMY_MEMOP)
+        } else {
+            (
+                val_addr[i].0,
+                mem_read_gp_log_and_fill(i, val_addr[i].1, state, row, val_addr[i].0),
+            )
+        }
+    });
+
+    Ok(result)
+}
+
+pub(crate) fn stack_pop<const N: usize, F: Field>(
+    state: &mut GenerationState<F>,
+) -> Result<[(U256, MemoryAddress); N], ProgramError> {
     if state.registers.stack_len < N {
         return Err(ProgramError::StackUnderflow);
     }
@@ -233,7 +323,10 @@ pub(crate) fn stack_pop_with_log_and_fill<const N: usize, F: Field>(
 
     let result = core::array::from_fn(|i| {
         if i == 0 {
-            (state.registers.stack_top, DUMMY_MEMOP)
+            (
+                state.registers.stack_top,
+                MemoryAddress::new(0, Segment::Stack, 0),
+            )
         } else {
             let address = MemoryAddress::new(
                 state.registers.context,
@@ -241,7 +334,7 @@ pub(crate) fn stack_pop_with_log_and_fill<const N: usize, F: Field>(
                 state.registers.stack_len - 1 - i,
             );
 
-            mem_read_gp_with_log_and_fill(i, address, state, row)
+            (mem_read_gp(i, address, state), address)
         }
     });
 
