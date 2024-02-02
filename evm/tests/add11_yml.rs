@@ -318,11 +318,16 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = 38395;
-    registers_after.stack_top = U256::from(8);
-    registers_after.stack_len = 18;
-    registers_after.gas_used = 112615;
+    let registers_after = RegistersState {
+        program_counter: 33746,
+        is_kernel: true,
+        stack_len: 26,
+        stack_top: U256::from("97909BDCFD301AB3A6EC4FD6260CFB2C285EF2F76062A6B9741DF57493C0F1F6"),
+        is_stack_top_read: false,
+        check_overflow: true,
+        context: 0,
+        gas_used: 112539,
+    };
     let mut inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -347,7 +352,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &all_stark,
         &[
             16..17,
-            13..14,
+            14..15,
             15..16,
             10..15,
             8..11,
@@ -377,7 +382,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     all_circuits.verify_root(root_proof.clone())?;
 
     // Second segment.
-    inputs.registers_before = inputs.registers_after;
+    inputs.registers_before = registers_after;
 
     inputs.memory_before = final_mem_values;
     inputs.registers_after = RegistersState::new_last_registers_with_gas(32436);

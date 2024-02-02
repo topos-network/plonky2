@@ -96,7 +96,7 @@ impl Deref for Table {
     fn deref(&self) -> &Self::Target {
         // Hacky way to implement `Deref` for `Table` so that we don't have to
         // call `Table::Foo as usize`, but perhaps too ugly to be worth it.
-        [&0, &1, &2, &3, &4, &5, &6][*self as TableIdx]
+        [&0, &1, &2, &3, &4, &5, &6, &7, &8][*self as TableIdx]
     }
 }
 
@@ -295,7 +295,7 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
         )
     });
     let mem_before_ops = TableWithColumns::new(
-        Table::MemBefore,
+        *Table::MemBefore,
         mem_before_stark::ctl_data_memory(),
         Some(mem_before_stark::ctl_filter()),
     );
@@ -322,13 +322,13 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
 /// `CrossTableLookup` for `MemBeforeStark` to connect it with the `Memory` module.
 fn ctl_mem_before<F: Field>() -> CrossTableLookup<F> {
     let memory_looking = TableWithColumns::new(
-        Table::Memory,
+        *Table::Memory,
         memory_stark::ctl_looking_mem(),
         Some(memory_stark::ctl_filter_mem_before()),
     );
     let mut all_lookers = vec![memory_looking];
     let mem_before_looked = TableWithColumns::new(
-        Table::MemBefore,
+        *Table::MemBefore,
         mem_before_stark::ctl_data(),
         Some(mem_before_stark::ctl_filter()),
     );
@@ -338,13 +338,13 @@ fn ctl_mem_before<F: Field>() -> CrossTableLookup<F> {
 /// `CrossTableLookup` for `MemAfterStark` to connect it with the `Memory` module.
 fn ctl_mem_after<F: Field>() -> CrossTableLookup<F> {
     let memory_looking = TableWithColumns::new(
-        Table::Memory,
+        *Table::Memory,
         memory_stark::ctl_looking_mem(),
         Some(memory_stark::ctl_filter_mem_after()),
     );
     let mut all_lookers = vec![memory_looking];
     let mem_after_looked = TableWithColumns::new(
-        Table::MemAfter,
+        *Table::MemAfter,
         mem_after_stark::ctl_data(),
         Some(mem_after_stark::ctl_filter()),
     );
