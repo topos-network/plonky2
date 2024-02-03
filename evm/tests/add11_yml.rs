@@ -169,7 +169,7 @@ fn add11_yml() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(32436),
+        registers_after: RegistersState::new_last_registers_with_gas(30352),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
@@ -352,11 +352,11 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &all_stark,
         &[
             16..17,
-            14..15,
-            15..16,
+            13..15,
+            14..16,
             10..15,
             8..11,
-            9..13,
+            8..13,
             18..19,
             8..18,
             12..18,
@@ -385,7 +385,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     inputs.registers_before = registers_after;
 
     inputs.memory_before = final_mem_values;
-    inputs.registers_after = RegistersState::new_last_registers_with_gas(32436);
+    inputs.registers_after = RegistersState::new_last_registers_with_gas(30352);
 
     let (second_root_proof, second_public_values, _, _) = all_circuits.prove_root(
         &all_stark,

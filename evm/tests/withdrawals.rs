@@ -85,7 +85,7 @@ fn test_withdrawals() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(6472),
+        registers_after: RegistersState::new_last_registers_with_gas(6348),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);

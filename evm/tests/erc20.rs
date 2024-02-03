@@ -177,7 +177,7 @@ fn test_erc20() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(41931),
+        registers_after: RegistersState::new_last_registers_with_gas(39404),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);

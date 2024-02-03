@@ -151,7 +151,7 @@ fn test_add11_yml() {
     // instead of the (here nonexisten) previous stack_top.
     registers_after.stack_top = 146028888070u64.into();
     registers_after.stack_len = 0;
-    registers_after.gas_used = 32436;
+    registers_after.gas_used = 30352;
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -301,7 +301,7 @@ fn test_add11_yml_with_exception() {
     registers_after.program_counter = KERNEL.global_labels["halt"];
     registers_after.stack_top = 146028888070u64.into();
     registers_after.stack_len = 0;
-    registers_after.gas_used = 33950;
+    registers_after.gas_used = 31848;
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
