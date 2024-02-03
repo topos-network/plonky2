@@ -76,7 +76,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(2783),
+        registers_after: RegistersState::new_last_registers_with_gas(2681),
     };
 
     let mut final_inputs = GenerationInputs {

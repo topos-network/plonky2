@@ -453,7 +453,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(167785),
+        registers_after: RegistersState::new_last_registers_with_gas(163222),
     };
 
     let mut final_inputs_first = GenerationInputs {
@@ -620,7 +620,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(56705),
+        registers_after: RegistersState::new_last_registers_with_gas(52010),
     };
 
     let mut final_inputs = GenerationInputs {
@@ -750,7 +750,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         },
         memory_before: vec![],
         registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(46667),
+        registers_after: RegistersState::new_last_registers_with_gas(42765),
     };
 
     let mut final_inputs = GenerationInputs {
