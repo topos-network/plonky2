@@ -11,10 +11,12 @@ use ethereum_types::U256;
 use hashbrown::HashMap;
 use itertools::{zip_eq, Itertools};
 use plonky2::field::extension::Extendable;
+use plonky2::field::polynomial::PolynomialValues;
+use plonky2::fri::oracle::PolynomialBatch;
 use plonky2::fri::FriParams;
 use plonky2::gates::constant::ConstantGate;
 use plonky2::gates::noop::NoopGate;
-use plonky2::hash::hash_types::{MerkleCapTarget, RichField};
+use plonky2::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::challenger::RecursiveChallenger;
 use plonky2::iop::target::{BoolTarget, Target};
@@ -32,6 +34,7 @@ use plonky2::util::serialization::{
     Buffer, GateSerializer, IoResult, Read, WitnessGeneratorSerializer, Write,
 };
 use plonky2::util::timing::TimingTree;
+use plonky2::util::transpose;
 use plonky2_util::log2_ceil;
 
 use crate::all_stark::{all_cross_table_lookups, AllStark, Table, NUM_TABLES};
@@ -44,6 +47,7 @@ use crate::cross_table_lookup::{
 use crate::generation::state::GenerationState;
 use crate::generation::GenerationInputs;
 use crate::get_challenges::observe_public_values_target;
+use crate::memory::segments::Segment;
 use crate::proof::{
     AllProof, BlockHashesTarget, BlockMetadataTarget, ExitKernelTarget, ExtraBlockData,
     ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues, PublicValuesTarget,
@@ -517,7 +521,7 @@ where
         ];
         let root = Self::create_root_circuit(&by_table, stark_config);
         let segment_aggregation = Self::create_segmented_aggregation_circuit(&root);
-        let txn_aggregation = Self::create_transaction_circuit(&segment_aggregation);
+        let txn_aggregation = Self::create_transaction_circuit(&segment_aggregation, stark_config);
         let block = Self::create_block_circuit(&txn_aggregation);
         Self {
             root,
@@ -812,6 +816,7 @@ where
     // We assume that transactions are always aggregated on the right.
     fn create_transaction_circuit(
         agg: &AggregationCircuitData<F, C, D>,
+        stark_config: &StarkConfig,
     ) -> BlockCircuitData<F, C, D> {
         // Here, we create a circuit for the aggregation of two transactions.
         let expected_common_data = CommonCircuitData {
@@ -902,6 +907,8 @@ where
 
         Self::connect_initial_final_segment(&mut builder, &public_values);
 
+        Self::check_init_merkle_cap(&mut builder, &agg_pv, stark_config);
+
         let cyclic_vk = builder.add_verifier_data_public_inputs();
         builder
             .conditionally_verify_cyclic_proof_or_dummy::<C>(
@@ -923,6 +930,58 @@ where
             public_values,
             cyclic_vk,
         }
+    }
+
+    fn check_init_merkle_cap(
+        builder: &mut CircuitBuilder<F, D>,
+        x: &PublicValuesTarget,
+        stark_config: &StarkConfig,
+    ) where
+        F: RichField + Extendable<D>,
+    {
+        // At the start of a transaction proof, `MemBefore` only contains the `ShiftTable`.
+        let mut trace = vec![];
+        for i in 0..256 {
+            let mut row = vec![F::ZERO; crate::mem_before::columns::NUM_COLUMNS];
+            let val = U256::from(1) << i;
+            row[crate::mem_before::columns::FILTER] = F::ONE;
+            row[crate::mem_before::columns::ADDR_CONTEXT] = F::ZERO;
+            row[crate::mem_before::columns::ADDR_SEGMENT] =
+                F::from_canonical_usize(Segment::ShiftTable.unscale());
+            row[crate::mem_before::columns::ADDR_VIRTUAL] = F::from_canonical_usize(i);
+            for j in 0..crate::memory::VALUE_LIMBS {
+                row[j + 4] = F::from_canonical_u32((val >> (j * 32)).low_u32());
+            }
+            trace.push(row);
+        }
+        let cols = transpose(&trace);
+        let polys = cols
+            .into_iter()
+            .map(|column| PolynomialValues::new(column))
+            .collect::<Vec<_>>();
+
+        let cap = PolynomialBatch::<F, C, D>::from_values(
+            polys,
+            stark_config.fri_config.rate_bits,
+            false,
+            stark_config.fri_config.cap_height,
+            &mut TimingTree::default(),
+            None,
+        )
+        .merkle_tree
+        .cap;
+
+        let init_cap_target = MemCapTarget {
+            mem_cap: MerkleCapTarget {
+                0: cap
+                    .0
+                    .iter()
+                    .map(|&h| builder.constant_hash(h))
+                    .collect::<Vec<_>>(),
+            },
+        };
+
+        MemCapTarget::connect(builder, x.mem_before.clone(), init_cap_target);
     }
 
     fn connect_initial_final_segment(builder: &mut CircuitBuilder<F, D>, x: &PublicValuesTarget)
