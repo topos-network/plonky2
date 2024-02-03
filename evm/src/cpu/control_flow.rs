@@ -29,7 +29,7 @@ const NATIVE_INSTRUCTIONS: [usize; 12] = [
     // not exceptions (also jump)
 ];
 
-/// Returns `halt`'s program counter.
+/// Returns `halt_final`'s program counter.
 pub(crate) fn get_halt_pc<F: Field>() -> F {
     let halt_pc = KERNEL.global_labels["halt_final"];
     F::from_canonical_usize(halt_pc)

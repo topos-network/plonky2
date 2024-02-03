@@ -1,3 +1,8 @@
+//! `MemBeforeStark` is used to store the memory values at timestamp 0.
+//! It is checked against `MemoryStark` through a CTL.
+//! This is used to ensure a continuation of the memory when proving
+//! multiple segments of a single full transaction proof.
+//! As such, `MemoryBeforeStark` doesn't have any constraints.
 use std::borrow::Borrow;
 use std::cmp::max;
 use std::iter::{self, once, repeat};
@@ -67,9 +72,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
     ) -> Vec<PolynomialValues<F>> {
         let mut rows: Vec<_> = vec![];
 
-        // Add first opcode reads (at timestamp 0).
-        let mut first_row = vec![F::ZERO; NUM_COLUMNS];
-
+        // Add all `mem_before_vamues`.
         rows.extend(mem_before_values.iter().map(|mem_data| {
             let mut row = vec![F::ZERO; NUM_COLUMNS];
             row[FILTER] = F::ONE;

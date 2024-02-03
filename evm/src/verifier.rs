@@ -136,6 +136,14 @@ where
         &ctl_challenges,
         config,
     )?;
+    verify_stark_proof_with_challenges(
+        mem_after_stark,
+        &all_proof.stark_proofs[Table::MemAfter as usize].proof,
+        &stark_challenges[Table::MemAfter as usize],
+        &ctl_vars_per_table[Table::MemAfter as usize],
+        &ctl_challenges,
+        config,
+    )?;
 
     let public_values = all_proof.public_values;
 
@@ -520,7 +528,7 @@ fn eval_l_0_and_l_last<F: Field>(log_n: usize, x: F) -> (F, F) {
     (z_x * invs[0], z_x * invs[1])
 }
 
-// #[cfg(test)]
+#[cfg(test)]
 pub(crate) mod testutils {
     use super::*;
 

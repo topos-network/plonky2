@@ -49,6 +49,7 @@ mod trie_extractor;
 use self::mpt::{load_all_mpts, TrieRootPtrs};
 use crate::witness::util::{mem_write_log, mem_write_log_timestamp_zero, stack_peek};
 
+/// Memory values used to initialize `MemBefore`.
 pub type MemBeforeValues = Vec<(MemoryAddress, U256)>;
 
 /// Inputs needed for trace generation.
@@ -187,6 +188,7 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
             )
         })
         .to_vec();
+
     // Write the block's final block bloom filter.
     ops.extend((0..8).map(|i| {
         mem_write_log(
@@ -249,7 +251,7 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
         )
     }));
 
-    // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
+    // We also need to initialize exit_kernel, so we can set `is_kernel_mode` and the program counter.
     let exit_kernel = U256::from(inputs.registers_before.program_counter)
         + (U256::from(inputs.registers_before.is_kernel as u64) << 32)
         + (U256::from(inputs.registers_before.gas_used) << 192);
@@ -279,6 +281,8 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     PublicValues,
     GenerationState<F>,
 )> {
+    // Initialize the state with the state at the end of the
+    // previous segment execution, if any.
     let mut state = match previous_state {
         Some(s) => {
             let mut new_state = s;
@@ -301,6 +305,10 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         }
     };
 
+    // If the current execution is that of the first segment in the proof,
+    // then preinitialize the `ShiftTable` by adding it to the
+    // `mem_before_values`. Otherwise, `mem_before_values`
+    // already contain it.
     let mem_before_values = if is_first_proof {
         let mut addr = MemoryAddress {
             context: 0,
@@ -414,6 +422,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         gas_used_after,
     };
 
+    // Set the registers `before` and `after`, as well as `exit_kernel`.
     let registers_before = RegistersData {
         program_counter: inputs.registers_before.program_counter.into(),
         is_kernel: (inputs.registers_before.is_kernel as u64).into(),
@@ -435,6 +444,10 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             + (registers_before.is_kernel << 32)
             + (registers_before.gas_used << 192),
     };
+
+    // `mem_before` and `mem_after` are intialized with an empty cap.
+    // But they are set to the caps of `MemBefore` and `MemAfter`
+    // respectively while proving.
     let public_values = PublicValues {
         trie_roots_before,
         trie_roots_after,

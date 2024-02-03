@@ -70,7 +70,8 @@ pub(crate) enum Segment {
     ContextCheckpoints = 32 << SEGMENT_SCALING_FACTOR,
     /// List of 256 previous block hashes.
     BlockHashes = 33 << SEGMENT_SCALING_FACTOR,
-    /// Segment storing the registers before/after the current execution.
+    /// Segment storing the registers before/after the current execution,
+    /// as well as `exit_kernel` for the `registers_before`, in that order.
     RegistersStates = 34 << SEGMENT_SCALING_FACTOR,
 }
 

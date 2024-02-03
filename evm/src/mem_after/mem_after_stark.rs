@@ -1,3 +1,8 @@
+//! `MemAfterStark` is used to store the final values in memory.
+//! It is checked against `MemoryStark` through a CTL.
+//! This is used to ensure a continuation of the memory when proving
+//! multiple segments of a single full transaction proof.
+//! As such, `MemoryAfterStark` doesn't have any constraints.
 use std::borrow::Borrow;
 use std::cmp::max;
 use std::iter::{self, once, repeat};
@@ -52,6 +57,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemAfterStark<F, D> {
         final_values: &[Vec<F>],
         timing: &mut TimingTree,
     ) -> Vec<PolynomialValues<F>> {
+        // Set the trace to the `final_values` provided by `MemoryStark`.
         let mut rows = final_values.to_vec().clone();
 
         let num_rows = rows.len();

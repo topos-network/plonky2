@@ -19,6 +19,8 @@ const TRACE_ORACLE_INDEX: usize = 0;
 const AUXILIARY_ORACLE_INDEX: usize = 1;
 const QUOTIENT_ORACLE_INDEX: usize = 2;
 
+/// Structure for the state of the registers before and after
+/// the current execution.
 #[derive(Copy, Clone, Default)]
 pub struct PublicRegisterStates {
     registers_before: RegistersState,

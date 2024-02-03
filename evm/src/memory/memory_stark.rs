@@ -288,7 +288,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         mem_before_values: &[(MemoryAddress, U256)],
         timing: &mut TimingTree,
     ) -> (Vec<PolynomialValues<F>>, Vec<Vec<F>>) {
-        // First, push mem_before operations.
+        // First, push `mem_before` operations.
         for i in 0..mem_before_values.len() {
             memory_ops.push(MemoryOp {
                 filter: true,
@@ -304,7 +304,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             "generate trace rows",
             self.generate_trace_row_major(memory_ops)
         );
-        // Extract final values for MemoryAfterStark.
+        // Extract final values for `MemoryAfterStark`.
         let mut final_values = Vec::<Vec<_>>::new();
         for i in 0..trace_rows.len() - 1 {
             let row = trace_rows[i];

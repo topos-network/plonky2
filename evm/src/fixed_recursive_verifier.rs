@@ -241,6 +241,8 @@ impl<const D: usize> AggregationChildTarget<D> {
         })
     }
 
+    // `len_before` and `len_after` are the lengths of the Merkle
+    // caps for `MemBefore` and `MemAfter` respectively.
     fn public_values<F: RichField + Extendable<D>>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -558,8 +560,16 @@ where
         let inner_common_data: [_; NUM_TABLES] =
             core::array::from_fn(|i| &by_table[i].final_circuits()[0].common);
 
-        let cap_length_before = 1 << inner_common_data[7].fri_params.config.cap_height;
-        let cap_length_after = 1 << inner_common_data[8].fri_params.config.cap_height;
+        let cap_length_before = 1
+            << inner_common_data[*Table::MemBefore]
+                .fri_params
+                .config
+                .cap_height;
+        let cap_length_after = 1
+            << inner_common_data[*Table::MemAfter]
+                .fri_params
+                .config
+                .cap_height;
         let mut builder = CircuitBuilder::new(CircuitConfig::standard_recursion_config());
 
         let public_values =
@@ -669,10 +679,14 @@ where
             );
         }
 
-        let merkle_before =
-            MemCapTarget::from_public_inputs(&recursive_proofs[7].public_inputs, cap_length_before);
-        let merkle_after =
-            MemCapTarget::from_public_inputs(&recursive_proofs[8].public_inputs, cap_length_after);
+        let merkle_before = MemCapTarget::from_public_inputs(
+            &recursive_proofs[*Table::MemBefore].public_inputs,
+            cap_length_before,
+        );
+        let merkle_after = MemCapTarget::from_public_inputs(
+            &recursive_proofs[*Table::MemAfter].public_inputs,
+            cap_length_after,
+        );
         // Connect Memory before and after the execution with
         // the public values.
         MemCapTarget::connect(
@@ -702,8 +716,16 @@ where
     fn create_segmented_aggregation_circuit(
         root: &RootCircuitData<F, C, D>,
     ) -> AggregationCircuitData<F, C, D> {
-        let cap_before_len = root.proof_with_pis[7].proof.wires_cap.0.len();
-        let cap_after_len = root.proof_with_pis[8].proof.wires_cap.0.len();
+        let cap_before_len = root.proof_with_pis[*Table::MemBefore]
+            .proof
+            .wires_cap
+            .0
+            .len();
+        let cap_after_len = root.proof_with_pis[*Table::MemAfter]
+            .proof
+            .wires_cap
+            .0
+            .len();
         let mut builder = CircuitBuilder::<F, D>::new(root.circuit.common.config.clone());
         let public_values = add_virtual_public_values(&mut builder, cap_before_len, cap_after_len);
         let cyclic_vk = builder.add_verifier_data_public_inputs();
@@ -765,12 +787,13 @@ where
             public_values.extra_block_data,
             parent_pv.extra_block_data,
         );
+
+        // Connect registers, merkle caps and `exit_kernel` between segments.
         RegistersDataTarget::connect(
             &mut builder,
             public_values.registers_after.clone(),
             segment_pv.registers_after.clone(),
         );
-
         RegistersDataTarget::connect(
             &mut builder,
             public_values.registers_before.clone(),
@@ -836,8 +859,6 @@ where
         let parent_txn_proof = builder.add_virtual_proof_with_pis(&expected_common_data);
         let agg_root_proof = builder.add_virtual_proof_with_pis(&agg.circuit.common);
 
-        // We don't need `mem_before` and `mem_after` in transactions,
-        //  so we set the associated lengths to 0.
         let parent_pv = PublicValuesTarget::from_public_inputs(
             &parent_txn_proof.public_inputs,
             len_before,
@@ -905,8 +926,10 @@ where
             agg_pv.exit_kernel.clone(),
         );
 
+        // Check the initial and final register values.
         Self::connect_initial_final_segment(&mut builder, &public_values);
 
+        // Check the initial `MemBefore` `MerklCap` value.
         Self::check_init_merkle_cap(&mut builder, &agg_pv, stark_config);
 
         let cyclic_vk = builder.add_verifier_data_public_inputs();
@@ -1335,7 +1358,6 @@ where
                     ))
                 })?
                 .shrink(stark_proof, &all_proof.ctl_challenges)?;
-
             let index_verifier_data = table_circuits
                 .by_stark_size
                 .keys()
@@ -1345,7 +1367,6 @@ where
                 self.root.index_verifier_data[table],
                 F::from_canonical_usize(index_verifier_data),
             );
-
             root_inputs.set_proof_with_pis_target(&self.root.proof_with_pis[table], &shrunk_proof);
 
             check_abort_signal(abort_signal.clone())?;
@@ -1551,16 +1572,6 @@ where
         .map_err(|_| {
             anyhow::Error::msg("Invalid conversion when setting public values targets.")
         })?;
-        // set_mem_cap::<F, C, _, D>(
-        //     &mut agg_inputs,
-        //     &self.segment_aggregation.public_values.mem_before,
-        //     &lhs_mem_before,
-        // );
-        // set_mem_cap::<F, C, _, D>(
-        //     &mut agg_inputs,
-        //     &self.segment_aggregation.public_values.mem_after,
-        //     &rhs_mem_after,
-        // );
 
         let aggregation_proof = self.segment_aggregation.circuit.prove(agg_inputs)?;
         Ok((aggregation_proof, agg_public_values))
@@ -1578,19 +1589,36 @@ where
         )
     }
 
+    /// Creates a final transaction proof, once all segments of a given transaction have been combined into a
+    /// single aggregation proof.
+    ///
+    /// Transaction proofs can either be generated as a standalone, or combined with a previous transaction proof
+    /// to assert validity of a range of transactions.
+    ///
+    /// # Arguments
+    ///
+    /// - `opt_parent_txn_proof`: an optional parent transaction proof. Passing one will generate a proof of
+    /// validity for both the transaction range covered by the previous proof and the current transaction.
+    /// - `agg_segment_proof`: the final aggregation proof containing all segments within the current transaction.
+    /// - `public_values`: the public values associated to the aggregation proof.
+    ///
+    /// # Outputs
+    ///
+    /// This method outputs a tuple of [`ProofWithPublicInputs<F, C, D>`] and its [`PublicValues`]. Only
+    /// the proof with public inputs is necessary for a verifier to assert correctness of the computation.
     pub fn prove_transaction_aggregation(
         &self,
-        opt_parent_block_proof: Option<&ProofWithPublicInputs<F, C, D>>,
-        agg_root_proof: &ProofWithPublicInputs<F, C, D>,
+        opt_parent_txn_proof: Option<&ProofWithPublicInputs<F, C, D>>,
+        agg_segment_proof: &ProofWithPublicInputs<F, C, D>,
         public_values: PublicValues,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
         let mut txn_inputs = PartialWitness::new();
 
         txn_inputs.set_bool_target(
             self.txn_aggregation.has_parent_block,
-            opt_parent_block_proof.is_some(),
+            opt_parent_txn_proof.is_some(),
         );
-        if let Some(parent_txn_proof) = opt_parent_block_proof {
+        if let Some(parent_txn_proof) = opt_parent_txn_proof {
             txn_inputs.set_proof_with_pis_target(
                 &self.txn_aggregation.parent_block_proof,
                 parent_txn_proof,
@@ -1675,7 +1703,8 @@ where
             );
         }
 
-        txn_inputs.set_proof_with_pis_target(&self.txn_aggregation.agg_root_proof, agg_root_proof);
+        txn_inputs
+            .set_proof_with_pis_target(&self.txn_aggregation.agg_root_proof, agg_segment_proof);
 
         txn_inputs.set_verifier_data_target(
             &self.txn_aggregation.cyclic_vk,
@@ -1690,18 +1719,18 @@ where
         let gas_used_before_key =
             TrieRootsTarget::SIZE * 2 + BlockMetadataTarget::SIZE + BlockHashesTarget::SIZE + 10;
         let txn_public_values = PublicValues {
-            trie_roots_before: opt_parent_block_proof
+            trie_roots_before: opt_parent_txn_proof
                 .map(|p| TrieRoots::from_public_inputs(&p.public_inputs[0..TrieRootsTarget::SIZE]))
                 .unwrap_or(public_values.trie_roots_before),
             extra_block_data: ExtraBlockData {
-                txn_number_before: opt_parent_block_proof
+                txn_number_before: opt_parent_txn_proof
                     .map(|p| {
                         p.public_inputs[txn_number_before_key]
                             .to_canonical_u64()
                             .into()
                     })
                     .unwrap_or(public_values.extra_block_data.txn_number_before),
-                gas_used_before: opt_parent_block_proof
+                gas_used_before: opt_parent_txn_proof
                     .map(|p| {
                         p.public_inputs[gas_used_before_key]
                             .to_canonical_u64()
@@ -2140,7 +2169,6 @@ where
         let mut proof = self
             .initial_wrapper
             .prove(stark_proof_with_metadata, ctl_challenges)?;
-
         for wrapper_circuit in &self.shrinking_wrappers {
             proof = wrapper_circuit.prove(&proof)?;
         }

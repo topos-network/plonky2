@@ -88,6 +88,8 @@ impl PublicValues {
     /// Extracts public values from the given public inputs of a proof.
     /// Public values are always the first public inputs added to the circuit,
     /// so we can start extracting at index 0.
+    /// `len_before` and `len_after` are the lengths of the `MemBefore`
+    /// and `MemAfter` caps respectively.
     pub fn from_public_inputs<F: RichField>(
         pis: &[F],
         len_before: usize,
@@ -410,7 +412,8 @@ impl RegistersData {
 /// Exit kernel at the start of the current proof.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ExitKernel {
-    /// Exit kernel.
+    /// Exit kernel, equal to:
+    /// `program_counter + is_kernel_mode << 32 + gas_used << 192`.
     pub exit_kernel: U256,
 }
 impl ExitKernel {
@@ -423,7 +426,7 @@ impl ExitKernel {
     }
 }
 
-/// Memory before/after cap.
+/// Structure for a Merkle cap. It is used for `MemBefore` and `MemAfter`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MemCap {
     /// STARK cap.

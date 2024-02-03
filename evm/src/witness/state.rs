@@ -21,6 +21,8 @@ pub struct RegistersState {
 }
 
 impl RegistersState {
+    /// Returns the KERNEK context in kernel mode, and the
+    /// current context otherwise.
     pub(crate) const fn code_context(&self) -> usize {
         if self.is_kernel {
             KERNEL_CONTEXT
@@ -29,6 +31,8 @@ impl RegistersState {
         }
     }
 
+    /// Returns a `RegisterState` corresponding to the start
+    /// of a full transaction proof.
     pub fn new_with_main_label() -> Self {
         Self {
             program_counter: KERNEL.global_labels["main_contd"],
@@ -42,6 +46,8 @@ impl RegistersState {
         }
     }
 
+    /// Given the gas used, returns a `RegisterState` corresponding to the end
+    /// of a full transaction proof.
     pub fn new_last_registers_with_gas(gas_used: u64) -> Self {
         Self {
             program_counter: KERNEL.global_labels["halt"],

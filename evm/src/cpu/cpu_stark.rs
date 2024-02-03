@@ -39,6 +39,8 @@ pub(crate) fn ctl_data_keccak_sponge<F: Field>() -> Vec<Column<F>> {
     let virt = Column::single(virt);
     let len = Column::single(COL_MAP.mem_channels[1].value[0]);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
     let timestamp = Column::linear_combination_with_constant(
         [(COL_MAP.clock, num_channels)],
@@ -170,6 +172,8 @@ pub(crate) fn ctl_data_byte_unpacking<F: Field>() -> Vec<Column<F>> {
     );
     res.push(len);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
     let timestamp = Column::linear_combination_with_constant(
         [(COL_MAP.clock, num_channels)],
@@ -215,6 +219,8 @@ pub(crate) fn ctl_data_jumptable_read<F: Field>() -> Vec<Column<F>> {
     let len = Column::constant(F::from_canonical_usize(3));
     res.push(len);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
     let timestamp = Column::linear_combination_with_constant(
         [(COL_MAP.clock, num_channels)],
@@ -246,6 +252,8 @@ pub(crate) fn ctl_data_byte_packing_push<F: Field>() -> Vec<Column<F>> {
     // We fetch the length from the `PUSH` opcode lower bits, that indicate `len - 1`.
     let len = Column::le_bits_with_constant(&COL_MAP.opcode_bits[0..5], F::ONE);
 
+    // Since we start the clock at 1, we have that:
+    // timestamp = (clock - 1) * num_channels + 1.
     let num_channels = F::from_canonical_usize(NUM_CHANNELS);
     let timestamp = Column::linear_combination_with_constant(
         [(COL_MAP.clock, num_channels)],

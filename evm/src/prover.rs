@@ -44,7 +44,7 @@ use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
 use crate::witness::memory::MemoryAddress;
 use crate::witness::state::RegistersState;
-// #[cfg(test)]
+#[cfg(test)]
 use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
 };
@@ -209,7 +209,7 @@ where
             .collect::<Vec<_>>(),
     };
 
-    // #[cfg(test)]
+    #[cfg(test)]
     {
         check_ctls(
             &trace_poly_values,
@@ -408,6 +408,8 @@ where
     ))
 }
 
+/// Returns a memory value in the form `(MemoryAddress, U256)`,
+/// taken from a row in `MemAfterStark`.
 pub(crate) fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAddress, U256) {
     // The row has shape (1, context, segment, virt, [values]) where [values] are 8 32-bit elements representing one U256 word.
     let mem_address = MemoryAddress {
@@ -423,6 +425,13 @@ pub(crate) fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAd
     (mem_address, value)
 }
 
+/// Used for `MemBeforeStark` only.
+/// /// Computes a proof for a single STARK table, including:
+/// - the initial state of the challenger,
+/// - all the requires Merkle caps,
+/// - all the required polynomial and FRI argument openings.
+/// Returns the proof, along with the associated `MerkleCap` and
+/// the memory values stored in the table.
 pub(crate) fn prove_single_table_mem_after<F, C, S, const D: usize>(
     stark: &S,
     config: &StarkConfig,
@@ -467,6 +476,7 @@ where
 /// - the initial state of the challenger,
 /// - all the requires Merkle caps,
 /// - all the required polynomial and FRI argument openings.
+/// Returns the proof, along with the associated `MerkleCap`.
 pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     stark: &S,
     config: &StarkConfig,
@@ -563,7 +573,7 @@ where
 
     let num_ctl_polys = ctl_data.num_ctl_helper_polys();
 
-    // #[cfg(test)]
+    #[cfg(test)]
     {
         check_constraints(
             stark,
@@ -864,7 +874,7 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
     Ok(())
 }
 
-// #[cfg(test)]
+#[cfg(test)]
 /// Check that all constraints evaluate to zero on `H`.
 /// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
 fn check_constraints<'a, F, C, S, const D: usize>(

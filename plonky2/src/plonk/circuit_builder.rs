@@ -345,6 +345,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         HashOutTarget::from_vec(self.add_virtual_targets(4))
     }
 
+    /// Registers a new `HashOutTarget` as a public input. `NUM_HASH_OUT_ELTS` being hardcoded to 4, it internally
+    /// adds 4 virtual targets in a vector fashion.
     pub fn add_virtual_hash_public_input(&mut self) -> HashOutTarget {
         HashOutTarget::from_vec(self.add_virtual_public_input_arr::<4>().into())
     }
@@ -359,6 +361,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         (0..n).map(|_i| self.add_virtual_hash()).collect()
     }
 
+    /// Registers `n` new `HashOutTarget` as public inputs, in a vector fashion.
     pub fn add_virtual_hashes_public_input(&mut self, n: usize) -> Vec<HashOutTarget> {
         (0..n)
             .map(|_i| self.add_virtual_hash_public_input())
