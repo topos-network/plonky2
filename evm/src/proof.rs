@@ -124,7 +124,7 @@ impl PublicValues {
                     + ExtraBlockDataTarget::SIZE],
         );
         let registers_before = RegistersData::from_public_inputs(
-            (&pis[TrieRootsTarget::SIZE * 2
+            &pis[TrieRootsTarget::SIZE * 2
                 + BlockMetadataTarget::SIZE
                 + BlockHashesTarget::SIZE
                 + ExtraBlockDataTarget::SIZE
@@ -132,10 +132,10 @@ impl PublicValues {
                     + BlockMetadataTarget::SIZE
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
-                    + RegistersDataTarget::SIZE]),
+                    + RegistersDataTarget::SIZE],
         );
         let registers_after = RegistersData::from_public_inputs(
-            (&pis[TrieRootsTarget::SIZE * 2
+            &pis[TrieRootsTarget::SIZE * 2
                 + BlockMetadataTarget::SIZE
                 + BlockHashesTarget::SIZE
                 + ExtraBlockDataTarget::SIZE
@@ -144,7 +144,7 @@ impl PublicValues {
                     + BlockMetadataTarget::SIZE
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
-                    + RegistersDataTarget::SIZE * 2]),
+                    + RegistersDataTarget::SIZE * 2],
         );
         let exit_kernel = ExitKernel::from_public_inputs(
             &pis[TrieRootsTarget::SIZE * 2
@@ -1306,15 +1306,15 @@ impl MemCapTarget {
     /// The provided `pis` should start with the extra vblock data.
     pub(crate) fn from_public_inputs(pis: &[Target], len: usize) -> Self {
         let mem_values = &pis[0..len * NUM_HASH_OUT_ELTS];
-        let mem_cap = MerkleCapTarget {
-            0: (0..len)
+        let mem_cap = MerkleCapTarget(
+            (0..len)
                 .map(|i| HashOutTarget {
                     elements: mem_values[i * NUM_HASH_OUT_ELTS..(i + 1) * NUM_HASH_OUT_ELTS]
                         .try_into()
                         .unwrap(),
                 })
                 .collect::<Vec<_>>(),
-        };
+        );
 
         Self { mem_cap }
     }
@@ -1328,8 +1328,8 @@ impl MemCapTarget {
         mc1: Self,
     ) -> Self {
         Self {
-            mem_cap: MerkleCapTarget {
-                0: (0..mc0.mem_cap.0.len())
+            mem_cap: MerkleCapTarget(
+                (0..mc0.mem_cap.0.len())
                     .map(|i| HashOutTarget {
                         elements: (0..NUM_HASH_OUT_ELTS)
                             .map(|j| {
@@ -1344,7 +1344,7 @@ impl MemCapTarget {
                             .unwrap(),
                     })
                     .collect::<Vec<_>>(),
-            },
+            ),
         }
     }
 

@@ -72,11 +72,17 @@ pub(crate) fn ctl_filter_mem_before<F: Field>() -> Filter<F> {
 /// Final values are the last row with a given address.
 /// The filter is `address_changed`.
 pub(crate) fn ctl_filter_mem_after<F: Field>() -> Filter<F> {
-    Filter::new_simple(Column::sum([
-        CONTEXT_FIRST_CHANGE,
-        SEGMENT_FIRST_CHANGE,
-        VIRTUAL_FIRST_CHANGE,
-    ]))
+    Filter::new(
+        vec![(
+            Column::single(FILTER),
+            Column::sum([
+                CONTEXT_FIRST_CHANGE,
+                SEGMENT_FIRST_CHANGE,
+                VIRTUAL_FIRST_CHANGE,
+            ]),
+        )],
+        vec![],
+    )
 }
 
 #[derive(Copy, Clone, Default)]
@@ -310,10 +316,11 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             let row = trace_rows[i];
             if row[CONTEXT_FIRST_CHANGE] + row[SEGMENT_FIRST_CHANGE] + row[VIRTUAL_FIRST_CHANGE]
                 == F::ONE
+                && row[FILTER].is_one()
             {
                 let mut addr_val = vec![F::ONE];
                 addr_val.extend(&row[ADDR_CONTEXT..CONTEXT_FIRST_CHANGE]);
-                let addr_value = final_values.push(addr_val);
+                final_values.push(addr_val);
             }
         }
 

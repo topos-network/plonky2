@@ -13,6 +13,7 @@ use plonky2::plonk::config::{KeccakGoldilocksConfig, PoseidonGoldilocksConfig};
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
+use plonky2_evm::fixed_recursive_verifier::ProverOutputData;
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
@@ -367,7 +368,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 15;
 
-    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_segment(
+    let root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs.clone(),
@@ -377,6 +378,12 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+    let ProverOutputData {
+        proof_with_pis: root_proof,
+        public_values,
+        state: next_state,
+        memory_values: final_mem_values,
+    } = root_proof_data;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof.clone())?;
@@ -387,7 +394,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     inputs.memory_before = final_mem_values;
     inputs.registers_after = RegistersState::new_last_registers_with_gas(30352);
 
-    let (second_root_proof, second_public_values, _, _) = all_circuits.prove_segment(
+    let second_root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs,
@@ -397,6 +404,12 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+
+    let ProverOutputData {
+        proof_with_pis: second_root_proof,
+        public_values: second_public_values,
+        ..
+    } = second_root_proof_data;
 
     all_circuits.verify_root(second_root_proof.clone())?;
 

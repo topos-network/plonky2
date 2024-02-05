@@ -322,7 +322,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
                 state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
                     .content
                     .push(Some(val));
-                let tmp_adddr = addr.increment();
+                addr.increment();
                 val <<= 1;
                 value
             })
@@ -339,7 +339,9 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         "simulate CPU",
         simulate_cpu(&mut state, max_cpu_len)
     );
-    let final_registers = if cpu_res.is_err() {
+    let final_registers = if let Ok(res) = cpu_res {
+        res
+    } else {
         // Retrieve previous PC (before jumping to KernelPanic), to see if we reached `hash_final_tries`.
         // We will output debugging information on the final tries only if we got a root mismatch.
         let previous_pc = state
@@ -359,7 +361,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
             log::debug!(
                 "Computed state trie: {:?}",
-                get_state_trie::<HashedPartialTrie>(&mut state.memory, state_trie_ptr)
+                get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr)
             );
 
             let txn_trie_ptr = u256_to_usize(
@@ -370,7 +372,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("Transactions trie pointer is too large to fit in a usize."))?;
             log::debug!(
                 "Computed transactions trie: {:?}",
-                get_txn_trie::<HashedPartialTrie>(&mut state.memory, txn_trie_ptr)
+                get_txn_trie::<HashedPartialTrie>(&state.memory, txn_trie_ptr)
             );
 
             let receipt_trie_ptr = u256_to_usize(
@@ -381,14 +383,12 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .map_err(|_| anyhow!("Receipts trie pointer is too large to fit in a usize."))?;
             log::debug!(
                 "Computed receipts trie: {:?}",
-                get_receipt_trie::<HashedPartialTrie>(&mut state.memory, receipt_trie_ptr)
+                get_receipt_trie::<HashedPartialTrie>(&state.memory, receipt_trie_ptr)
             );
         }
 
         cpu_res?;
         RegistersState::default()
-    } else {
-        cpu_res.unwrap()
     };
 
     log::info!(

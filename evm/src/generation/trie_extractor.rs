@@ -179,7 +179,7 @@ pub(crate) fn read_logs(
 
 pub(crate) fn read_state_rlp_value(
     memory: &MemoryState,
-    slice: &[Option<U256>],
+    slice: &MemoryValues,
 ) -> Result<Vec<u8>, ProgramError> {
     let storage_trie: HashedPartialTrie =
         get_trie(memory, slice[2].unwrap_or_default().as_usize(), |_, x| {
@@ -196,7 +196,7 @@ pub(crate) fn read_state_rlp_value(
 
 pub(crate) fn read_txn_rlp_value(
     _memory: &MemoryState,
-    slice: &[Option<U256>],
+    slice: &MemoryValues,
 ) -> Result<Vec<u8>, ProgramError> {
     let txn_rlp_len = u256_to_usize(slice[0].unwrap_or_default())?;
     slice[1..txn_rlp_len + 1]
@@ -207,7 +207,7 @@ pub(crate) fn read_txn_rlp_value(
 
 pub(crate) fn read_receipt_rlp_value(
     _memory: &MemoryState,
-    slice: &[Option<U256>],
+    slice: &MemoryValues,
 ) -> Result<Vec<u8>, ProgramError> {
     let (first_byte, receipt) = read_receipt_trie_value(slice)?;
     let mut bytes = rlp::encode(&receipt).to_vec();
@@ -239,10 +239,11 @@ pub(crate) fn get_receipt_trie<N: PartialTrie>(
     get_trie(memory, ptr, read_receipt_rlp_value)
 }
 
+type MemoryValues = Vec<Option<U256>>;
 pub(crate) fn get_trie<N: PartialTrie>(
     memory: &MemoryState,
     ptr: usize,
-    read_rlp_value: fn(&MemoryState, &[Option<U256>]) -> Result<Vec<u8>, ProgramError>,
+    read_rlp_value: fn(&MemoryState, &MemoryValues) -> Result<Vec<u8>, ProgramError>,
 ) -> Result<N, ProgramError> {
     let empty_nibbles = Nibbles {
         count: 0,
@@ -259,7 +260,7 @@ pub(crate) fn get_trie<N: PartialTrie>(
 pub(crate) fn get_trie_helper<N: PartialTrie>(
     memory: &MemoryState,
     ptr: usize,
-    read_value: fn(&MemoryState, &[Option<U256>]) -> Result<Vec<u8>, ProgramError>,
+    read_value: fn(&MemoryState, &MemoryValues) -> Result<Vec<u8>, ProgramError>,
     prefix: Nibbles,
 ) -> Result<Node<N>, ProgramError> {
     let load = |offset| memory.contexts[0].segments[Segment::TrieData as usize].content[offset];
@@ -288,7 +289,7 @@ pub(crate) fn get_trie_helper<N: PartialTrie>(
             let value_ptr = u256_to_usize(load(ptr_payload + 16).unwrap_or_default())?;
             let mut value: Vec<u8> = vec![];
             if value_ptr != 0 {
-                value = read_value(memory, load_slice_from(value_ptr))?;
+                value = read_value(memory, &load_slice_from(value_ptr).to_vec())?;
             };
             Ok(Node::Branch { children, value })
         }
@@ -316,7 +317,7 @@ pub(crate) fn get_trie_helper<N: PartialTrie>(
                 packed: packed.into(),
             };
             let value_ptr = u256_to_usize(load(ptr + 3).unwrap_or_default())?;
-            let value = read_value(memory, load_slice_from(value_ptr))?;
+            let value = read_value(memory, &load_slice_from(value_ptr).to_vec())?;
             Ok(Node::Leaf { nibbles, value })
         }
     }

@@ -454,7 +454,7 @@ impl<'a> Interpreter<'a> {
     fn apply_memops(&mut self, len: usize) -> Result<(), anyhow::Error> {
         for memop in self.memops[len..].iter() {
             match memop {
-                &InterpreterMemOpKind::Read(val, addr) => {}
+                InterpreterMemOpKind::Read(val, addr) => {}
                 &InterpreterMemOpKind::Write(val, addr) => {
                     self.generation_state.memory.set(addr, val)
                 }
@@ -727,13 +727,7 @@ impl<'a> Interpreter<'a> {
                     [Segment::Stack.unscale()]
                 .content
                 .iter()
-                .filter_map(|&opt_elt| {
-                    if let Some(elt) = opt_elt {
-                        Some(elt)
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(|&opt_elt| opt_elt)
                 .collect::<Vec<_>>();
                 stack.truncate(self.stack_len() - 1);
                 stack.push(
@@ -1405,7 +1399,7 @@ impl<'a> Interpreter<'a> {
         let vals = self.interpreter_pop::<2>()?;
         let (value, addr) = (vals[0], vals[1]);
         let (context, segment, offset) = unpack_address!(addr);
-        let memop = self.mstore_queue(context, segment, offset, value);
+        self.mstore_queue(context, segment, offset, value);
         Ok(())
     }
 
@@ -1420,7 +1414,7 @@ impl<'a> Interpreter<'a> {
         bytes.reverse();
 
         for (i, &byte) in bytes.iter().enumerate() {
-            let memop = self.mstore_queue(context, segment, offset + i, byte.into());
+            self.mstore_queue(context, segment, offset + i, byte.into());
         }
 
         self.interpreter_push_no_write(addr + U256::from(n))

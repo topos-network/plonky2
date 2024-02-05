@@ -155,7 +155,7 @@ pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 
     // If exception but not final halting step, ensure we are not in kernel mode.
     let opcode_is_six = builder.add_const_extension(exc_code, F::NEG_ONE * F::from_canonical_u8(6));
-    let constr = builder.mul_many_extension(&[filter_exception, opcode_is_six, lv.is_kernel_mode]);
+    let constr = builder.mul_many_extension([filter_exception, opcode_is_six, lv.is_kernel_mode]);
 
     yield_constr.constraint(builder, constr);
     // Ensure that all bits are either 0 or 1.

@@ -13,7 +13,7 @@ use plonky2::util::serialization::{DefaultGateSerializer, DefaultGeneratorSerial
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
-use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
+use plonky2_evm::fixed_recursive_verifier::{AllRecursiveCircuits, ProverOutputData};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
 use plonky2_evm::witness::state::RegistersState;
@@ -134,7 +134,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     let max_cpu_len = 1 << 20;
     let mut timing = TimingTree::new("prove", log::Level::Info);
 
-    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_segment(
+    let root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs,
@@ -144,12 +144,19 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+
+    let ProverOutputData {
+        proof_with_pis: root_proof,
+        public_values,
+        state: next_state,
+        memory_values: final_mem_values,
+    } = root_proof_data;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 
     final_inputs.memory_before = final_mem_values;
 
-    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_segment(
+    let final_root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs,
@@ -159,6 +166,11 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+    let ProverOutputData {
+        proof_with_pis: final_root_proof,
+        public_values: final_public_values,
+        ..
+    } = final_root_proof_data;
     all_circuits.verify_root(final_root_proof.clone())?;
 
     let first_mem_before = public_values.mem_before.mem_cap.clone();

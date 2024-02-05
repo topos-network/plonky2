@@ -146,7 +146,7 @@ where
         challenger.observe_cap(cap);
     }
 
-    observe_public_values::<F, C, D>(&mut challenger, &public_values)
+    observe_public_values::<F, C, D>(&mut challenger, public_values)
         .map_err(|_| anyhow::Error::msg("Invalid conversion of public values."))?;
 
     // Get challenges for the cross-table lookups.
@@ -214,7 +214,7 @@ where
         check_ctls(
             &trace_poly_values,
             &all_stark.cross_table_lookups,
-            &get_memory_extra_looking_values(&public_values),
+            &get_memory_extra_looking_values(public_values),
         );
     }
 
@@ -254,7 +254,7 @@ where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
-    let (arithmetic_proof, arithmetic_cap) = timed!(
+    let (arithmetic_proof, arithmetic_cap, _) = timed!(
         timing,
         "prove Arithmetic STARK",
         prove_single_table(
@@ -262,14 +262,16 @@ where
             config,
             &trace_poly_values[Table::Arithmetic as usize],
             &trace_commitments[Table::Arithmetic as usize],
+            &[],
             &ctl_data_per_table[Table::Arithmetic as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (byte_packing_proof, bp_cap) = timed!(
+    let (byte_packing_proof, bp_cap, _) = timed!(
         timing,
         "prove byte packing STARK",
         prove_single_table(
@@ -277,14 +279,16 @@ where
             config,
             &trace_poly_values[Table::BytePacking as usize],
             &trace_commitments[Table::BytePacking as usize],
+            &[],
             &ctl_data_per_table[Table::BytePacking as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (cpu_proof, cpu_cap) = timed!(
+    let (cpu_proof, cpu_cap, _) = timed!(
         timing,
         "prove CPU STARK",
         prove_single_table(
@@ -292,14 +296,16 @@ where
             config,
             &trace_poly_values[Table::Cpu as usize],
             &trace_commitments[Table::Cpu as usize],
+            &[],
             &ctl_data_per_table[Table::Cpu as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (keccak_proof, keccak_cap) = timed!(
+    let (keccak_proof, keccak_cap, _) = timed!(
         timing,
         "prove Keccak STARK",
         prove_single_table(
@@ -307,14 +313,16 @@ where
             config,
             &trace_poly_values[Table::Keccak as usize],
             &trace_commitments[Table::Keccak as usize],
+            &[],
             &ctl_data_per_table[Table::Keccak as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (keccak_sponge_proof, keccak_sponge_cap) = timed!(
+    let (keccak_sponge_proof, keccak_sponge_cap, _) = timed!(
         timing,
         "prove Keccak sponge STARK",
         prove_single_table(
@@ -322,14 +330,16 @@ where
             config,
             &trace_poly_values[Table::KeccakSponge as usize],
             &trace_commitments[Table::KeccakSponge as usize],
+            &[],
             &ctl_data_per_table[Table::KeccakSponge as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (logic_proof, logic_cap) = timed!(
+    let (logic_proof, logic_cap, _) = timed!(
         timing,
         "prove logic STARK",
         prove_single_table(
@@ -337,14 +347,16 @@ where
             config,
             &trace_poly_values[Table::Logic as usize],
             &trace_commitments[Table::Logic as usize],
+            &[],
             &ctl_data_per_table[Table::Logic as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (memory_proof, mem_cap) = timed!(
+    let (memory_proof, mem_cap, _) = timed!(
         timing,
         "prove memory STARK",
         prove_single_table(
@@ -352,14 +364,16 @@ where
             config,
             &trace_poly_values[Table::Memory as usize],
             &trace_commitments[Table::Memory as usize],
+            &[],
             &ctl_data_per_table[Table::Memory as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
     );
-    let (mem_before_proof, mem_before_cap) = timed!(
+    let (mem_before_proof, mem_before_cap, _) = timed!(
         timing,
         "prove mem_before STARK",
         prove_single_table(
@@ -367,9 +381,11 @@ where
             config,
             &trace_poly_values[Table::MemBefore as usize],
             &trace_commitments[Table::MemBefore as usize],
+            &[],
             &ctl_data_per_table[Table::MemBefore as usize],
             ctl_challenges,
             challenger,
+            false,
             timing,
             abort_signal.clone(),
         )?
@@ -377,15 +393,16 @@ where
     let (mem_after_proof, mem_after_cap, final_memory_values) = timed!(
         timing,
         "prove mem_after STARK",
-        prove_single_table_mem_after(
+        prove_single_table(
             &all_stark.mem_after_stark,
             config,
             &trace_poly_values[Table::MemAfter as usize],
-            final_memory_values,
             &trace_commitments[Table::MemAfter as usize],
+            &final_memory_values,
             &ctl_data_per_table[Table::MemAfter as usize],
             ctl_challenges,
             challenger,
+            true,
             timing,
             abort_signal,
         )?
@@ -404,7 +421,7 @@ where
             mem_after_proof,
         ],
         (mem_before_cap, mem_after_cap),
-        final_memory_values,
+        final_memory_values.unwrap(),
     ))
 }
 
@@ -425,53 +442,6 @@ pub(crate) fn get_mem_after_value_from_row<F: RichField>(row: &[F]) -> (MemoryAd
     (mem_address, value)
 }
 
-/// Used for `MemBeforeStark` only.
-/// /// Computes a proof for a single STARK table, including:
-/// - the initial state of the challenger,
-/// - all the requires Merkle caps,
-/// - all the required polynomial and FRI argument openings.
-/// Returns the proof, along with the associated `MerkleCap` and
-/// the memory values stored in the table.
-pub(crate) fn prove_single_table_mem_after<F, C, S, const D: usize>(
-    stark: &S,
-    config: &StarkConfig,
-    trace_poly_values: &[PolynomialValues<F>],
-    final_memory_values: Vec<Vec<F>>,
-    trace_commitment: &PolynomialBatch<F, C, D>,
-    ctl_data: &CtlData<F>,
-    ctl_challenges: &GrandProductChallengeSet<F>,
-    challenger: &mut Challenger<F, C::Hasher>,
-    timing: &mut TimingTree,
-    abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<(
-    StarkProofWithMetadata<F, C, D>,
-    MerkleCap<F, C::Hasher>,
-    MemBeforeValues,
-)>
-where
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    S: Stark<F, D>,
-{
-    let final_mem_values = final_memory_values
-        .iter()
-        .map(|row| get_mem_after_value_from_row(row))
-        .collect::<Vec<_>>();
-    let (proof, cap) = prove_single_table(
-        stark,
-        config,
-        trace_poly_values,
-        trace_commitment,
-        ctl_data,
-        ctl_challenges,
-        challenger,
-        timing,
-        abort_signal,
-    )?;
-
-    Ok((proof, cap, final_mem_values))
-}
-
 /// Computes a proof for a single STARK table, including:
 /// - the initial state of the challenger,
 /// - all the requires Merkle caps,
@@ -482,12 +452,18 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     config: &StarkConfig,
     trace_poly_values: &[PolynomialValues<F>],
     trace_commitment: &PolynomialBatch<F, C, D>,
+    final_memory_values: &[Vec<F>],
     ctl_data: &CtlData<F>,
     ctl_challenges: &GrandProductChallengeSet<F>,
     challenger: &mut Challenger<F, C::Hasher>,
+    is_mem_after: bool,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<(StarkProofWithMetadata<F, C, D>, MerkleCap<F, C::Hasher>)>
+) -> Result<(
+    StarkProofWithMetadata<F, C, D>,
+    MerkleCap<F, C::Hasher>,
+    Option<Vec<(MemoryAddress, U256)>>,
+)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -495,6 +471,16 @@ where
 {
     check_abort_signal(abort_signal.clone())?;
 
+    let final_mem_values = if is_mem_after {
+        Some(
+            final_memory_values
+                .iter()
+                .map(|row| get_mem_after_value_from_row(row))
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
     let degree = trace_poly_values[0].len();
     let degree_bits = log2_strict(degree);
     let fri_params = config.fri_params(degree_bits);
@@ -697,6 +683,7 @@ where
             proof,
         },
         trace_commitment.merkle_tree.cap.clone(),
+        final_mem_values,
     ))
 }
 

@@ -14,7 +14,7 @@ use plonky2::plonk::config::PoseidonGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
-use plonky2_evm::fixed_recursive_verifier::AllRecursiveCircuits;
+use plonky2_evm::fixed_recursive_verifier::{AllRecursiveCircuits, ProverOutputData};
 use plonky2_evm::generation::mpt::transaction_testing::{AddressOption, LegacyTransactionRlp};
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp, LogRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
@@ -474,29 +474,35 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             4..13,
             17..20,
             8..18,
-            17..18,
+            16..17,
         ],
         &config,
     );
 
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
     let max_cpu_len = 1 << 20;
-    let (root_proof_first, public_values_first, next_state_first, final_mem_values_first) =
-        all_circuits.prove_segment(
-            &all_stark,
-            &config,
-            inputs_first,
-            max_cpu_len,
-            None,
-            true,
-            &mut timing,
-            None,
-        )?;
+    let root_proof_data_first = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs_first,
+        max_cpu_len,
+        None,
+        true,
+        &mut timing,
+        None,
+    )?;
+
+    let ProverOutputData {
+        proof_with_pis: root_proof_first,
+        public_values: public_values_first,
+        state: next_state_first,
+        memory_values: final_mem_values_first,
+    } = root_proof_data_first;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
     final_inputs_first.memory_before = final_mem_values_first;
-    let (final_root_proof_first, final_public_values_first, _, _) = all_circuits.prove_segment(
+    let final_root_proof_data_first = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs_first,
@@ -506,6 +512,13 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+
+    let ProverOutputData {
+        proof_with_pis: final_root_proof_first,
+        public_values: final_public_values_first,
+        ..
+    } = final_root_proof_data_first;
+
     all_circuits.verify_root(final_root_proof_first.clone())?;
     // The gas used and transaction number are fed to the next transaction, so the two proofs can be correctly aggregated.
     let gas_used_second = public_values_first.extra_block_data.gas_used_after;
@@ -631,23 +644,28 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
     let max_cpu_len = 1 << 20;
-    let (root_proof_second, public_values_second, next_state_second, final_mem_values_second) =
-        all_circuits.prove_segment(
-            &all_stark,
-            &config,
-            inputs,
-            max_cpu_len,
-            None,
-            true,
-            &mut timing,
-            None.clone(),
-        )?;
+    let root_proof_data_second = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs,
+        max_cpu_len,
+        None,
+        true,
+        &mut timing,
+        None.clone(),
+    )?;
+    let ProverOutputData {
+        proof_with_pis: root_proof_second,
+        public_values: public_values_second,
+        state: next_state_second,
+        memory_values: final_mem_values_second,
+    } = root_proof_data_second;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof_second.clone())?;
 
     final_inputs.memory_before = final_mem_values_second;
-    let (final_root_proof_second, final_public_values_second, _, _) = all_circuits.prove_segment(
+    let final_root_proof_data_second = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs,
@@ -657,7 +675,11 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None.clone(),
     )?;
-
+    let ProverOutputData {
+        proof_with_pis: final_root_proof_second,
+        public_values: final_public_values_second,
+        ..
+    } = final_root_proof_data_second;
     all_circuits.verify_root(final_root_proof_second.clone())?;
 
     let (segment_agg_proof_first, updated_agg_public_values_first) = all_circuits
@@ -759,7 +781,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         ..inputs.clone()
     };
 
-    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_segment(
+    let root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs,
@@ -769,10 +791,16 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+    let ProverOutputData {
+        proof_with_pis: root_proof,
+        public_values,
+        state: next_state,
+        memory_values: final_mem_values,
+    } = root_proof_data;
     all_circuits.verify_root(root_proof.clone())?;
 
     final_inputs.memory_before = final_mem_values;
-    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_segment(
+    let final_root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs,
@@ -782,6 +810,11 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+    let ProverOutputData {
+        proof_with_pis: final_root_proof,
+        public_values: final_public_values,
+        ..
+    } = final_root_proof_data;
     all_circuits.verify_root(final_root_proof.clone())?;
 
     // We can just duplicate the initial proof as the state didn't change.

@@ -66,6 +66,18 @@ use crate::witness::memory::MemoryAddress;
 /// The recursion threshold. We end a chain of recursive proofs once we reach this size.
 const THRESHOLD_DEGREE_BITS: usize = 13;
 
+pub struct ProverOutputData<F, C, const D: usize>
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F>,
+{
+    pub proof_with_pis: ProofWithPublicInputs<F, C, D>,
+    pub public_values: PublicValues,
+    pub state: GenerationState<F>,
+    pub memory_values: Vec<(MemoryAddress, U256)>,
+}
+
 /// Contains all recursive circuits used in the system. For each STARK and each initial
 /// `degree_bits`, this contains a chain of recursive circuits for shrinking that STARK from
 /// `degree_bits` to a constant `THRESHOLD_DEGREE_BITS`. It also contains a special root circuit
@@ -995,13 +1007,12 @@ where
         .cap;
 
         let init_cap_target = MemCapTarget {
-            mem_cap: MerkleCapTarget {
-                0: cap
-                    .0
+            mem_cap: MerkleCapTarget(
+                cap.0
                     .iter()
                     .map(|&h| builder.constant_hash(h))
                     .collect::<Vec<_>>(),
-            },
+            ),
         };
 
         MemCapTarget::connect(builder, x.mem_before.clone(), init_cap_target);
@@ -1325,12 +1336,7 @@ where
         is_first_segment: bool,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
-    ) -> anyhow::Result<(
-        ProofWithPublicInputs<F, C, D>,
-        PublicValues,
-        GenerationState<F>,
-        Vec<(MemoryAddress, U256)>,
-    )> {
+    ) -> anyhow::Result<ProverOutputData<F, C, D>> {
         let (all_proof, next_state) = prove::<F, C, D>(
             all_stark,
             config,
@@ -1388,12 +1394,12 @@ where
 
         let root_proof = self.root.circuit.prove(root_inputs)?;
 
-        Ok((
-            root_proof,
-            all_proof.public_values,
-            next_state,
-            all_proof.final_memory_values,
-        ))
+        Ok(ProverOutputData {
+            proof_with_pis: root_proof,
+            public_values: all_proof.public_values,
+            state: next_state,
+            memory_values: all_proof.final_memory_values,
+        })
     }
 
     /// From an initial set of STARK proofs passed with their associated recursive table circuits,
