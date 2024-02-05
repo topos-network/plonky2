@@ -482,7 +482,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let mut timing = TimingTree::new("prove root first", log::Level::Info);
     let max_cpu_len = 1 << 20;
     let (root_proof_first, public_values_first, next_state_first, final_mem_values_first) =
-        all_circuits.prove_root(
+        all_circuits.prove_segment(
             &all_stark,
             &config,
             inputs_first,
@@ -496,7 +496,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
     final_inputs_first.memory_before = final_mem_values_first;
-    let (final_root_proof_first, final_public_values_first, _, _) = all_circuits.prove_root(
+    let (final_root_proof_first, final_public_values_first, _, _) = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs_first,
@@ -632,7 +632,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
     let max_cpu_len = 1 << 20;
     let (root_proof_second, public_values_second, next_state_second, final_mem_values_second) =
-        all_circuits.prove_root(
+        all_circuits.prove_segment(
             &all_stark,
             &config,
             inputs,
@@ -647,7 +647,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     all_circuits.verify_root(root_proof_second.clone())?;
 
     final_inputs.memory_before = final_mem_values_second;
-    let (final_root_proof_second, final_public_values_second, _, _) = all_circuits.prove_root(
+    let (final_root_proof_second, final_public_values_second, _, _) = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs,
@@ -759,7 +759,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         ..inputs.clone()
     };
 
-    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_root(
+    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs,
@@ -772,7 +772,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     all_circuits.verify_root(root_proof.clone())?;
 
     final_inputs.memory_before = final_mem_values;
-    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_root(
+    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs,

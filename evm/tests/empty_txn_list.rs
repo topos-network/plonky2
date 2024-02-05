@@ -134,7 +134,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     let max_cpu_len = 1 << 20;
     let mut timing = TimingTree::new("prove", log::Level::Info);
 
-    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_root(
+    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs,
@@ -149,7 +149,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
 
     final_inputs.memory_before = final_mem_values;
 
-    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_root(
+    let (final_root_proof, final_public_values, _, _) = all_circuits.prove_segment(
         &all_stark,
         &config,
         final_inputs,

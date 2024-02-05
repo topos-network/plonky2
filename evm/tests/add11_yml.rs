@@ -367,7 +367,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 15;
 
-    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_root(
+    let (root_proof, public_values, next_state, final_mem_values) = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs.clone(),
@@ -387,7 +387,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     inputs.memory_before = final_mem_values;
     inputs.registers_after = RegistersState::new_last_registers_with_gas(30352);
 
-    let (second_root_proof, second_public_values, _, _) = all_circuits.prove_root(
+    let (second_root_proof, second_public_values, _, _) = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs,

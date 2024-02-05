@@ -521,7 +521,7 @@ where
             mem_before,
             mem_after,
         ];
-        let root = Self::create_root_circuit(&by_table, stark_config);
+        let root = Self::create_segment_circuit(&by_table, stark_config);
         let segment_aggregation = Self::create_segmented_aggregation_circuit(&root);
         let txn_aggregation = Self::create_transaction_circuit(&segment_aggregation, stark_config);
         let block = Self::create_block_circuit(&txn_aggregation);
@@ -553,7 +553,7 @@ where
         self.block.circuit.verifier_data()
     }
 
-    fn create_root_circuit(
+    fn create_segment_circuit(
         by_table: &[RecursiveCircuitsForTable<F, C, D>; NUM_TABLES],
         stark_config: &StarkConfig,
     ) -> RootCircuitData<F, C, D> {
@@ -1315,7 +1315,7 @@ where
     /// the proof with public inputs is necessary for a verifier to assert correctness of the computation,
     /// but the public values are output for the prover convenience, as these are necessary during proof
     /// aggregation.
-    pub fn prove_root(
+    pub fn prove_segment(
         &self,
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
@@ -1434,7 +1434,7 @@ where
     /// let table_circuits = { ... };
     ///
     /// // Finally shrink the STARK proof.
-    /// let (proof, public_values) = prove_root_after_initial_stark(
+    /// let (proof, public_values) = prove_segment_after_initial_stark(
     ///     &all_stark,
     ///     &config,
     ///     &stark_proof,
@@ -1443,7 +1443,7 @@ where
     ///     abort_signal,
     /// ).unwrap();
     /// ```
-    pub fn prove_root_after_initial_stark(
+    pub fn prove_segment_after_initial_stark(
         &self,
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
