@@ -188,7 +188,6 @@ fn test_erc721() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None,

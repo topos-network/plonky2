@@ -1332,7 +1332,7 @@ where
         config: &StarkConfig,
         generation_inputs: GenerationInputs,
         max_cpu_len: usize,
-        previous_state: Option<GenerationState<F>>,
+
         segment_index: usize,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
@@ -1342,7 +1342,6 @@ where
             config,
             generation_inputs,
             max_cpu_len,
-            previous_state,
             segment_index,
             timing,
             abort_signal.clone(),

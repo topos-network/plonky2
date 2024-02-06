@@ -25,7 +25,7 @@ use crate::cpu::kernel::aggregator::KERNEL;
 use crate::cpu::kernel::assembler::Kernel;
 use crate::cpu::kernel::constants::context_metadata::ContextMetadata;
 use crate::cpu::kernel::constants::global_metadata::GlobalMetadata;
-use crate::cpu::kernel::interpreter::Interpreter;
+use crate::cpu::kernel::interpreter::{generate_segment, Interpreter};
 use crate::cpu::kernel::opcodes::get_opcode;
 use crate::generation::state::GenerationState;
 use crate::generation::trie_extractor::{get_receipt_trie, get_state_trie, get_txn_trie};
@@ -274,7 +274,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     inputs: GenerationInputs,
     config: &StarkConfig,
     max_cpu_len: usize,
-    previous_state: Option<GenerationState<F>>,
+    previous_state: GenerationState<F>,
     segment_index: usize,
     timing: &mut TimingTree,
 ) -> anyhow::Result<(
@@ -286,40 +286,8 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
 )> {
     // Initialize the state with the state at the end of the
     // previous segment execution, if any.
-    let mut state = match previous_state {
-        Some(s) => {
-            let mut new_state = s;
-            new_state.registers = inputs.registers_before;
-            new_state
-        }
-        None => {
-            let mut new_state =
-                GenerationState::<F>::new(inputs.clone(), &KERNEL.code).map_err(|err| {
-                    anyhow!("Failed to parse all the initial prover inputs: {:?}", err)
-                })?;
 
-            new_state.registers = RegistersState {
-                program_counter: new_state.registers.program_counter,
-                is_kernel: new_state.registers.is_kernel,
-                ..inputs.registers_before
-            };
-
-            new_state
-        }
-    };
-
-    let interpreter_inputs = GenerationInputs {
-        registers_before: RegistersState::new_with_main_label(),
-        ..inputs.clone()
-    };
-
-    let mut interpreter = Interpreter::new_with_generation_inputs_and_kernel(
-        KERNEL.global_labels["main"],
-        vec![],
-        interpreter_inputs,
-    );
-    let output = interpreter.generate_segment(max_cpu_len, segment_index)?;
-
+    let mut state = previous_state;
     // If the current execution is that of the first segment in the proof,
     // then preinitialize the `ShiftTable` by adding it to the
     // `mem_before_values`. Otherwise, `mem_before_values`

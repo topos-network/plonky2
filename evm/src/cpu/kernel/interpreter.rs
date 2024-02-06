@@ -33,8 +33,9 @@ use crate::witness::gas::gas_to_charge;
 use crate::witness::memory::{MemoryAddress, MemoryContextState, MemorySegmentState, MemoryState};
 use crate::witness::operation::{Operation, CONTEXT_SCALING_FACTOR};
 use crate::witness::state::RegistersState;
-use crate::witness::transition::decode;
+use crate::witness::transition::{decode, get_op_special_length, might_overflow_op};
 use crate::witness::util::{push_no_write, stack_peek};
+use crate::{arithmetic, logic};
 
 type F = GoldilocksField;
 
@@ -114,6 +115,95 @@ pub(crate) fn run<'a>(
     let mut interpreter = Interpreter::new(code, initial_offset, initial_stack, prover_inputs);
     interpreter.run(None)?;
     Ok(interpreter)
+}
+
+pub(crate) fn generate_segment(
+    max_cpu_len: usize,
+    index: usize,
+    inputs: &GenerationInputs,
+) -> anyhow::Result<(RegistersState, RegistersState, MemoryState, MemoryState)> {
+    let main_label = KERNEL.global_labels["main"];
+    let initial_registers = RegistersState::new_with_main_label();
+    let interpreter_inputs = GenerationInputs {
+        registers_before: initial_registers,
+        ..inputs.clone()
+    };
+    let mut interpreter = Interpreter::new_with_generation_inputs_and_kernel(
+        KERNEL.global_labels["main"],
+        vec![],
+        interpreter_inputs,
+    );
+
+    let (mut before_registers, mut before_mem_values) = (
+        RegistersState {
+            program_counter: KERNEL.global_labels["main_contd"],
+            ..interpreter.generation_state.registers
+        },
+        interpreter.generation_state.memory.clone(),
+    );
+    let (mut after_registers, mut after_mem_values) = (
+        RegistersState {
+            program_counter: KERNEL.global_labels["main_contd"],
+            ..interpreter.generation_state.registers
+        },
+        interpreter.generation_state.memory.clone(),
+    );
+    for i in 0..index + 1 {
+        // Write initial registers.
+        let registers_before = [
+            after_registers.program_counter.into(),
+            (after_registers.is_kernel as usize).into(),
+            after_registers.stack_len.into(),
+            after_registers.stack_top,
+            after_registers.context.into(),
+            after_registers.gas_used.into(),
+        ];
+        let registers_before_fields = (0..registers_before.len())
+            .map(|i| {
+                (
+                    MemoryAddress::new_u256s(
+                        0.into(),
+                        (Segment::RegistersStates.unscale()).into(),
+                        i.into(),
+                    )
+                    .unwrap(),
+                    registers_before[i],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        interpreter.set_memory_multi_addresses(&registers_before_fields);
+
+        let length = registers_before.len();
+        // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
+        let exit_kernel = U256::from(after_registers.program_counter)
+            + (U256::from(after_registers.is_kernel as u64) << 32)
+            + (U256::from(after_registers.gas_used) << 192);
+
+        let exit_kernel_addr = MemoryAddress::new_u256s(
+            0.into(),
+            Segment::RegistersStates.unscale().into(),
+            (2 * length).into(),
+        )
+        .unwrap();
+        interpreter.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
+
+        // interpreter.generation_state.registers = after_registers;
+
+        (before_registers, before_mem_values) = (after_registers, after_mem_values);
+        interpreter.generation_state.registers.program_counter = main_label;
+        interpreter.generation_state.registers.is_kernel = true;
+
+        // interpreter.generation_state.memory = before_mem_values.clone();
+        (after_registers, after_mem_values) = interpreter.run(Some(max_cpu_len))?;
+    }
+
+    Ok((
+        before_registers,
+        after_registers,
+        before_mem_values,
+        after_mem_values,
+    ))
 }
 
 #[derive(Debug)]
@@ -509,81 +599,6 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Generates a segment by returning the state and memory values after `MAX_SIZE` CPU rows.
-    pub(crate) fn generate_segment(
-        &mut self,
-        max_cpu_len: usize,
-        index: usize,
-    ) -> anyhow::Result<(RegistersState, RegistersState, MemoryState, MemoryState)> {
-        let cpu_len = index * max_cpu_len;
-        let (before_registers, before_mem_values) = if index > 0 {
-            self.generation_state.registers.program_counter = KERNEL.global_labels["main"];
-            self.generation_state.registers.is_kernel = true;
-            self.run(Some(cpu_len))?
-        } else {
-            (
-                RegistersState {
-                    program_counter: KERNEL.global_labels["main_contd"],
-                    ..self.generation_state.registers
-                },
-                self.generation_state.memory.clone(),
-            )
-        };
-
-        self.generation_state.registers = RegistersState {
-            program_counter: KERNEL.global_labels["main"],
-            is_kernel: true,
-            ..before_registers
-        };
-
-        // Write initial registers.
-        let registers_before = [
-            before_registers.program_counter.into(),
-            (before_registers.is_kernel as usize).into(),
-            before_registers.stack_len.into(),
-            before_registers.stack_top,
-            before_registers.context.into(),
-            before_registers.gas_used.into(),
-        ];
-        let registers_before_fields = (0..registers_before.len())
-            .map(|i| {
-                (
-                    MemoryAddress::new_u256s(
-                        0.into(),
-                        (Segment::RegistersStates.unscale()).into(),
-                        i.into(),
-                    )
-                    .unwrap(),
-                    registers_before[i],
-                )
-            })
-            .collect::<Vec<_>>();
-
-        self.set_memory_multi_addresses(&registers_before_fields);
-
-        let length = registers_before.len();
-        // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
-        let exit_kernel = U256::from(before_registers.program_counter)
-            + (U256::from(before_registers.is_kernel as u64) << 32)
-            + (U256::from(before_registers.gas_used) << 192);
-
-        let exit_kernel_addr = MemoryAddress::new_u256s(
-            0.into(),
-            Segment::RegistersStates.unscale().into(),
-            (2 * length).into(),
-        )
-        .unwrap();
-        self.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
-
-        self.run(Some(max_cpu_len))?;
-        let after_registers = self.generation_state.registers;
-        let after_mem_values = self.generation_state.memory.clone();
-        Ok((
-            before_registers,
-            after_registers,
-            before_mem_values,
-            after_mem_values,
-        ))
-    }
 
     pub(crate) fn run(
         &mut self,
@@ -604,6 +619,13 @@ impl<'a> Interpreter<'a> {
                 final_mem = self.generation_state.memory.clone();
                 return Ok((final_registers, final_mem));
             };
+
+            if self.generation_state.registers.is_stack_top_read {
+                self.generation_state.registers.is_stack_top_read = false;
+            }
+            if self.generation_state.registers.check_overflow {
+                self.generation_state.registers.check_overflow = false;
+            }
 
             let checkpoint = self.checkpoint();
             let result = self.run_opcode();
@@ -901,6 +923,14 @@ impl<'a> Interpreter<'a> {
             .byte(0);
         self.opcode_count[opcode as usize] += 1;
         self.incr(1);
+
+        let op = decode(self.generation_state.registers, opcode)
+            // We default to prover inputs, as those are kernel-only instructions that charge nothing.
+            .unwrap_or(Operation::ProverInput);
+
+        if let Some(special_len) = get_op_special_length(op) {
+            self.generation_state.registers.is_stack_top_read = true;
+        };
         match opcode {
             0x00 => self.run_syscall(opcode, 0, false), // "STOP",
             0x01 => self.run_add(),                     // "ADD",
@@ -1034,9 +1064,6 @@ impl<'a> Interpreter<'a> {
             println!("At {label}");
         }
 
-        let op = decode(self.generation_state.registers, opcode)
-            // We default to prover inputs, as those are kernel-only instructions that charge nothing.
-            .unwrap_or(Operation::ProverInput);
         self.generation_state.registers.gas_used += gas_to_charge(op);
 
         if !self.is_kernel() {
@@ -1050,6 +1077,9 @@ impl<'a> Interpreter<'a> {
             if self.generation_state.registers.gas_used > gas_limit {
                 return Err(ProgramError::OutOfGas);
             }
+        }
+        if might_overflow_op(op) {
+            self.generation_state.registers.check_overflow = true;
         }
 
         Ok(())
@@ -1249,6 +1279,9 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_pop(&mut self) -> anyhow::Result<(), ProgramError> {
+        if self.stack_len() != 1 {
+            self.generation_state.registers.is_stack_top_read = true;
+        }
         self.interpreter_pop::<1>().map(|_| ())
     }
 
@@ -1372,9 +1405,6 @@ impl<'a> Interpreter<'a> {
             self.generation_state.observe_contract(tip_h256)?;
         }
 
-        if self.halt_offsets.contains(&offset) {
-            self.running = false;
-        }
         Ok(())
     }
 
@@ -1483,6 +1513,10 @@ impl<'a> Interpreter<'a> {
     }
 
     fn run_mstore_general(&mut self) -> anyhow::Result<(), ProgramError> {
+        if self.stack_len() != 2 {
+            self.generation_state.registers.is_stack_top_read = true;
+        }
+
         let vals = self.interpreter_pop::<2>()?;
         let (value, addr) = (vals[0], vals[1]);
         let (context, segment, offset) = unpack_address!(addr);

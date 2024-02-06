@@ -180,7 +180,6 @@ fn add11_yml() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None,
@@ -373,7 +372,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &config,
         inputs.clone(),
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None,
@@ -381,7 +379,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof,
         public_values,
-        state: next_state,
+        state: _,
         memory_values: final_mem_values,
     } = root_proof_data;
     timing.filter(Duration::from_millis(100)).print();
@@ -399,7 +397,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
-        Some(next_state),
         1,
         &mut timing,
         None,

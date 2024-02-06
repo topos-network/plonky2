@@ -27,6 +27,7 @@ use crate::all_stark::{AllStark, Table, NUM_TABLES};
 use crate::config::StarkConfig;
 use crate::constraint_consumer::ConstraintConsumer;
 use crate::cpu::kernel::aggregator::KERNEL;
+use crate::cpu::kernel::interpreter::generate_segment;
 use crate::cross_table_lookup::{
     cross_table_lookup_data, get_grand_product_challenge_set, CtlCheckVars, CtlData,
     GrandProductChallengeSet,
@@ -55,7 +56,6 @@ pub fn prove<F, C, const D: usize>(
     config: &StarkConfig,
     inputs: GenerationInputs,
     max_cpu_len: usize,
-    previous_state: Option<GenerationState<F>>,
     segment_index: usize,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
@@ -65,15 +65,30 @@ where
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
+    let output = generate_segment(max_cpu_len, segment_index, &inputs)?;
+    let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
+        .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
+    state.registers = RegistersState {
+        program_counter: state.registers.program_counter,
+        is_kernel: state.registers.is_kernel,
+        ..output.0
+    };
+    state.memory = output.2;
+
+    let actual_inputs = GenerationInputs {
+        registers_before: output.0,
+        registers_after: output.1,
+        ..inputs
+    };
     let (traces, final_memory_values, final_registers, mut public_values, next_state) = timed!(
         timing,
         "generate all traces",
         generate_traces(
             all_stark,
-            inputs,
+            actual_inputs,
             config,
             max_cpu_len,
-            previous_state,
+            state,
             segment_index,
             timing
         )?

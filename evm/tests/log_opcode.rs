@@ -242,7 +242,6 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None,
@@ -486,7 +485,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         inputs_first,
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None,
@@ -495,7 +493,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof_first,
         public_values: public_values_first,
-        state: next_state_first,
+        state: _next_state_first,
         memory_values: final_mem_values_first,
     } = root_proof_data_first;
 
@@ -507,7 +505,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         final_inputs_first,
         max_cpu_len,
-        Some(next_state_first),
         1,
         &mut timing,
         None,
@@ -649,7 +646,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None.clone(),
@@ -657,7 +653,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof_second,
         public_values: public_values_second,
-        state: next_state_second,
+        state: _next_state_second,
         memory_values: final_mem_values_second,
     } = root_proof_data_second;
     timing.filter(Duration::from_millis(100)).print();
@@ -670,7 +666,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         final_inputs,
         max_cpu_len,
-        Some(next_state_second),
         1,
         &mut timing,
         None.clone(),
@@ -786,7 +781,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         inputs,
         max_cpu_len,
-        None,
         0,
         &mut timing,
         None,
@@ -794,7 +788,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof,
         public_values,
-        state: next_state,
+        state: _next_state,
         memory_values: final_mem_values,
     } = root_proof_data;
     all_circuits.verify_root(root_proof.clone())?;
@@ -805,7 +799,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         &config,
         final_inputs,
         max_cpu_len,
-        Some(next_state),
         1,
         &mut timing,
         None,
