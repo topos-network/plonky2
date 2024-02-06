@@ -181,7 +181,7 @@ fn add11_yml() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;
@@ -320,14 +320,14 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         receipts_root: receipts_trie.hash(),
     };
     let registers_after = RegistersState {
-        program_counter: 33746,
+        program_counter: 33864,
         is_kernel: true,
-        stack_len: 26,
-        stack_top: U256::from("97909BDCFD301AB3A6EC4FD6260CFB2C285EF2F76062A6B9741DF57493C0F1F6"),
+        stack_len: 17,
+        stack_top: U256::from("48532eb2c69d9d9f4bc72ba696da089471a6980f72f92215204120f571f5548d"),
         is_stack_top_read: false,
         check_overflow: true,
         context: 0,
-        gas_used: 112539,
+        gas_used: 112598,
     };
     let mut inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
@@ -374,7 +374,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         inputs.clone(),
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;
@@ -400,7 +400,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         Some(next_state),
-        false,
+        1,
         &mut timing,
         None,
     )?;

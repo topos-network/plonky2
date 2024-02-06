@@ -29,7 +29,7 @@ fn test_log_0() -> Result<()> {
     interpreter.set_global_metadata_field(GlobalMetadata::LogsLen, 0.into());
     interpreter.set_global_metadata_field(GlobalMetadata::LogsDataLen, 0.into());
 
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     // The address is encoded in 1+20 bytes. There are no topics or data, so each is encoded in 1 byte. This leads to a payload of 23.
     let payload_len = 23;
@@ -74,7 +74,7 @@ fn test_log_2() -> Result<()> {
 
     interpreter.set_memory_segment(Segment::MainMemory, memory);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.get_memory_segment(Segment::Logs),
         [0.into(), 0.into(), 5.into(),]
@@ -135,7 +135,7 @@ fn test_log_4() -> Result<()> {
 
     interpreter.set_memory_segment(Segment::MainMemory, memory);
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.get_memory_segment(Segment::Logs),
         [0.into(), 0.into(), 5.into(),]
@@ -193,6 +193,6 @@ fn test_log_5() -> Result<()> {
     interpreter.set_global_metadata_field(GlobalMetadata::LogsLen, 0.into());
     interpreter.set_global_metadata_field(GlobalMetadata::LogsDataLen, 0.into());
 
-    assert!(interpreter.run().is_err());
+    assert!(interpreter.run(None).is_err());
     Ok(())
 }

@@ -1333,7 +1333,7 @@ where
         generation_inputs: GenerationInputs,
         max_cpu_len: usize,
         previous_state: Option<GenerationState<F>>,
-        is_first_segment: bool,
+        segment_index: usize,
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
     ) -> anyhow::Result<ProverOutputData<F, C, D>> {
@@ -1343,7 +1343,7 @@ where
             generation_inputs,
             max_cpu_len,
             previous_state,
-            is_first_segment,
+            segment_index,
             timing,
             abort_signal.clone(),
         )?;

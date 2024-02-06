@@ -68,7 +68,7 @@ fn prepare_interpreter(
         .push(k.try_into_u256().unwrap())
         .expect("The stack should not overflow"); // key
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.stack().len(),
         0,
@@ -84,7 +84,7 @@ fn prepare_interpreter(
     interpreter
         .push(1.into()) // Initial trie data segment size, unused.
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),
@@ -123,7 +123,7 @@ fn test_balance() -> Result<()> {
     interpreter
         .push(U256::from_big_endian(address.as_bytes()))
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(interpreter.stack(), vec![balance]);
 

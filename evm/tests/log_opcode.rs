@@ -243,7 +243,7 @@ fn test_log_opcodes() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;
@@ -487,7 +487,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         inputs_first,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;
@@ -508,7 +508,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         final_inputs_first,
         max_cpu_len,
         Some(next_state_first),
-        false,
+        1,
         &mut timing,
         None,
     )?;
@@ -650,7 +650,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None.clone(),
     )?;
@@ -671,7 +671,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         final_inputs,
         max_cpu_len,
         Some(next_state_second),
-        false,
+        1,
         &mut timing,
         None.clone(),
     )?;
@@ -787,7 +787,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;
@@ -806,7 +806,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
         final_inputs,
         max_cpu_len,
         Some(next_state),
-        false,
+        1,
         &mut timing,
         None,
     )?;

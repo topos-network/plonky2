@@ -130,7 +130,7 @@ fn test_state_trie(
     interpreter
         .push(k.try_into_u256().unwrap())
         .expect("The stack should not overflow"); // key
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.stack().len(),
         0,
@@ -153,7 +153,7 @@ fn test_state_trie(
     interpreter
         .push(state_trie_ptr)
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
     let state_trie_ptr = interpreter.pop().expect("The stack should not be empty");
     interpreter.set_global_metadata_field(GlobalMetadata::StateTrieRoot, state_trie_ptr);
 
@@ -165,7 +165,7 @@ fn test_state_trie(
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     let state_trie_hash =
         H256::from_uint(&interpreter.pop().expect("The stack should not be empty"));

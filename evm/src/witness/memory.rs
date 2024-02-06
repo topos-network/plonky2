@@ -187,6 +187,34 @@ impl MemoryState {
         }
     }
 
+    pub(crate) fn get_option(&self, address: MemoryAddress) -> Option<U256> {
+        if address.context >= self.contexts.len() {
+            return None;
+        }
+
+        let segment = Segment::all()[address.segment];
+
+        if let Some(constant) = Segment::constant(&segment, address.virt) {
+            return Some(constant);
+        }
+
+        if address.virt
+            >= self.contexts[address.context].segments[address.segment]
+                .content
+                .len()
+        {
+            return None;
+        }
+        let val = self.contexts[address.context].segments[address.segment].get(address.virt);
+        assert!(
+            val.bits() <= segment.bit_range(),
+            "Value {} exceeds {:?} range of {} bits",
+            val,
+            segment,
+            segment.bit_range()
+        );
+        Some(val)
+    }
     pub(crate) fn get(&self, address: MemoryAddress) -> U256 {
         if address.context >= self.contexts.len() {
             return U256::zero();

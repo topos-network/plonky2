@@ -56,7 +56,7 @@ pub fn prove<F, C, const D: usize>(
     inputs: GenerationInputs,
     max_cpu_len: usize,
     previous_state: Option<GenerationState<F>>,
-    is_first_segment: bool,
+    segment_index: usize,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
 ) -> Result<(AllProof<F, C, D>, GenerationState<F>)>
@@ -74,7 +74,7 @@ where
             config,
             max_cpu_len,
             previous_state,
-            is_first_segment,
+            segment_index,
             timing
         )?
     );

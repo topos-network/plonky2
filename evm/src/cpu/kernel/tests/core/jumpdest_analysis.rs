@@ -57,7 +57,7 @@ fn test_jumpdest_analysis() -> Result<()> {
         Some(HashMap::from([(3, vec![0, 1, 0, 5, 0, 7])]))
     );
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(interpreter.stack(), vec![]);
 
     assert_eq!(jumpdest_bits, interpreter.get_jumpdest_bits(3));
@@ -99,7 +99,7 @@ fn test_packed_verification() -> Result<()> {
     interpreter.set_code(CONTEXT, code.clone());
     interpreter.generation_state.jumpdest_table = Some(HashMap::from([(3, vec![1, 33])]));
 
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(jumpdest_bits, interpreter.get_jumpdest_bits(CONTEXT));
 
@@ -111,7 +111,7 @@ fn test_packed_verification() -> Result<()> {
         interpreter.set_code(CONTEXT, code.clone());
         interpreter.generation_state.jumpdest_table = Some(HashMap::from([(3, vec![1, 33])]));
 
-        interpreter.run()?;
+        interpreter.run(None)?;
 
         assert!(interpreter.get_jumpdest_bits(CONTEXT).is_empty());
 

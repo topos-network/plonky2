@@ -140,7 +140,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;
@@ -162,7 +162,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
         final_inputs,
         max_cpu_len,
         Some(next_state),
-        false,
+        1,
         &mut timing,
         None,
     )?;

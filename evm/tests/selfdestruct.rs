@@ -151,7 +151,7 @@ fn test_selfdestruct() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;

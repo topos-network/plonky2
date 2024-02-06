@@ -101,7 +101,7 @@ fn run_test(fn_label: &str, memory: Vec<U256>, stack: Vec<U256>) -> Result<(Vec<
 
     let mut interpreter = Interpreter::new_with_kernel(fn_label, initial_stack);
     interpreter.set_current_general_memory(memory);
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     let new_memory = interpreter.get_current_general_memory();
 

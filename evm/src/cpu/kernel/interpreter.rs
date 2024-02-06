@@ -9,6 +9,7 @@ use eth_trie_utils::partial_trie::PartialTrie;
 use ethereum_types::{BigEndianHash, H160, H256, U256, U512};
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
+#[cfg(test)]
 use ripemd::digest::typenum::NonZero;
 
 use super::assembler::BYTES_PER_OFFSET;
@@ -24,7 +25,7 @@ use crate::generation::mpt::load_all_mpts;
 use crate::generation::prover_input::ProverInputFn;
 use crate::generation::rlp::all_rlp_prover_inputs_reversed;
 use crate::generation::state::{self, all_withdrawals_prover_inputs_reversed, GenerationState};
-use crate::generation::GenerationInputs;
+use crate::generation::{GenerationInputs, NUM_EXTRA_CYCLES};
 use crate::memory::segments::{Segment, SEGMENT_SCALING_FACTOR};
 use crate::util::{h2u, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
@@ -100,7 +101,7 @@ pub(crate) fn run_interpreter_with_memory(
             )
         }
     }
-    interpreter.run()?;
+    interpreter.run(None)?;
     Ok(interpreter)
 }
 
@@ -111,7 +112,7 @@ pub(crate) fn run<'a>(
     prover_inputs: &'a HashMap<usize, ProverInputFn>,
 ) -> anyhow::Result<Interpreter<'a>> {
     let mut interpreter = Interpreter::new(code, initial_offset, initial_stack, prover_inputs);
-    interpreter.run()?;
+    interpreter.run(None)?;
     Ok(interpreter)
 }
 
@@ -158,7 +159,7 @@ impl<'a> Interpreter<'a> {
             prover_inputs_map: prover_inputs,
             // `DEFAULT_HALT_OFFSET` is used as a halting point for the interpreter,
             // while the label `halt` is the halting label in the kernel.
-            halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt_final"]],
+            halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt"]],
             debug_offsets: vec![],
             running: false,
             opcode_count: [0; 256],
@@ -173,7 +174,7 @@ impl<'a> Interpreter<'a> {
                 .iter()
                 .map(|&elt| Some(elt))
                 .collect::<Vec<_>>();
-            result.stack_segment_mut().truncate(initial_stack_len - 1);
+            // result.stack_segment_mut().truncate(initial_stack_len - 1);
         }
 
         result
@@ -454,7 +455,12 @@ impl<'a> Interpreter<'a> {
     fn apply_memops(&mut self, len: usize) -> Result<(), anyhow::Error> {
         for memop in self.memops[len..].iter() {
             match memop {
-                InterpreterMemOpKind::Read(val, addr) => {}
+                &InterpreterMemOpKind::Read(val, addr) => {
+                    if self.generation_state.memory.get_option(addr).is_none() {
+                        assert_eq!(val, 0.into());
+                        self.generation_state.memory.set(addr, val);
+                    }
+                }
                 &InterpreterMemOpKind::Write(val, addr) => {
                     self.generation_state.memory.set(addr, val)
                 }
@@ -502,16 +508,101 @@ impl<'a> Interpreter<'a> {
             .map_err(|_| anyhow::Error::msg("error handling errored..."))
     }
 
-    pub(crate) fn run(&mut self) -> anyhow::Result<()> {
+    /// Generates a segment by returning the state and memory values after `MAX_SIZE` CPU rows.
+    pub(crate) fn generate_segment(
+        &mut self,
+        max_cpu_len: usize,
+        index: usize,
+    ) -> anyhow::Result<(RegistersState, RegistersState, MemoryState, MemoryState)> {
+        let cpu_len = index * max_cpu_len;
+        let (before_registers, before_mem_values) = if index > 0 {
+            self.generation_state.registers.program_counter = KERNEL.global_labels["main"];
+            self.generation_state.registers.is_kernel = true;
+            self.run(Some(cpu_len))?
+        } else {
+            (
+                RegistersState {
+                    program_counter: KERNEL.global_labels["main_contd"],
+                    ..self.generation_state.registers
+                },
+                self.generation_state.memory.clone(),
+            )
+        };
+
+        self.generation_state.registers = RegistersState {
+            program_counter: KERNEL.global_labels["main"],
+            is_kernel: true,
+            ..before_registers
+        };
+
+        // Write initial registers.
+        let registers_before = [
+            before_registers.program_counter.into(),
+            (before_registers.is_kernel as usize).into(),
+            before_registers.stack_len.into(),
+            before_registers.stack_top,
+            before_registers.context.into(),
+            before_registers.gas_used.into(),
+        ];
+        let registers_before_fields = (0..registers_before.len())
+            .map(|i| {
+                (
+                    MemoryAddress::new_u256s(
+                        0.into(),
+                        (Segment::RegistersStates.unscale()).into(),
+                        i.into(),
+                    )
+                    .unwrap(),
+                    registers_before[i],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        self.set_memory_multi_addresses(&registers_before_fields);
+
+        let length = registers_before.len();
+        // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
+        let exit_kernel = U256::from(before_registers.program_counter)
+            + (U256::from(before_registers.is_kernel as u64) << 32)
+            + (U256::from(before_registers.gas_used) << 192);
+
+        let exit_kernel_addr = MemoryAddress::new_u256s(
+            0.into(),
+            Segment::RegistersStates.unscale().into(),
+            (2 * length).into(),
+        )
+        .unwrap();
+        self.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
+
+        self.run(Some(max_cpu_len))?;
+        let after_registers = self.generation_state.registers;
+        let after_mem_values = self.generation_state.memory.clone();
+        Ok((
+            before_registers,
+            after_registers,
+            before_mem_values,
+            after_mem_values,
+        ))
+    }
+
+    pub(crate) fn run(
+        &mut self,
+        max_cpu_len: Option<usize>,
+    ) -> anyhow::Result<(RegistersState, MemoryState)> {
         self.running = true;
+        let mut cpu_counter = 0;
+        let mut final_registers = self.generation_state.registers;
+        let mut final_mem = self.generation_state.memory.clone();
         while self.running {
             let pc = self.generation_state.registers.program_counter;
-            if self.is_kernel() && pc == KERNEL.global_labels["halt"] {
-                self.run_exception(6)
-                    .map_err(|_| anyhow::Error::msg("error ending segment..."));
-            }
-            if self.is_kernel() && self.halt_offsets.contains(&pc) {
-                return Ok(());
+
+            if self.is_kernel() && self.halt_offsets.contains(&pc)
+                || (max_cpu_len.is_some()
+                    && cpu_counter == (max_cpu_len.unwrap() - NUM_EXTRA_CYCLES - 1))
+            {
+                final_registers = self.generation_state.registers;
+                final_mem = self.generation_state.memory.clone();
+                return Ok((final_registers, final_mem));
             };
 
             let checkpoint = self.checkpoint();
@@ -537,6 +628,7 @@ impl<'a> Interpreter<'a> {
                     self.handle_error(e)
                 }
             }?;
+            cpu_counter += 1;
         }
         println!("Opcode count:");
         for i in 0..0x100 {
@@ -545,7 +637,7 @@ impl<'a> Interpreter<'a> {
             }
         }
         println!("Total: {}", self.opcode_count.into_iter().sum::<usize>());
-        Ok(())
+        Ok((final_registers, final_mem))
     }
 
     fn code(&self) -> &MemorySegmentState {
@@ -782,10 +874,6 @@ impl<'a> Interpreter<'a> {
 
         Ok(())
     }
-
-    // fn push_bool(&mut self, x: bool) -> Result<(), ProgramError> {
-    //     self.push(if x { U256::one() } else { U256::zero() })
-    // }
 
     fn push_bool_no_write(&mut self, x: bool) -> Result<(), ProgramError> {
         self.interpreter_push_no_write(if x { U256::one() } else { U256::zero() });
@@ -1139,7 +1227,6 @@ impl<'a> Interpreter<'a> {
     fn run_keccak_general(&mut self) -> anyhow::Result<(), ProgramError> {
         let vals = self.interpreter_pop::<2>()?;
         let (addr, size) = (vals[0], vals[1]);
-        println!("addr {:?}, size {:?}", addr, size);
         let (context, segment, offset) = unpack_address!(addr);
 
         let bytes = (offset..offset + size.as_usize())
@@ -1846,7 +1933,7 @@ mod tests {
             U256::one() << CONTEXT_SCALING_FACTOR,
         );
 
-        interpreter.run()?;
+        interpreter.run(None)?;
 
         // sys_stop returns `success` and `cum_gas_used`, that we need to pop.
         interpreter.pop();

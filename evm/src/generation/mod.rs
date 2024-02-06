@@ -23,7 +23,9 @@ use crate::config::StarkConfig;
 use crate::cpu::columns::CpuColumnsView;
 use crate::cpu::kernel::aggregator::KERNEL;
 use crate::cpu::kernel::assembler::Kernel;
+use crate::cpu::kernel::constants::context_metadata::ContextMetadata;
 use crate::cpu::kernel::constants::global_metadata::GlobalMetadata;
+use crate::cpu::kernel::interpreter::Interpreter;
 use crate::cpu::kernel::opcodes::get_opcode;
 use crate::generation::state::GenerationState;
 use crate::generation::trie_extractor::{get_receipt_trie, get_state_trie, get_txn_trie};
@@ -49,6 +51,7 @@ mod trie_extractor;
 use self::mpt::{load_all_mpts, TrieRootPtrs};
 use crate::witness::util::{mem_write_log, mem_write_log_timestamp_zero, stack_peek};
 
+pub const NUM_EXTRA_CYCLES: usize = 78;
 /// Memory values used to initialize `MemBefore`.
 pub type MemBeforeValues = Vec<(MemoryAddress, U256)>;
 
@@ -272,7 +275,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     config: &StarkConfig,
     max_cpu_len: usize,
     previous_state: Option<GenerationState<F>>,
-    is_first_proof: bool,
+    segment_index: usize,
     timing: &mut TimingTree,
 ) -> anyhow::Result<(
     [Vec<PolynomialValues<F>>; NUM_TABLES],
@@ -305,11 +308,23 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         }
     };
 
+    let interpreter_inputs = GenerationInputs {
+        registers_before: RegistersState::new_with_main_label(),
+        ..inputs.clone()
+    };
+
+    let mut interpreter = Interpreter::new_with_generation_inputs_and_kernel(
+        KERNEL.global_labels["main"],
+        vec![],
+        interpreter_inputs,
+    );
+    let output = interpreter.generate_segment(max_cpu_len, segment_index)?;
+
     // If the current execution is that of the first segment in the proof,
     // then preinitialize the `ShiftTable` by adding it to the
     // `mem_before_values`. Otherwise, `mem_before_values`
     // already contain it.
-    let mem_before_values = if is_first_proof {
+    let mem_before_values = if segment_index == 0 {
         let mut addr = MemoryAddress {
             context: 0,
             segment: Segment::ShiftTable.unscale(),
@@ -497,7 +512,7 @@ fn simulate_cpu<F: Field>(
         let halt = state.registers.is_kernel && pc == halt_pc;
         // If the maximum trace length (minus some cycles for running `exc_stop`) is reached, or if we reached
         // the halt routine, raise the stop exception.
-        if halt || state.traces.clock() == max_cpu_len - 100 {
+        if halt || state.traces.clock() == max_cpu_len - NUM_EXTRA_CYCLES {
             final_registers = state.registers;
             // If `stack_len` is 0, `stack_top` still contains a residual value.
             if final_registers.stack_len == 0 {

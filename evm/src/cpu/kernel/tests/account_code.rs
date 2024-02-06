@@ -113,7 +113,7 @@ fn prepare_interpreter(
         .push(k.try_into_u256().unwrap())
         .expect("The stack should not overflow"); // key
 
-    interpreter.run()?;
+    interpreter.run(None)?;
     assert_eq!(
         interpreter.stack().len(),
         0,
@@ -129,7 +129,7 @@ fn prepare_interpreter(
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),
@@ -171,7 +171,7 @@ fn test_extcodesize() -> Result<()> {
         .expect("The stack should not overflow");
     interpreter.generation_state.inputs.contract_code =
         HashMap::from([(keccak(&code), code.clone())]);
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(interpreter.stack(), vec![code.len().into()]);
 
@@ -233,7 +233,7 @@ fn test_extcodecopy() -> Result<()> {
         .expect("The stack should not overflow"); // kexit_info
     interpreter.generation_state.inputs.contract_code =
         HashMap::from([(keccak(&code), code.clone())]);
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert!(interpreter.stack().is_empty());
     // Check that the code was correctly copied to memory.
@@ -323,7 +323,7 @@ fn sstore() -> Result<()> {
     // Prepare the interpreter by inserting the account in the state trie.
     prepare_interpreter_all_accounts(&mut interpreter, trie_inputs, addr, &code)?;
 
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     // The first two elements in the stack are `success` and `leftover_gas`,
     // returned by the `sys_stop` opcode.
@@ -353,7 +353,7 @@ fn sstore() -> Result<()> {
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),
@@ -411,7 +411,7 @@ fn sload() -> Result<()> {
 
     // Prepare the interpreter by inserting the account in the state trie.
     prepare_interpreter_all_accounts(&mut interpreter, trie_inputs, addr, &code)?;
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     // The first two elements in the stack are `success` and `leftover_gas`,
     // returned by the `sys_stop` opcode.
@@ -443,7 +443,7 @@ fn sload() -> Result<()> {
     interpreter
         .push(1.into()) // Initial length of the trie data segment, unused.
         .expect("The stack should not overflow.");
-    interpreter.run()?;
+    interpreter.run(None)?;
 
     assert_eq!(
         interpreter.stack().len(),

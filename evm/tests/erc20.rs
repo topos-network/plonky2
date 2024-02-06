@@ -188,7 +188,7 @@ fn test_erc20() -> anyhow::Result<()> {
         inputs,
         max_cpu_len,
         None,
-        true,
+        0,
         &mut timing,
         None,
     )?;

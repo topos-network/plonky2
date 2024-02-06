@@ -178,7 +178,7 @@ fn test_add11_yml() {
     interpreter.generation_state.registers.program_counter = route_txn_label;
     interpreter.set_context_metadata_field(0, ContextMetadata::GasLimit, 1_000_000.into());
     interpreter.set_is_kernel(true);
-    interpreter.run().expect("Proving add11 failed.");
+    interpreter.run(None).expect("Proving add11 failed.");
 }
 
 #[test]
@@ -329,6 +329,6 @@ fn test_add11_yml_with_exception() {
     interpreter.set_context_metadata_field(0, ContextMetadata::GasLimit, 1_000_000.into());
     interpreter.set_is_kernel(true);
     interpreter
-        .run()
+        .run(None)
         .expect("Proving add11 with exception failed.");
 }
