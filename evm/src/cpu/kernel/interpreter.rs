@@ -9,6 +9,7 @@ use eth_trie_utils::partial_trie::PartialTrie;
 use ethereum_types::{BigEndianHash, H160, H256, U256, U512};
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
+use plonky2::util::serialization::Read;
 #[cfg(test)]
 use ripemd::digest::typenum::NonZero;
 
@@ -188,7 +189,7 @@ pub(crate) fn generate_segment(
         .unwrap();
         interpreter.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
 
-        // interpreter.generation_state.registers = after_registers;
+        interpreter.generation_state.registers = after_registers;
 
         (before_registers, before_mem_values) = (after_registers, after_mem_values);
         interpreter.generation_state.registers.program_counter = main_label;
@@ -196,6 +197,7 @@ pub(crate) fn generate_segment(
 
         // interpreter.generation_state.memory = before_mem_values.clone();
         (after_registers, after_mem_values) = interpreter.run(Some(max_cpu_len))?;
+        println!("SEGMENT {:?} DONE\n", i);
     }
 
     Ok((
@@ -249,7 +251,7 @@ impl<'a> Interpreter<'a> {
             prover_inputs_map: prover_inputs,
             // `DEFAULT_HALT_OFFSET` is used as a halting point for the interpreter,
             // while the label `halt` is the halting label in the kernel.
-            halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt"]],
+            halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt_final"]],
             debug_offsets: vec![],
             running: false,
             opcode_count: [0; 256],
@@ -611,16 +613,56 @@ impl<'a> Interpreter<'a> {
         while self.running {
             let pc = self.generation_state.registers.program_counter;
 
-            if self.is_kernel() && self.halt_offsets.contains(&pc)
+            if self.is_kernel() && pc == KERNEL.global_labels["halt"]
                 || (max_cpu_len.is_some()
                     && cpu_counter == (max_cpu_len.unwrap() - NUM_EXTRA_CYCLES - 1))
             {
                 final_registers = self.generation_state.registers;
                 final_mem = self.generation_state.memory.clone();
-                return Ok((final_registers, final_mem));
+
+                // Write final registers.
+                let registers_after = [
+                    final_registers.program_counter.into(),
+                    (final_registers.is_kernel as usize).into(),
+                    final_registers.stack_len.into(),
+                    final_registers.stack_top,
+                    final_registers.context.into(),
+                    final_registers.gas_used.into(),
+                ];
+
+                let length = registers_after.len();
+                let registers_after_fields = (0..length)
+                    .map(|i| {
+                        (
+                            MemoryAddress::new_u256s(
+                                0.into(),
+                                (Segment::RegistersStates.unscale()).into(),
+                                (length + i).into(),
+                            )
+                            .unwrap(),
+                            registers_after[i],
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                self.set_memory_multi_addresses(&registers_after_fields);
+                self.run_exception(6);
             };
+            if self.is_kernel() && self.halt_offsets.contains(&pc) {
+                return Ok((final_registers, final_mem));
+            }
 
             if self.generation_state.registers.is_stack_top_read {
+                self.memops.push(InterpreterMemOpKind::Read(
+                    match self.stack_top() {
+                        Ok(val) => val,
+                        Err(e) => 0.into(),
+                    },
+                    MemoryAddress {
+                        context: self.context(),
+                        segment: Segment::Stack.unscale(),
+                        virt: self.stack_len() - 1,
+                    },
+                ));
                 self.generation_state.registers.is_stack_top_read = false;
             }
             if self.generation_state.registers.check_overflow {
@@ -923,6 +965,7 @@ impl<'a> Interpreter<'a> {
             .byte(0);
         self.opcode_count[opcode as usize] += 1;
         self.incr(1);
+        println!("opcode {:x?}, {:?}", opcode, get_mnemonic(opcode));
 
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge nothing.
@@ -1473,15 +1516,20 @@ impl<'a> Interpreter<'a> {
 
         let old_sp_addr = MemoryAddress::new(old_ctx, Segment::ContextMetadata, sp_field);
         let new_sp_addr = MemoryAddress::new(new_ctx, Segment::ContextMetadata, sp_field);
-        self.generation_state.memory.set(old_sp_addr, sp_to_save);
 
-        let new_sp = self.generation_state.memory.get(new_sp_addr).as_usize();
+        self.mstore_queue(old_ctx, Segment::ContextMetadata, sp_field, sp_to_save);
+
+        let new_sp = if old_ctx == new_ctx {
+            self.memops
+                .push(InterpreterMemOpKind::Read(sp_to_save, new_sp_addr));
+            sp_to_save.as_usize()
+        } else {
+            self.mload_queue(new_ctx, Segment::ContextMetadata, sp_field)
+                .as_usize()
+        };
 
         if new_sp > 0 {
-            let new_stack_top = self.generation_state.memory.contexts[new_ctx].segments
-                [Segment::Stack.unscale()]
-            .content[new_sp - 1]
-                .unwrap_or_default();
+            let new_stack_top = self.mload_queue(new_ctx, Segment::Stack, new_sp - 1);
             self.generation_state.registers.stack_top = new_stack_top;
         }
         self.set_context(new_ctx);

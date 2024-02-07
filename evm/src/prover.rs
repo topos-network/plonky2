@@ -37,6 +37,7 @@ use crate::generation::state::GenerationState;
 use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
+use crate::mem_before;
 use crate::proof::{
     AllProof, MemCap, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata,
 };
@@ -50,6 +51,14 @@ use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
 };
 
+fn find_in_vec(mem_addr: MemoryAddress, mem_values: &Vec<(MemoryAddress, U256)>) -> Option<U256> {
+    for &(addr, val) in mem_values {
+        if addr == mem_addr {
+            return Some(val);
+        }
+    }
+    None
+}
 /// Generate traces, then create all STARK proofs.
 pub fn prove<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
@@ -73,19 +82,76 @@ where
         is_kernel: state.registers.is_kernel,
         ..output.0
     };
-    state.memory = output.2;
+    // state.memory = output.2;
+
+    if output.2.contexts.len() > state.memory.contexts.len() {
+        println!("not enough contexts in output");
+    } else {
+        for context_nb in 0..output.2.contexts.len() {
+            for segment_nb in 0..output.2.contexts[context_nb].segments.len() {
+                for virt in 0..output.2.contexts[context_nb].segments[segment_nb]
+                    .content
+                    .len()
+                {
+                    match find_in_vec(
+                        MemoryAddress {
+                            context: context_nb,
+                            segment: segment_nb,
+                            virt,
+                        },
+                        &inputs.memory_before,
+                    ) {
+                        Some(val) => {
+                            if Some(val)
+                                != output.2.contexts[context_nb].segments[segment_nb].content[virt]
+                            {
+                                println!(
+                                    "mem addr: {:?}, val: {:?}, output val {:?}",
+                                    MemoryAddress {
+                                        context: context_nb,
+                                        segment: segment_nb,
+                                        virt,
+                                    },
+                                    val,
+                                    output.2.contexts[context_nb].segments[segment_nb].content
+                                        [virt]
+                                );
+                            }
+                        }
+                        None => {
+                            if output.2.contexts[context_nb].segments[segment_nb].content[virt]
+                                .is_some()
+                            {
+                                println!(
+                                    "not in mem before: addr {:?}, val {:?}",
+                                    MemoryAddress {
+                                        context: context_nb,
+                                        segment: segment_nb,
+                                        virt
+                                    },
+                                    output.2.contexts[context_nb].segments[segment_nb].content
+                                        [virt]
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let actual_inputs = GenerationInputs {
         registers_before: output.0,
         registers_after: output.1,
-        ..inputs
+        ..inputs.clone()
     };
+
     let (traces, final_memory_values, final_registers, mut public_values, next_state) = timed!(
         timing,
         "generate all traces",
         generate_traces(
             all_stark,
-            actual_inputs,
+            inputs,
             config,
             max_cpu_len,
             state,

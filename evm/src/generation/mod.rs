@@ -37,7 +37,7 @@ use crate::proof::{
 use crate::prover::{check_abort_signal, get_mem_after_value_from_row};
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
-use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp};
+use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp, MemoryState};
 use crate::witness::state::RegistersState;
 use crate::witness::traces::Traces;
 use crate::witness::transition::{final_exception, transition};
@@ -315,6 +315,11 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     } else {
         inputs.memory_before.clone()
     };
+
+    for &(address, val) in &mem_before_values {
+        state.memory.set(address, val);
+    }
+
     apply_metadata_and_tries_memops(&mut state, &inputs);
 
     let cpu_res = timed!(
