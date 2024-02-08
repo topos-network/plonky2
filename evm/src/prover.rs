@@ -38,6 +38,7 @@ use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
 use crate::mem_before;
+use crate::memory::segments::Segment;
 use crate::proof::{
     AllProof, MemCap, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata,
 };
@@ -82,10 +83,51 @@ where
         is_kernel: state.registers.is_kernel,
         ..output.0
     };
-    // state.memory = output.2;
+
+    let actual_mem_before = if segment_index == 0 {
+        let mut addr = MemoryAddress {
+            context: 0,
+            segment: Segment::ShiftTable.unscale(),
+            virt: 0,
+        };
+        let mut val = U256::from(1); // 2^0
+        let mut shift_table = (0..256)
+            .map(|i| {
+                let value = (addr, val);
+                state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
+                    .content
+                    .push(Some(val));
+                // state.memory.set(addr, val);
+                addr.increment();
+                val <<= 1;
+                value
+            })
+            .collect::<Vec<_>>();
+        shift_table.extend(inputs.memory_before.clone());
+        shift_table
+    } else {
+        let mut memory_before = vec![];
+        for ctx in 0..output.2.contexts.len() {
+            for segment in 0..output.2.contexts[ctx].segments.len() {
+                for virt in 0..output.2.contexts[ctx].segments[segment].content.len() {
+                    if output.2.contexts[ctx].segments[segment].content[virt].is_some() {
+                        memory_before.push((
+                            MemoryAddress {
+                                context: ctx,
+                                segment,
+                                virt,
+                            },
+                            output.2.contexts[ctx].segments[segment].content[virt].unwrap(),
+                        ));
+                    }
+                }
+            }
+        }
+        memory_before
+    };
 
     if output.2.contexts.len() > state.memory.contexts.len() {
-        println!("not enough contexts in output");
+        println!("not enough contexts in state mem");
     } else {
         for context_nb in 0..output.2.contexts.len() {
             for segment_nb in 0..output.2.contexts[context_nb].segments.len() {
@@ -143,6 +185,7 @@ where
     let actual_inputs = GenerationInputs {
         registers_before: output.0,
         registers_after: output.1,
+        memory_before: actual_mem_before,
         ..inputs.clone()
     };
 
@@ -151,7 +194,7 @@ where
         "generate all traces",
         generate_traces(
             all_stark,
-            inputs,
+            actual_inputs,
             config,
             max_cpu_len,
             state,
@@ -640,7 +683,7 @@ where
 
     let num_ctl_polys = ctl_data.num_ctl_helper_polys();
 
-    #[cfg(test)]
+    // #[cfg(test)]
     {
         check_constraints(
             stark,
@@ -942,7 +985,7 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 /// Check that all constraints evaluate to zero on `H`.
 /// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
 fn check_constraints<'a, F, C, S, const D: usize>(

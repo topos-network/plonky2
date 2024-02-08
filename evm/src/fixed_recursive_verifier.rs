@@ -49,9 +49,9 @@ use crate::generation::GenerationInputs;
 use crate::get_challenges::observe_public_values_target;
 use crate::memory::segments::Segment;
 use crate::proof::{
-    AllProof, BlockHashesTarget, BlockMetadataTarget, ExitKernelTarget, ExtraBlockData,
-    ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues, PublicValuesTarget,
-    RegistersDataTarget, StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
+    AllProof, BlockHashesTarget, BlockMetadataTarget, ExtraBlockData, ExtraBlockDataTarget, MemCap,
+    MemCapTarget, PublicValues, PublicValuesTarget, RegistersDataTarget, StarkProofWithMetadata,
+    TrieRoots, TrieRootsTarget,
 };
 use crate::prover::{check_abort_signal, prove};
 use crate::recursive_verifier::{
@@ -800,7 +800,7 @@ where
             parent_pv.extra_block_data,
         );
 
-        // Connect registers, merkle caps and `exit_kernel` between segments.
+        // Connect registers and merkle caps between segments.
         RegistersDataTarget::connect(
             &mut builder,
             public_values.registers_after.clone(),
@@ -815,11 +815,6 @@ where
             &mut builder,
             parent_pv.registers_after,
             segment_pv.registers_before.clone(),
-        );
-        ExitKernelTarget::connect(
-            &mut builder,
-            public_values.exit_kernel.clone(),
-            parent_pv.exit_kernel.clone(),
         );
         MemCapTarget::connect(
             &mut builder,
@@ -930,12 +925,6 @@ where
             &mut builder,
             public_values.registers_before.clone(),
             agg_pv.registers_before.clone(),
-        );
-
-        ExitKernelTarget::connect(
-            &mut builder,
-            public_values.exit_kernel.clone(),
-            agg_pv.exit_kernel.clone(),
         );
 
         // Check the initial and final register values.
@@ -1564,7 +1553,6 @@ where
             block_hashes: rhs_public_values.block_hashes,
             registers_before: lhs_public_values.registers_before,
             registers_after: rhs_public_values.registers_after,
-            exit_kernel: lhs_public_values.exit_kernel,
             mem_before: lhs_public_values.mem_before,
             mem_after: rhs_public_values.mem_after,
         };

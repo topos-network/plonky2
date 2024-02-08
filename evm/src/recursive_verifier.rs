@@ -41,11 +41,10 @@ use crate::mem_after;
 use crate::memory::segments::Segment;
 use crate::memory::VALUE_LIMBS;
 use crate::proof::{
-    BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExitKernel,
-    ExitKernelTarget, ExtraBlockData, ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues,
-    PublicValuesTarget, RegistersData, RegistersDataTarget, StarkOpeningSetTarget, StarkProof,
-    StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata, TrieRoots,
-    TrieRootsTarget,
+    BlockHashes, BlockHashesTarget, BlockMetadata, BlockMetadataTarget, ExtraBlockData,
+    ExtraBlockDataTarget, MemCap, MemCapTarget, PublicValues, PublicValuesTarget, RegistersData,
+    RegistersDataTarget, StarkOpeningSetTarget, StarkProof, StarkProofChallengesTarget,
+    StarkProofTarget, StarkProofWithMetadata, TrieRoots, TrieRootsTarget,
 };
 use crate::stark::{PublicRegisterStates, Stark};
 use crate::util::{h256_limbs, h2u, u256_limbs, u256_to_u32, u256_to_u64};
@@ -673,15 +672,6 @@ pub(crate) fn get_memory_extra_looking_sum_circuit<F: RichField + Extendable<D>,
         );
     }
 
-    // Add exit kernel read.
-    sum = add_data_write(
-        builder,
-        challenge,
-        sum,
-        registers_segment,
-        registers_before.len() * 2,
-        &public_values.exit_kernel.exit_kernel,
-    );
     sum
 }
 
@@ -757,7 +747,6 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
     let extra_block_data = add_virtual_extra_block_data(builder);
     let registers_before = add_virtual_registers_data(builder);
     let registers_after = add_virtual_registers_data(builder);
-    let exit_kernel = add_virtual_exit_kernel(builder);
 
     let mem_before = MemCapTarget {
         mem_cap: MerkleCapTarget(builder.add_virtual_hashes_public_input(len_before)),
@@ -774,7 +763,6 @@ pub(crate) fn add_virtual_public_values<F: RichField + Extendable<D>, const D: u
         extra_block_data,
         registers_before,
         registers_after,
-        exit_kernel,
         mem_before,
         mem_after,
     }
@@ -864,13 +852,6 @@ pub(crate) fn add_virtual_registers_data<F: RichField + Extendable<D>, const D: 
         context,
         gas_used,
     }
-}
-
-pub(crate) fn add_virtual_exit_kernel<F: RichField + Extendable<D>, const D: usize>(
-    builder: &mut CircuitBuilder<F, D>,
-) -> ExitKernelTarget {
-    let exit_kernel = builder.add_virtual_public_input_arr();
-    ExitKernelTarget { exit_kernel }
 }
 
 pub(crate) fn add_virtual_stark_proof<
@@ -1004,11 +985,7 @@ where
         &public_values_target.registers_after,
         &public_values.registers_after,
     )?;
-    set_exit_kernel_target(
-        witness,
-        &public_values_target.exit_kernel,
-        &public_values.exit_kernel,
-    )?;
+
     set_mem_cap_target(
         witness,
         &public_values_target.mem_before,
@@ -1193,20 +1170,6 @@ where
     witness.set_target_arr(&rd_target.stack_top, &u256_limbs(rd.stack_top));
     witness.set_target(rd_target.context, u256_to_u32(rd.context)?);
     witness.set_target(rd_target.gas_used, u256_to_u32(rd.gas_used)?);
-
-    Ok(())
-}
-
-pub(crate) fn set_exit_kernel_target<F, W, const D: usize>(
-    witness: &mut W,
-    ek_target: &ExitKernelTarget,
-    ek: &ExitKernel,
-) -> Result<(), ProgramError>
-where
-    F: RichField + Extendable<D>,
-    W: Witness<F>,
-{
-    witness.set_target_arr(&ek_target.exit_kernel, &u256_limbs(ek.exit_kernel));
 
     Ok(())
 }

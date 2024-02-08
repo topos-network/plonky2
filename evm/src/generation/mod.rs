@@ -25,14 +25,12 @@ use crate::cpu::kernel::aggregator::KERNEL;
 use crate::cpu::kernel::assembler::Kernel;
 use crate::cpu::kernel::constants::context_metadata::ContextMetadata;
 use crate::cpu::kernel::constants::global_metadata::GlobalMetadata;
-use crate::cpu::kernel::interpreter::{generate_segment, Interpreter};
 use crate::cpu::kernel::opcodes::get_opcode;
 use crate::generation::state::GenerationState;
 use crate::generation::trie_extractor::{get_receipt_trie, get_state_trie, get_txn_trie};
 use crate::memory::segments::Segment;
 use crate::proof::{
-    BlockHashes, BlockMetadata, ExitKernel, ExtraBlockData, MemCap, PublicValues, RegistersData,
-    TrieRoots,
+    BlockHashes, BlockMetadata, ExtraBlockData, MemCap, PublicValues, RegistersData, TrieRoots,
 };
 use crate::prover::{check_abort_signal, get_mem_after_value_from_row};
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
@@ -254,17 +252,6 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
         )
     }));
 
-    // We also need to initialize exit_kernel, so we can set `is_kernel_mode` and the program counter.
-    let exit_kernel = U256::from(inputs.registers_before.program_counter)
-        + (U256::from(inputs.registers_before.is_kernel as u64) << 32)
-        + (U256::from(inputs.registers_before.gas_used) << 192);
-    ops.push(mem_write_log(
-        channel,
-        MemoryAddress::new(0, Segment::RegistersStates, 2 * length),
-        state,
-        exit_kernel,
-    ));
-
     state.memory.apply_ops(&ops);
     state.traces.memory_ops.extend(ops);
 }
@@ -292,30 +279,42 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     // then preinitialize the `ShiftTable` by adding it to the
     // `mem_before_values`. Otherwise, `mem_before_values`
     // already contain it.
-    let mem_before_values = if segment_index == 0 {
-        let mut addr = MemoryAddress {
-            context: 0,
-            segment: Segment::ShiftTable.unscale(),
-            virt: 0,
-        };
-        let mut val = U256::from(1); // 2^0
-        let mut shift_table = (0..256)
-            .map(|i| {
-                let value = (addr, val);
-                state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
-                    .content
-                    .push(Some(val));
-                addr.increment();
-                val <<= 1;
-                value
-            })
-            .collect::<Vec<_>>();
-        shift_table.extend(inputs.memory_before.clone());
-        shift_table
-    } else {
-        inputs.memory_before.clone()
-    };
+    // let mem_before_values = if segment_index == 0 {
+    //     let mut addr = MemoryAddress {
+    //         context: 0,
+    //         segment: Segment::ShiftTable.unscale(),
+    //         virt: 0,
+    //     };
+    //     let mut val = U256::from(1); // 2^0
+    //     let mut shift_table = (0..256)
+    //         .map(|i| {
+    //             let value = (addr, val);
+    //             state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
+    //                 .content
+    //                 .push(Some(val));
+    //             // state.memory.set(addr, val);
+    //             addr.increment();
+    //             val <<= 1;
+    //             value
+    //         })
+    //         .collect::<Vec<_>>();
+    //     shift_table.extend(inputs.memory_before.clone());
+    //     shift_table
+    // } else {
+    //     inputs.memory_before.clone()
+    // };
+    let mem_before_values = inputs.memory_before.clone();
 
+    // state.memory.set(
+    //     MemoryAddress {
+    //         context: 0,
+    //         segment: Segment::RegistersStates.unscale(),
+    //         virt: 12,
+    //     },
+    //     U256::from(inputs.registers_before.program_counter)
+    //         + (U256::from(inputs.registers_before.is_kernel as usize) << 32)
+    //         + (U256::from(inputs.registers_before.gas_used) << 192),
+    // );
     for &(address, val) in &mem_before_values {
         state.memory.set(address, val);
     }
@@ -427,11 +426,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         context: inputs.registers_after.context.into(),
         gas_used: inputs.registers_after.gas_used.into(),
     };
-    let exit_kernel = ExitKernel {
-        exit_kernel: registers_before.program_counter
-            + (registers_before.is_kernel << 32)
-            + (registers_before.gas_used << 192),
-    };
 
     // `mem_before` and `mem_after` are intialized with an empty cap.
     // But they are set to the caps of `MemBefore` and `MemAfter`
@@ -444,7 +438,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         extra_block_data,
         registers_before,
         registers_after,
-        exit_kernel,
         mem_before: MemCap { mem_cap: vec![] },
         mem_after: MemCap { mem_cap: vec![] },
     };

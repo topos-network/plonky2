@@ -78,8 +78,7 @@ pub struct PublicValues {
     pub registers_before: RegistersData,
     /// Registers at the end of the current proof.
     pub registers_after: RegistersData,
-    /// Exit kernel at the start of the proof.
-    pub exit_kernel: ExitKernel,
+
     pub mem_before: MemCap,
     pub mem_after: MemCap,
 }
@@ -102,7 +101,6 @@ impl PublicValues {
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
                     + RegistersDataTarget::SIZE * 2
-                    + ExitKernelTarget::SIZE
                     - 1
         );
 
@@ -146,32 +144,18 @@ impl PublicValues {
                     + ExtraBlockDataTarget::SIZE
                     + RegistersDataTarget::SIZE * 2],
         );
-        let exit_kernel = ExitKernel::from_public_inputs(
-            &pis[TrieRootsTarget::SIZE * 2
-                + BlockMetadataTarget::SIZE
-                + BlockHashesTarget::SIZE
-                + ExtraBlockDataTarget::SIZE
-                + RegistersDataTarget::SIZE * 2
-                ..TrieRootsTarget::SIZE * 2
-                    + BlockMetadataTarget::SIZE
-                    + BlockHashesTarget::SIZE
-                    + ExtraBlockDataTarget::SIZE
-                    + RegistersDataTarget::SIZE * 2
-                    + ExitKernelTarget::SIZE],
-        );
+
         let mem_before = MemCap::from_public_inputs(
             &pis[TrieRootsTarget::SIZE * 2
                 + BlockMetadataTarget::SIZE
                 + BlockHashesTarget::SIZE
                 + ExtraBlockDataTarget::SIZE
                 + RegistersDataTarget::SIZE * 2
-                + ExitKernelTarget::SIZE
                 ..TrieRootsTarget::SIZE * 2
                     + BlockMetadataTarget::SIZE
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
                     + RegistersDataTarget::SIZE * 2
-                    + ExitKernelTarget::SIZE
                     + len_before * NUM_HASH_OUT_ELTS],
             len_before,
         );
@@ -181,14 +165,12 @@ impl PublicValues {
                 + BlockHashesTarget::SIZE
                 + ExtraBlockDataTarget::SIZE
                 + RegistersDataTarget::SIZE * 2
-                + ExitKernelTarget::SIZE
                 + len_before * NUM_HASH_OUT_ELTS
                 ..TrieRootsTarget::SIZE * 2
                     + BlockMetadataTarget::SIZE
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
                     + RegistersDataTarget::SIZE * 2
-                    + ExitKernelTarget::SIZE
                     + len_before * NUM_HASH_OUT_ELTS
                     + len_after * NUM_HASH_OUT_ELTS],
             len_after,
@@ -202,7 +184,6 @@ impl PublicValues {
             extra_block_data,
             registers_before,
             registers_after,
-            exit_kernel,
             mem_before,
             mem_after,
         }
@@ -409,23 +390,6 @@ impl RegistersData {
     }
 }
 
-/// Exit kernel at the start of the current proof.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ExitKernel {
-    /// Exit kernel, equal to:
-    /// `program_counter + is_kernel_mode << 32 + gas_used << 192`.
-    pub exit_kernel: U256,
-}
-impl ExitKernel {
-    pub fn from_public_inputs<F: RichField>(pis: &[F]) -> Self {
-        assert!(pis.len() == ExitKernelTarget::SIZE);
-
-        let exit_kernel = get_u256(&pis[0..8]);
-
-        Self { exit_kernel }
-    }
-}
-
 /// Structure for a Merkle cap. It is used for `MemBefore` and `MemAfter`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MemCap {
@@ -464,8 +428,6 @@ pub struct PublicValuesTarget {
     pub registers_before: RegistersDataTarget,
     /// Registers at the end of the current proof.
     pub registers_after: RegistersDataTarget,
-    /// Exit kernel at the start of the current proof.
-    pub exit_kernel: ExitKernelTarget,
     /// Memory before.
     pub mem_before: MemCapTarget,
     /// Memory after.
@@ -567,8 +529,6 @@ impl PublicValuesTarget {
         buffer.write_target(context_after)?;
         buffer.write_target(gas_used_after)?;
 
-        buffer.write_target_array(&self.exit_kernel.exit_kernel)?;
-
         buffer.write_target_merkle_cap(&self.mem_before.mem_cap)?;
         buffer.write_target_merkle_cap(&self.mem_after.mem_cap)?;
 
@@ -632,10 +592,6 @@ impl PublicValuesTarget {
             gas_used: buffer.read_target()?,
         };
 
-        let exit_kernel = ExitKernelTarget {
-            exit_kernel: buffer.read_target_array()?,
-        };
-
         let mem_before = MemCapTarget {
             mem_cap: buffer.read_target_merkle_cap()?,
         };
@@ -651,7 +607,6 @@ impl PublicValuesTarget {
             extra_block_data,
             registers_before,
             registers_after,
-            exit_kernel,
             mem_before,
             mem_after,
         })
@@ -715,32 +670,18 @@ impl PublicValuesTarget {
                         + ExtraBlockDataTarget::SIZE
                         + RegistersDataTarget::SIZE * 2],
             ),
-            exit_kernel: ExitKernelTarget::from_public_inputs(
-                &pis[TrieRootsTarget::SIZE * 2
-                    + BlockMetadataTarget::SIZE
-                    + BlockHashesTarget::SIZE
-                    + ExtraBlockDataTarget::SIZE
-                    + RegistersDataTarget::SIZE * 2
-                    ..TrieRootsTarget::SIZE * 2
-                        + BlockMetadataTarget::SIZE
-                        + BlockHashesTarget::SIZE
-                        + ExtraBlockDataTarget::SIZE
-                        + RegistersDataTarget::SIZE * 2
-                        + ExitKernelTarget::SIZE],
-            ),
+
             mem_before: MemCapTarget::from_public_inputs(
                 &pis[TrieRootsTarget::SIZE * 2
                     + BlockMetadataTarget::SIZE
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
                     + RegistersDataTarget::SIZE * 2
-                    + ExitKernelTarget::SIZE
                     ..TrieRootsTarget::SIZE * 2
                         + BlockMetadataTarget::SIZE
                         + BlockHashesTarget::SIZE
                         + ExtraBlockDataTarget::SIZE
                         + RegistersDataTarget::SIZE * 2
-                        + ExitKernelTarget::SIZE
                         + len_before * NUM_HASH_OUT_ELTS],
                 len_before,
             ),
@@ -750,14 +691,12 @@ impl PublicValuesTarget {
                     + BlockHashesTarget::SIZE
                     + ExtraBlockDataTarget::SIZE
                     + RegistersDataTarget::SIZE * 2
-                    + ExitKernelTarget::SIZE
                     + len_before * NUM_HASH_OUT_ELTS
                     ..TrieRootsTarget::SIZE * 2
                         + BlockMetadataTarget::SIZE
                         + BlockHashesTarget::SIZE
                         + ExtraBlockDataTarget::SIZE
                         + RegistersDataTarget::SIZE * 2
-                        + ExitKernelTarget::SIZE
                         + len_before * NUM_HASH_OUT_ELTS
                         + len_after * NUM_HASH_OUT_ELTS],
                 len_after,
@@ -814,12 +753,6 @@ impl PublicValuesTarget {
                 condition,
                 pv0.registers_after,
                 pv1.registers_after,
-            ),
-            exit_kernel: ExitKernelTarget::select(
-                builder,
-                condition,
-                pv0.exit_kernel,
-                pv1.exit_kernel,
             ),
             mem_before: MemCapTarget::select(builder, condition, pv0.mem_before, pv1.mem_before),
 
@@ -1245,53 +1178,6 @@ impl RegistersDataTarget {
         }
         builder.connect(rd0.context, rd1.context);
         builder.connect(rd0.gas_used, rd1.gas_used);
-    }
-}
-
-/// Circuit version of `ExitKernel`.
-/// Exit kernel at the start of the current proof.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ExitKernelTarget {
-    /// Exit kernel.
-    pub exit_kernel: [Target; 8],
-}
-
-impl ExitKernelTarget {
-    /// Number of `Target`s required for the extra block data.
-    const SIZE: usize = 8;
-
-    /// Extracts the exit kernel `Target`s from the public input `Target`s.
-    /// The provided `pis` should start with the extra vblock data.
-    pub(crate) fn from_public_inputs(pis: &[Target]) -> Self {
-        let exit_kernel = pis[0..8].try_into().unwrap();
-
-        Self { exit_kernel }
-    }
-
-    /// If `condition`, returns the exit kernel in `ek0`,
-    /// otherwise returns the exit kernel in `ek1`.
-    pub(crate) fn select<F: RichField + Extendable<D>, const D: usize>(
-        builder: &mut CircuitBuilder<F, D>,
-        condition: BoolTarget,
-        ek0: Self,
-        ek1: Self,
-    ) -> Self {
-        Self {
-            exit_kernel: core::array::from_fn(|i| {
-                builder.select(condition, ek0.exit_kernel[i], ek1.exit_kernel[i])
-            }),
-        }
-    }
-
-    /// Connects the exit kernel in `ek0` with the exit kernel in `ek1`.
-    pub(crate) fn connect<F: RichField + Extendable<D>, const D: usize>(
-        builder: &mut CircuitBuilder<F, D>,
-        ek0: Self,
-        ek1: Self,
-    ) {
-        for i in 0..8 {
-            builder.connect(ek0.exit_kernel[i], ek1.exit_kernel[i]);
-        }
     }
 }
 

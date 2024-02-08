@@ -127,6 +127,7 @@ pub(crate) fn generate_segment(
     let initial_registers = RegistersState::new_with_main_label();
     let interpreter_inputs = GenerationInputs {
         registers_before: initial_registers,
+        registers_after: RegistersState::default(),
         ..inputs.clone()
     };
     let mut interpreter = Interpreter::new_with_generation_inputs_and_kernel(
@@ -174,20 +175,6 @@ pub(crate) fn generate_segment(
             .collect::<Vec<_>>();
 
         interpreter.set_memory_multi_addresses(&registers_before_fields);
-
-        let length = registers_before.len();
-        // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
-        let exit_kernel = U256::from(after_registers.program_counter)
-            + (U256::from(after_registers.is_kernel as u64) << 32)
-            + (U256::from(after_registers.gas_used) << 192);
-
-        let exit_kernel_addr = MemoryAddress::new_u256s(
-            0.into(),
-            Segment::RegistersStates.unscale().into(),
-            (2 * length).into(),
-        )
-        .unwrap();
-        interpreter.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
 
         interpreter.generation_state.registers = after_registers;
 
@@ -459,19 +446,6 @@ impl<'a> Interpreter<'a> {
             })
             .collect::<Vec<_>>();
         self.set_memory_multi_addresses(&registers_after_fields);
-
-        // We also need to initialize exit_kernel, so we can set `is_kernel_mode`.
-        let exit_kernel = U256::from(inputs.registers_before.program_counter)
-            + (U256::from(inputs.registers_before.is_kernel as u64) << 32)
-            + (U256::from(inputs.registers_before.gas_used) << 192);
-
-        let exit_kernel_addr = MemoryAddress::new_u256s(
-            0.into(),
-            Segment::RegistersStates.unscale().into(),
-            (2 * length).into(),
-        )
-        .unwrap();
-        self.set_memory_multi_addresses(&[(exit_kernel_addr, exit_kernel)]);
     }
 
     fn interpreter_pop<const N: usize>(&mut self) -> Result<[U256; N], ProgramError> {
@@ -628,7 +602,12 @@ impl<'a> Interpreter<'a> {
                     final_registers.context.into(),
                     final_registers.gas_used.into(),
                 ];
-
+                println!("final registers {:?}", final_registers);
+                println!(
+                    "memory {:?}",
+                    self.generation_state.memory.contexts[0].segments[Segment::Stack.unscale()]
+                        .content,
+                );
                 let length = registers_after.len();
                 let registers_after_fields = (0..length)
                     .map(|i| {
@@ -640,16 +619,9 @@ impl<'a> Interpreter<'a> {
                     .collect::<Vec<_>>();
                 self.set_memory_multi_addresses(&registers_after_fields);
 
-                let exc_info = U256::from(final_registers.program_counter)
-                    + (U256::from(final_registers.is_kernel as u64) << 32)
-                    + (U256::from(final_registers.gas_used) << 192);
-
-                self.generation_state.memory.set(
-                    MemoryAddress::new(0, Segment::RegistersStates, 2 * length),
-                    exc_info,
-                );
-
+                let checkpoint = self.checkpoint();
                 self.run_exception(6);
+                self.apply_memops(checkpoint.mem_len);
             };
             if self.is_kernel() && self.halt_offsets.contains(&pc) {
                 final_mem = self.generation_state.memory.clone();
@@ -970,7 +942,6 @@ impl<'a> Interpreter<'a> {
             .byte(0);
         self.opcode_count[opcode as usize] += 1;
         self.incr(1);
-        // println!("opcode {:x?}, {:?}", opcode, get_mnemonic(opcode));
 
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge nothing.
@@ -1619,7 +1590,6 @@ impl<'a> Interpreter<'a> {
             // This is a stack overflow that should have been caught earlier.
             return Err(ProgramError::StackOverflow);
         };
-
         let handler_jumptable_addr = KERNEL.global_labels["exception_jumptable"];
         let handler_addr = {
             let offset = handler_jumptable_addr + (exc_code as usize) * (BYTES_PER_OFFSET as usize);

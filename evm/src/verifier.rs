@@ -315,15 +315,6 @@ where
         );
     }
 
-    // Write exit kernel.
-    sum = add_data_write(
-        challenge,
-        registers_segment,
-        sum,
-        registers_before.len() * 2,
-        public_values.exit_kernel.exit_kernel,
-    );
-
     sum
 }
 
@@ -679,13 +670,6 @@ pub(crate) mod testutils {
                 registers_after[i],
             ));
         }
-
-        // Write exit kernel.
-        extra_looking_rows.push(add_extra_looking_row(
-            registers_segment,
-            registers_before.len() * 2,
-            public_values.exit_kernel.exit_kernel,
-        ));
 
         extra_looking_rows
     }

@@ -45,40 +45,19 @@ global main:
     // stack: stored_context, context, addr_registers
     %assert_eq
 
-    // Check the program counter.
-    DUP1 %add_const(12)
-    // stack: exit_info_addr, addr_registers
+    // Construct `exit_kernel`.
+    DUP1 MLOAD_GENERAL
+    // stack: program_counter, addr_registers
+    DUP2 %increment
     MLOAD_GENERAL
-    // stack: exit_info, addr_registers
-    // Now, get the program counter.
-    // The program counter is written in the first 32 bits of exit_info.
-    DUP1 PUSH 0xFFFFFFFF AND
-    // stack: program_counter, exit_info, addr_registers
-    DUP3 MLOAD_GENERAL
-    // stack: stored_pc, program_counter, exit_info, addr_registers
-    %assert_eq
-
-    // Check is_kernel_mode.
-    // is_kernel_mode is written in the next 32 bits of exit_info.
-    DUP1 %shr_const(32)
-    PUSH 0xFFFFFFFF AND
-    // stack: is_kernel_mode, exit_info, addr_registers
-    DUP3 %increment MLOAD_GENERAL
-    %assert_eq
-
-    // Check the gas used.
-    // The gas is written in the last 32 bits of exit_info.
-    // stack: exit_info, addr_registers
-    SWAP1
-    // stack: addr_registers, exit_info
-    DUP2 %shr_const(192)
-    PUSH 0xFFFFFFFF AND
-    // stack: gas_used, addr_registers, exit_info
+    // stack: is_kernel, program_counter, addr_registers
+    %shl_const(32) ADD
+    // stack: is_kernel << 32 + program_counter, addr_registers
     SWAP1 %add_const(5) MLOAD_GENERAL
-    %assert_eq
-
-    // stack: exit_info
-    // Now, we set the PC to the correct values and continue the execution.
+    // stack: gas_used, is_kernel << 32 + program_counter
+    %shl_const(192) ADD
+    // stack: kexit_info =  gas_used << 192 + is_kernel << 32 + program_counter
+    // Now, we set the PC, is_kernel and gas_used to the correct values and continue the execution.
     EXIT_KERNEL
 
 global main_contd:
