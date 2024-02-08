@@ -618,7 +618,6 @@ impl<'a> Interpreter<'a> {
                     && cpu_counter == (max_cpu_len.unwrap() - NUM_EXTRA_CYCLES - 1))
             {
                 final_registers = self.generation_state.registers;
-                final_mem = self.generation_state.memory.clone();
 
                 // Write final registers.
                 let registers_after = [
@@ -634,20 +633,26 @@ impl<'a> Interpreter<'a> {
                 let registers_after_fields = (0..length)
                     .map(|i| {
                         (
-                            MemoryAddress::new_u256s(
-                                0.into(),
-                                (Segment::RegistersStates.unscale()).into(),
-                                (length + i).into(),
-                            )
-                            .unwrap(),
+                            MemoryAddress::new(0, Segment::RegistersStates, length + i),
                             registers_after[i],
                         )
                     })
                     .collect::<Vec<_>>();
                 self.set_memory_multi_addresses(&registers_after_fields);
+
+                let exc_info = U256::from(final_registers.program_counter)
+                    + (U256::from(final_registers.is_kernel as u64) << 32)
+                    + (U256::from(final_registers.gas_used) << 192);
+
+                self.generation_state.memory.set(
+                    MemoryAddress::new(0, Segment::RegistersStates, 2 * length),
+                    exc_info,
+                );
+
                 self.run_exception(6);
             };
             if self.is_kernel() && self.halt_offsets.contains(&pc) {
+                final_mem = self.generation_state.memory.clone();
                 return Ok((final_registers, final_mem));
             }
 
@@ -965,7 +970,7 @@ impl<'a> Interpreter<'a> {
             .byte(0);
         self.opcode_count[opcode as usize] += 1;
         self.incr(1);
-        println!("opcode {:x?}, {:?}", opcode, get_mnemonic(opcode));
+        // println!("opcode {:x?}, {:?}", opcode, get_mnemonic(opcode));
 
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge nothing.
