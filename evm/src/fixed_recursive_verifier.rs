@@ -74,8 +74,6 @@ where
 {
     pub proof_with_pis: ProofWithPublicInputs<F, C, D>,
     pub public_values: PublicValues,
-    pub state: GenerationState<F>,
-    pub memory_values: Vec<(MemoryAddress, U256)>,
 }
 
 /// Contains all recursive circuits used in the system. For each STARK and each initial
@@ -1326,7 +1324,7 @@ where
         timing: &mut TimingTree,
         abort_signal: Option<Arc<AtomicBool>>,
     ) -> anyhow::Result<ProverOutputData<F, C, D>> {
-        let (all_proof, next_state) = prove::<F, C, D>(
+        let all_proof = prove::<F, C, D>(
             all_stark,
             config,
             generation_inputs,
@@ -1385,8 +1383,6 @@ where
         Ok(ProverOutputData {
             proof_with_pis: root_proof,
             public_values: all_proof.public_values,
-            state: next_state,
-            memory_values: all_proof.final_memory_values,
         })
     }
 

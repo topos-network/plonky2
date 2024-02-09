@@ -168,14 +168,11 @@ fn add11_yml() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(30352),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 20;
-    let (proof, _) = prove::<F, C, D>(
+    let proof = prove::<F, C, D>(
         &all_stark,
         &config,
         inputs,
@@ -328,7 +325,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         context: 0,
         gas_used: 112598,
     };
-    let mut inputs = GenerationInputs {
+    let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
         tries: tries_before,
@@ -343,9 +340,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after,
     };
 
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
@@ -379,19 +373,12 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof,
         public_values,
-        state: _,
-        memory_values: final_mem_values,
     } = root_proof_data;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof.clone())?;
 
     // Second segment.
-    inputs.registers_before = registers_after;
-
-    inputs.memory_before = final_mem_values;
-    inputs.registers_after = RegistersState::new_last_registers_with_gas(30352);
-
     let second_root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,

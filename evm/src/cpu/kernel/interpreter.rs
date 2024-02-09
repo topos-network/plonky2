@@ -125,73 +125,22 @@ pub(crate) fn generate_segment(
 ) -> anyhow::Result<(RegistersState, RegistersState, MemoryState, MemoryState)> {
     let main_label = KERNEL.global_labels["main"];
     let initial_registers = RegistersState::new_with_main_label();
-    let interpreter_inputs = GenerationInputs {
-        registers_before: initial_registers,
-        registers_after: RegistersState::default(),
-        ..inputs.clone()
-    };
-    let mut interpreter = Interpreter::new_with_generation_inputs_and_kernel(
-        KERNEL.global_labels["main"],
-        vec![],
-        interpreter_inputs,
-    );
+    let interpreter_inputs = GenerationInputs { ..inputs.clone() };
+    let mut interpreter =
+        Interpreter::new_with_generation_inputs_and_kernel(main_label, vec![], interpreter_inputs);
 
-    let (mut before_registers, mut before_mem_values) = (
-        RegistersState {
-            program_counter: KERNEL.global_labels["main_contd"],
-            ..interpreter.generation_state.registers
-        },
-        interpreter.generation_state.memory.clone(),
-    );
-    let (mut after_registers, mut after_mem_values) = (
-        RegistersState {
-            program_counter: KERNEL.global_labels["main_contd"],
-            ..interpreter.generation_state.registers
-        },
-        interpreter.generation_state.memory.clone(),
-    );
-    for i in 0..index + 1 {
-        // Write initial registers.
-        let registers_before = [
-            after_registers.program_counter.into(),
-            (after_registers.is_kernel as usize).into(),
-            after_registers.stack_len.into(),
-            after_registers.stack_top,
-            after_registers.context.into(),
-            after_registers.gas_used.into(),
-        ];
-        let registers_before_fields = (0..registers_before.len())
-            .map(|i| {
-                (
-                    MemoryAddress::new_u256s(
-                        0.into(),
-                        (Segment::RegistersStates.unscale()).into(),
-                        i.into(),
-                    )
-                    .unwrap(),
-                    registers_before[i],
-                )
-            })
-            .collect::<Vec<_>>();
+    // TODO: compute it.
+    let num_cycles_before = max_cpu_len;
 
-        interpreter.set_memory_multi_addresses(&registers_before_fields);
+    let (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
 
-        interpreter.generation_state.registers = after_registers;
-
-        (before_registers, before_mem_values) = (after_registers, after_mem_values);
-        interpreter.generation_state.registers.program_counter = main_label;
-        interpreter.generation_state.registers.is_kernel = true;
-
-        // interpreter.generation_state.memory = before_mem_values.clone();
-        (after_registers, after_mem_values) = interpreter.run(Some(max_cpu_len))?;
-        println!("SEGMENT {:?} DONE\n", i);
-    }
+    let (registers_after, memory_after) = interpreter.run(Some(max_cpu_len))?;
 
     Ok((
-        before_registers,
-        after_registers,
-        before_mem_values,
-        after_mem_values,
+        registers_before,
+        registers_after,
+        memory_before,
+        memory_after,
     ))
 }
 
@@ -272,11 +221,11 @@ impl<'a> Interpreter<'a> {
         kernel_code_len: usize,
     ) {
         // Initialize registers.
-        self.generation_state.registers = RegistersState {
+        let registers_before = RegistersState {
             program_counter: self.generation_state.registers.program_counter,
-            is_kernel: self.generation_state.registers.is_kernel,
-            ..inputs.registers_before
+            ..RegistersState::new_with_main_label()
         };
+        self.generation_state.registers = registers_before;
 
         let tries = &inputs.tries;
 
@@ -397,12 +346,12 @@ impl<'a> Interpreter<'a> {
 
         // Write initial registers.
         let registers_before = [
-            inputs.registers_before.program_counter.into(),
-            (inputs.registers_before.is_kernel as usize).into(),
-            inputs.registers_before.stack_len.into(),
-            inputs.registers_before.stack_top,
-            inputs.registers_before.context.into(),
-            inputs.registers_before.gas_used.into(),
+            registers_before.program_counter.into(),
+            (registers_before.is_kernel as usize).into(),
+            registers_before.stack_len.into(),
+            registers_before.stack_top,
+            registers_before.context.into(),
+            registers_before.gas_used.into(),
         ];
         let registers_before_fields = (0..registers_before.len())
             .map(|i| {
@@ -420,32 +369,32 @@ impl<'a> Interpreter<'a> {
 
         self.set_memory_multi_addresses(&registers_before_fields);
 
-        let length = registers_before.len();
+        // let length = registers_before.len();
 
         // Write final registers.
-        let registers_after = [
-            inputs.registers_after.program_counter.into(),
-            (inputs.registers_after.is_kernel as usize).into(),
-            inputs.registers_after.stack_len.into(),
-            inputs.registers_after.stack_top,
-            inputs.registers_after.context.into(),
-            inputs.registers_after.gas_used.into(),
-        ];
+        // let registers_after = [
+        //     registers_after.program_counter.into(),
+        //     (registers_after.is_kernel as usize).into(),
+        //     registers_after.stack_len.into(),
+        //     registers_after.stack_top,
+        //     registers_after.context.into(),
+        //     registers_after.gas_used.into(),
+        // ];
 
-        let registers_after_fields = (0..registers_before.len())
-            .map(|i| {
-                (
-                    MemoryAddress::new_u256s(
-                        0.into(),
-                        (Segment::RegistersStates.unscale()).into(),
-                        (length + i).into(),
-                    )
-                    .unwrap(),
-                    registers_after[i],
-                )
-            })
-            .collect::<Vec<_>>();
-        self.set_memory_multi_addresses(&registers_after_fields);
+        // let registers_after_fields = (0..registers_before.len())
+        //     .map(|i| {
+        //         (
+        //             MemoryAddress::new_u256s(
+        //                 0.into(),
+        //                 (Segment::RegistersStates.unscale()).into(),
+        //                 (length + i).into(),
+        //             )
+        //             .unwrap(),
+        //             registers_after[i],
+        //         )
+        //     })
+        //     .collect::<Vec<_>>();
+        // self.set_memory_multi_addresses(&registers_after_fields);
     }
 
     fn interpreter_pop<const N: usize>(&mut self) -> Result<[U256; N], ProgramError> {

@@ -186,14 +186,11 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(24290),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 20;
-    let (proof, _) = prove::<F, C, D>(
+    let proof = prove::<F, C, D>(
         &all_stark,
         &config,
         inputs,

@@ -336,6 +336,26 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         // A few final generation steps, which work better in column-major form.
         Self::generate_trace_col_major(&mut trace_col_vecs);
 
+        let final_rows = transpose(&trace_col_vecs);
+
+        for row in 0..final_rows.len() - 1 {
+            let next_addr_context = final_rows[row + 1][ADDR_CONTEXT];
+            let initialize_aux = final_rows[row][INITIALIZE_AUX];
+            let next_values_limbs: Vec<_> =
+                (0..8).map(|i| final_rows[row + 1][value_limb(i)]).collect();
+            for i in 0..8 {
+                assert!(
+                    (next_addr_context * initialize_aux * next_values_limbs[i]).is_zero(),
+                    "Failing constraint in Memory for row {}",
+                    row
+                );
+            }
+        }
+
+        // let faulty_row = 144767;
+        // println!("Row {}: {:?}", faulty_row - 1, final_rows[faulty_row - 1]);
+        // println!("Row {}: {:?}", faulty_row, final_rows[faulty_row]);
+        // println!("Row {}: {:?}\n", faulty_row + 1, final_rows[faulty_row + 1]);
         (
             trace_col_vecs
                 .into_iter()

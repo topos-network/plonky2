@@ -34,20 +34,21 @@ use crate::cross_table_lookup::{
 };
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::generation::state::GenerationState;
-use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues};
+use crate::generation::{generate_traces, GenerationInputs, MemBeforeValues, SegmentData};
 use crate::get_challenges::observe_public_values;
 use crate::lookup::{lookup_helper_columns, Lookup, LookupCheckVars};
 use crate::mem_before;
 use crate::memory::segments::Segment;
 use crate::proof::{
-    AllProof, MemCap, PublicValues, StarkOpeningSet, StarkProof, StarkProofWithMetadata,
+    AllProof, MemCap, PublicValues, RegistersData, StarkOpeningSet, StarkProof,
+    StarkProofWithMetadata,
 };
 use crate::stark::{PublicRegisterStates, Stark};
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
 use crate::witness::memory::MemoryAddress;
 use crate::witness::state::RegistersState;
-#[cfg(test)]
+// #[cfg(test)]
 use crate::{
     cross_table_lookup::testutils::check_ctls, verifier::testutils::get_memory_extra_looking_values,
 };
@@ -69,20 +70,17 @@ pub fn prove<F, C, const D: usize>(
     segment_index: usize,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<(AllProof<F, C, D>, GenerationState<F>)>
+) -> Result<AllProof<F, C, D>>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let output = generate_segment(max_cpu_len, segment_index, &inputs)?;
+    let (registers_before, registers_after, memory_before, memory_after) =
+        generate_segment(max_cpu_len, segment_index, &inputs)?;
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
-    state.registers = RegistersState {
-        program_counter: state.registers.program_counter,
-        is_kernel: state.registers.is_kernel,
-        ..output.0
-    };
+    state.registers = registers_before;
 
     let actual_mem_before = if segment_index == 0 {
         let mut addr = MemoryAddress {
@@ -91,116 +89,47 @@ where
             virt: 0,
         };
         let mut val = U256::from(1); // 2^0
-        let mut shift_table = (0..256)
+        (0..256)
             .map(|i| {
                 let value = (addr, val);
-                state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
-                    .content
-                    .push(Some(val));
-                // state.memory.set(addr, val);
                 addr.increment();
                 val <<= 1;
                 value
             })
-            .collect::<Vec<_>>();
-        shift_table.extend(inputs.memory_before.clone());
-        shift_table
+            .collect::<Vec<_>>()
     } else {
-        let mut memory_before = vec![];
-        for ctx in 0..output.2.contexts.len() {
-            for segment in 0..output.2.contexts[ctx].segments.len() {
-                for virt in 0..output.2.contexts[ctx].segments[segment].content.len() {
-                    if output.2.contexts[ctx].segments[segment].content[virt].is_some() {
-                        memory_before.push((
+        let mut res = vec![];
+        for ctx in 0..memory_before.contexts.len() {
+            for segment in 0..memory_before.contexts[ctx].segments.len() {
+                for virt in 0..memory_before.contexts[ctx].segments[segment].content.len() {
+                    if memory_before.contexts[ctx].segments[segment].content[virt].is_some() {
+                        res.push((
                             MemoryAddress {
                                 context: ctx,
                                 segment,
                                 virt,
                             },
-                            output.2.contexts[ctx].segments[segment].content[virt].unwrap(),
+                            memory_before.contexts[ctx].segments[segment].content[virt].unwrap(),
                         ));
                     }
                 }
             }
         }
-        memory_before
+        res
     };
 
-    if output.2.contexts.len() > state.memory.contexts.len() {
-        println!("not enough contexts in state mem");
-    } else {
-        for context_nb in 0..output.2.contexts.len() {
-            for segment_nb in 0..output.2.contexts[context_nb].segments.len() {
-                for virt in 0..output.2.contexts[context_nb].segments[segment_nb]
-                    .content
-                    .len()
-                {
-                    match find_in_vec(
-                        MemoryAddress {
-                            context: context_nb,
-                            segment: segment_nb,
-                            virt,
-                        },
-                        &inputs.memory_before,
-                    ) {
-                        Some(val) => {
-                            if Some(val)
-                                != output.2.contexts[context_nb].segments[segment_nb].content[virt]
-                            {
-                                println!(
-                                    "mem addr: {:?}, val: {:?}, output val {:?}",
-                                    MemoryAddress {
-                                        context: context_nb,
-                                        segment: segment_nb,
-                                        virt,
-                                    },
-                                    val,
-                                    output.2.contexts[context_nb].segments[segment_nb].content
-                                        [virt]
-                                );
-                            }
-                        }
-                        None => {
-                            if output.2.contexts[context_nb].segments[segment_nb].content[virt]
-                                .is_some()
-                            {
-                                println!(
-                                    "not in mem before: addr {:?}, val {:?}",
-                                    MemoryAddress {
-                                        context: context_nb,
-                                        segment: segment_nb,
-                                        virt
-                                    },
-                                    output.2.contexts[context_nb].segments[segment_nb].content
-                                        [virt]
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let actual_inputs = GenerationInputs {
-        registers_before: output.0,
-        registers_after: output.1,
-        memory_before: actual_mem_before,
-        ..inputs.clone()
+    let segment_data = SegmentData {
+        max_cpu_len,
+        starting_state: state,
+        memory_before: vec![],
+        registers_before: RegistersData::default(),
+        registers_after: RegistersData::default(),
     };
 
-    let (traces, final_memory_values, final_registers, mut public_values, next_state) = timed!(
+    let (traces, mut public_values) = timed!(
         timing,
         "generate all traces",
-        generate_traces(
-            all_stark,
-            actual_inputs,
-            config,
-            max_cpu_len,
-            state,
-            segment_index,
-            timing
-        )?
+        generate_traces(all_stark, inputs, config, segment_data, timing)?
     );
 
     check_abort_signal(abort_signal.clone())?;
@@ -209,13 +138,11 @@ where
         all_stark,
         config,
         traces,
-        final_memory_values,
-        final_registers,
         &mut public_values,
         timing,
         abort_signal,
     )?;
-    Ok((proof, next_state))
+    Ok(proof)
 }
 
 /// Compute all STARK proofs.
@@ -223,8 +150,6 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
-    final_memory_values: Vec<Vec<F>>,
-    final_register_values: RegistersState,
     public_values: &mut PublicValues,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
@@ -287,14 +212,13 @@ where
         )
     );
 
-    let (stark_proofs, (mem_before_cap, mem_after_cap), final_mem_values) = timed!(
+    let (stark_proofs, (mem_before_cap, mem_after_cap)) = timed!(
         timing,
         "compute all proofs given commitments",
         prove_with_commitments(
             all_stark,
             config,
             &trace_poly_values,
-            final_memory_values,
             trace_commitments,
             ctl_data_per_table,
             &mut challenger,
@@ -333,7 +257,7 @@ where
             .collect::<Vec<_>>(),
     };
 
-    #[cfg(test)]
+    // #[cfg(test)]
     {
         check_ctls(
             &trace_poly_values,
@@ -346,8 +270,6 @@ where
         stark_proofs,
         ctl_challenges,
         public_values: public_values.clone(),
-        final_memory_values: final_mem_values,
-        final_register_values,
     })
 }
 
@@ -362,7 +284,6 @@ fn prove_with_commitments<F, C, const D: usize>(
     all_stark: &AllStark<F, D>,
     config: &StarkConfig,
     trace_poly_values: &[Vec<PolynomialValues<F>>; NUM_TABLES],
-    final_memory_values: Vec<Vec<F>>,
     trace_commitments: Vec<PolynomialBatch<F, C, D>>,
     ctl_data_per_table: [CtlData<F>; NUM_TABLES],
     challenger: &mut Challenger<F, C::Hasher>,
@@ -372,13 +293,12 @@ fn prove_with_commitments<F, C, const D: usize>(
 ) -> Result<(
     [StarkProofWithMetadata<F, C, D>; NUM_TABLES],
     (MerkleCap<F, C::Hasher>, MerkleCap<F, C::Hasher>),
-    MemBeforeValues,
 )>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
 {
-    let (arithmetic_proof, arithmetic_cap, _) = timed!(
+    let (arithmetic_proof, arithmetic_cap) = timed!(
         timing,
         "prove Arithmetic STARK",
         prove_single_table(
@@ -386,7 +306,6 @@ where
             config,
             &trace_poly_values[Table::Arithmetic as usize],
             &trace_commitments[Table::Arithmetic as usize],
-            &[],
             &ctl_data_per_table[Table::Arithmetic as usize],
             ctl_challenges,
             challenger,
@@ -395,7 +314,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (byte_packing_proof, bp_cap, _) = timed!(
+    let (byte_packing_proof, bp_cap) = timed!(
         timing,
         "prove byte packing STARK",
         prove_single_table(
@@ -403,7 +322,6 @@ where
             config,
             &trace_poly_values[Table::BytePacking as usize],
             &trace_commitments[Table::BytePacking as usize],
-            &[],
             &ctl_data_per_table[Table::BytePacking as usize],
             ctl_challenges,
             challenger,
@@ -412,7 +330,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (cpu_proof, cpu_cap, _) = timed!(
+    let (cpu_proof, cpu_cap) = timed!(
         timing,
         "prove CPU STARK",
         prove_single_table(
@@ -420,7 +338,6 @@ where
             config,
             &trace_poly_values[Table::Cpu as usize],
             &trace_commitments[Table::Cpu as usize],
-            &[],
             &ctl_data_per_table[Table::Cpu as usize],
             ctl_challenges,
             challenger,
@@ -429,7 +346,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (keccak_proof, keccak_cap, _) = timed!(
+    let (keccak_proof, keccak_cap) = timed!(
         timing,
         "prove Keccak STARK",
         prove_single_table(
@@ -437,7 +354,6 @@ where
             config,
             &trace_poly_values[Table::Keccak as usize],
             &trace_commitments[Table::Keccak as usize],
-            &[],
             &ctl_data_per_table[Table::Keccak as usize],
             ctl_challenges,
             challenger,
@@ -446,7 +362,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (keccak_sponge_proof, keccak_sponge_cap, _) = timed!(
+    let (keccak_sponge_proof, keccak_sponge_cap) = timed!(
         timing,
         "prove Keccak sponge STARK",
         prove_single_table(
@@ -454,7 +370,6 @@ where
             config,
             &trace_poly_values[Table::KeccakSponge as usize],
             &trace_commitments[Table::KeccakSponge as usize],
-            &[],
             &ctl_data_per_table[Table::KeccakSponge as usize],
             ctl_challenges,
             challenger,
@@ -463,7 +378,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (logic_proof, logic_cap, _) = timed!(
+    let (logic_proof, logic_cap) = timed!(
         timing,
         "prove logic STARK",
         prove_single_table(
@@ -471,7 +386,6 @@ where
             config,
             &trace_poly_values[Table::Logic as usize],
             &trace_commitments[Table::Logic as usize],
-            &[],
             &ctl_data_per_table[Table::Logic as usize],
             ctl_challenges,
             challenger,
@@ -480,7 +394,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (memory_proof, mem_cap, _) = timed!(
+    let (memory_proof, mem_cap) = timed!(
         timing,
         "prove memory STARK",
         prove_single_table(
@@ -488,7 +402,6 @@ where
             config,
             &trace_poly_values[Table::Memory as usize],
             &trace_commitments[Table::Memory as usize],
-            &[],
             &ctl_data_per_table[Table::Memory as usize],
             ctl_challenges,
             challenger,
@@ -497,7 +410,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (mem_before_proof, mem_before_cap, _) = timed!(
+    let (mem_before_proof, mem_before_cap) = timed!(
         timing,
         "prove mem_before STARK",
         prove_single_table(
@@ -505,7 +418,6 @@ where
             config,
             &trace_poly_values[Table::MemBefore as usize],
             &trace_commitments[Table::MemBefore as usize],
-            &[],
             &ctl_data_per_table[Table::MemBefore as usize],
             ctl_challenges,
             challenger,
@@ -514,7 +426,7 @@ where
             abort_signal.clone(),
         )?
     );
-    let (mem_after_proof, mem_after_cap, final_memory_values) = timed!(
+    let (mem_after_proof, mem_after_cap) = timed!(
         timing,
         "prove mem_after STARK",
         prove_single_table(
@@ -522,7 +434,6 @@ where
             config,
             &trace_poly_values[Table::MemAfter as usize],
             &trace_commitments[Table::MemAfter as usize],
-            &final_memory_values,
             &ctl_data_per_table[Table::MemAfter as usize],
             ctl_challenges,
             challenger,
@@ -545,7 +456,6 @@ where
             mem_after_proof,
         ],
         (mem_before_cap, mem_after_cap),
-        final_memory_values.unwrap(),
     ))
 }
 
@@ -576,18 +486,13 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     config: &StarkConfig,
     trace_poly_values: &[PolynomialValues<F>],
     trace_commitment: &PolynomialBatch<F, C, D>,
-    final_memory_values: &[Vec<F>],
     ctl_data: &CtlData<F>,
     ctl_challenges: &GrandProductChallengeSet<F>,
     challenger: &mut Challenger<F, C::Hasher>,
     is_mem_after: bool,
     timing: &mut TimingTree,
     abort_signal: Option<Arc<AtomicBool>>,
-) -> Result<(
-    StarkProofWithMetadata<F, C, D>,
-    MerkleCap<F, C::Hasher>,
-    Option<Vec<(MemoryAddress, U256)>>,
-)>
+) -> Result<(StarkProofWithMetadata<F, C, D>, MerkleCap<F, C::Hasher>)>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -595,16 +500,6 @@ where
 {
     check_abort_signal(abort_signal.clone())?;
 
-    let final_mem_values = if is_mem_after {
-        Some(
-            final_memory_values
-                .iter()
-                .map(|row| get_mem_after_value_from_row(row))
-                .collect::<Vec<_>>(),
-        )
-    } else {
-        None
-    };
     let degree = trace_poly_values[0].len();
     let degree_bits = log2_strict(degree);
     let fri_params = config.fri_params(degree_bits);
@@ -683,7 +578,7 @@ where
 
     let num_ctl_polys = ctl_data.num_ctl_helper_polys();
 
-    // #[cfg(test)]
+    #[cfg(test)]
     {
         check_constraints(
             stark,
@@ -807,7 +702,6 @@ where
             proof,
         },
         trace_commitment.merkle_tree.cap.clone(),
-        final_mem_values,
     ))
 }
 
@@ -985,7 +879,7 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
     Ok(())
 }
 
-// #[cfg(test)]
+#[cfg(test)]
 /// Check that all constraints evaluate to zero on `H`.
 /// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
 fn check_constraints<'a, F, C, S, const D: usize>(

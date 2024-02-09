@@ -164,9 +164,6 @@ fn test_add11_yml() {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(30352),
     };
 
     let initial_stack = vec![];
@@ -314,9 +311,6 @@ fn test_add11_yml_with_exception() {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after,
     };
 
     let initial_stack = vec![];

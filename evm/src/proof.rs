@@ -40,10 +40,6 @@ pub struct AllProof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, co
     pub(crate) ctl_challenges: GrandProductChallengeSet<F>,
     /// Public memory values used for the recursive proofs.
     pub public_values: PublicValues,
-    /// Memory values at the end of the execution.
-    pub final_memory_values: MemBeforeValues,
-    /// State of the registers at the end of the execution.
-    pub final_register_values: RegistersState,
 }
 
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> AllProof<F, C, D> {

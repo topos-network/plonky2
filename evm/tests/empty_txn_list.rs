@@ -74,15 +74,6 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
             prev_hashes: initial_block_hashes,
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(2681),
-    };
-
-    let mut final_inputs = GenerationInputs {
-        registers_before: inputs.registers_after,
-        registers_after: inputs.registers_after,
-        ..inputs.clone()
     };
 
     // Initialize the preprocessed circuits for the zkEVM.
@@ -137,7 +128,7 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     let root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
-        inputs,
+        inputs.clone(),
         max_cpu_len,
         0,
         &mut timing,
@@ -147,18 +138,14 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof,
         public_values,
-        state: _next_state,
-        memory_values: final_mem_values,
     } = root_proof_data;
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof.clone())?;
 
-    final_inputs.memory_before = final_mem_values;
-
     let final_root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
-        final_inputs,
+        inputs,
         max_cpu_len,
         1,
         &mut timing,

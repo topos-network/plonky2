@@ -230,14 +230,11 @@ fn test_log_opcodes() -> anyhow::Result<()> {
             prev_hashes: vec![H256::default(); 256],
             cur_hash: H256::default(),
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(39942),
     };
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 20;
-    let (proof, _) = prove::<F, C, D>(
+    let proof = prove::<F, C, D>(
         &all_stark,
         &config,
         inputs,
@@ -450,15 +447,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes.clone(),
             cur_hash: block_1_hash,
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(163222),
-    };
-
-    let mut final_inputs_first = GenerationInputs {
-        registers_before: inputs_first.registers_after,
-        registers_after: inputs_first.registers_after,
-        ..inputs_first.clone()
     };
 
     // Preprocess all circuits.
@@ -483,7 +471,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let root_proof_data_first = all_circuits.prove_segment(
         &all_stark,
         &config,
-        inputs_first,
+        inputs_first.clone(),
         max_cpu_len,
         0,
         &mut timing,
@@ -493,17 +481,14 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof_first,
         public_values: public_values_first,
-        state: _next_state_first,
-        memory_values: final_mem_values_first,
     } = root_proof_data_first;
 
     timing.filter(Duration::from_millis(100)).print();
     all_circuits.verify_root(root_proof_first.clone())?;
-    final_inputs_first.memory_before = final_mem_values_first;
     let final_root_proof_data_first = all_circuits.prove_segment(
         &all_stark,
         &config,
-        final_inputs_first,
+        inputs_first,
         max_cpu_len,
         1,
         &mut timing,
@@ -628,15 +613,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes.clone(),
             cur_hash: block_1_hash,
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(52010),
-    };
-
-    let mut final_inputs = GenerationInputs {
-        registers_before: inputs.registers_after,
-        registers_after: inputs.registers_after,
-        ..inputs.clone()
     };
 
     let mut timing = TimingTree::new("prove root second", log::Level::Info);
@@ -644,7 +620,7 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let root_proof_data_second = all_circuits.prove_segment(
         &all_stark,
         &config,
-        inputs,
+        inputs.clone(),
         max_cpu_len,
         0,
         &mut timing,
@@ -653,18 +629,15 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof_second,
         public_values: public_values_second,
-        state: _next_state_second,
-        memory_values: final_mem_values_second,
     } = root_proof_data_second;
     timing.filter(Duration::from_millis(100)).print();
 
     all_circuits.verify_root(root_proof_second.clone())?;
 
-    final_inputs.memory_before = final_mem_values_second;
     let final_root_proof_data_second = all_circuits.prove_segment(
         &all_stark,
         &config,
-        final_inputs,
+        inputs,
         max_cpu_len,
         1,
         &mut timing,
@@ -673,7 +646,6 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: final_root_proof_second,
         public_values: final_public_values_second,
-        ..
     } = final_root_proof_data_second;
     all_circuits.verify_root(final_root_proof_second.clone())?;
 
@@ -765,21 +737,12 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
             prev_hashes: block_hashes,
             cur_hash: block_2_hash,
         },
-        memory_before: vec![],
-        registers_before: RegistersState::new_with_main_label(),
-        registers_after: RegistersState::new_last_registers_with_gas(42765),
-    };
-
-    let mut final_inputs = GenerationInputs {
-        registers_before: inputs.registers_after,
-        registers_after: inputs.registers_after,
-        ..inputs.clone()
     };
 
     let root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
-        inputs,
+        inputs.clone(),
         max_cpu_len,
         0,
         &mut timing,
@@ -788,16 +751,13 @@ fn test_log_with_aggreg() -> anyhow::Result<()> {
     let ProverOutputData {
         proof_with_pis: root_proof,
         public_values,
-        state: _next_state,
-        memory_values: final_mem_values,
     } = root_proof_data;
     all_circuits.verify_root(root_proof.clone())?;
 
-    final_inputs.memory_before = final_mem_values;
     let final_root_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
-        final_inputs,
+        inputs,
         max_cpu_len,
         1,
         &mut timing,

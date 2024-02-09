@@ -86,14 +86,6 @@ pub struct GenerationInputs {
 
     /// The hash of the current block, and a list of the 256 previous block hashes.
     pub block_hashes: BlockHashes,
-
-    /// Memory addresses and their values accessed in a previous execution. Used to preinitialize the current memory.
-    pub memory_before: MemBeforeValues,
-
-    /// Initial registers of the current execution.
-    pub registers_before: RegistersState,
-    /// State of the registers after the current execution.
-    pub registers_after: RegistersState,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -115,9 +107,19 @@ pub struct TrieInputs {
     pub storage_tries: Vec<(H256, HashedPartialTrie)>,
 }
 
+pub(crate) struct SegmentData<F: RichField> {
+    pub(crate) max_cpu_len: usize,
+    pub(crate) starting_state: GenerationState<F>,
+    pub(crate) memory_before: Vec<(MemoryAddress, U256)>,
+    pub(crate) registers_before: RegistersData,
+    pub(crate) registers_after: RegistersData,
+}
+
 fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>(
     state: &mut GenerationState<F>,
     inputs: &GenerationInputs,
+    registers_before: &RegistersData,
+    registers_after: &RegistersData,
 ) {
     let metadata = &inputs.block_metadata;
     let tries = &inputs.tries;
@@ -216,12 +218,12 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
 
     // Write initial registers.
     let registers_before = [
-        inputs.registers_before.program_counter.into(),
-        (inputs.registers_before.is_kernel as usize).into(),
-        inputs.registers_before.stack_len.into(),
-        inputs.registers_before.stack_top,
-        inputs.registers_before.context.into(),
-        inputs.registers_before.gas_used.into(),
+        registers_before.program_counter,
+        registers_before.is_kernel,
+        registers_before.stack_len,
+        registers_before.stack_top,
+        registers_before.context,
+        registers_before.gas_used,
     ];
     ops.extend((0..registers_before.len()).map(|i| {
         mem_write_log(
@@ -236,12 +238,12 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
 
     // Write final registers.
     let registers_after = [
-        inputs.registers_after.program_counter.into(),
-        (inputs.registers_after.is_kernel as usize).into(),
-        inputs.registers_after.stack_len.into(),
-        inputs.registers_after.stack_top,
-        inputs.registers_after.context.into(),
-        inputs.registers_after.gas_used.into(),
+        registers_after.program_counter,
+        registers_after.is_kernel,
+        registers_after.stack_len,
+        registers_after.stack_top,
+        registers_after.context,
+        registers_after.gas_used,
     ];
     ops.extend((0..registers_before.len()).map(|i| {
         mem_write_log(
@@ -260,66 +262,27 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     all_stark: &AllStark<F, D>,
     inputs: GenerationInputs,
     config: &StarkConfig,
-    max_cpu_len: usize,
-    previous_state: GenerationState<F>,
-    segment_index: usize,
+    segment_data: SegmentData<F>,
     timing: &mut TimingTree,
-) -> anyhow::Result<(
-    [Vec<PolynomialValues<F>>; NUM_TABLES],
-    Vec<Vec<F>>,
-    RegistersState,
-    PublicValues,
-    GenerationState<F>,
-)> {
+) -> anyhow::Result<([Vec<PolynomialValues<F>>; NUM_TABLES], PublicValues)> {
     // Initialize the state with the state at the end of the
     // previous segment execution, if any.
 
-    let mut state = previous_state;
-    // If the current execution is that of the first segment in the proof,
-    // then preinitialize the `ShiftTable` by adding it to the
-    // `mem_before_values`. Otherwise, `mem_before_values`
-    // already contain it.
-    // let mem_before_values = if segment_index == 0 {
-    //     let mut addr = MemoryAddress {
-    //         context: 0,
-    //         segment: Segment::ShiftTable.unscale(),
-    //         virt: 0,
-    //     };
-    //     let mut val = U256::from(1); // 2^0
-    //     let mut shift_table = (0..256)
-    //         .map(|i| {
-    //             let value = (addr, val);
-    //             state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
-    //                 .content
-    //                 .push(Some(val));
-    //             // state.memory.set(addr, val);
-    //             addr.increment();
-    //             val <<= 1;
-    //             value
-    //         })
-    //         .collect::<Vec<_>>();
-    //     shift_table.extend(inputs.memory_before.clone());
-    //     shift_table
-    // } else {
-    //     inputs.memory_before.clone()
-    // };
-    let mem_before_values = inputs.memory_before.clone();
+    let SegmentData {
+        max_cpu_len,
+        starting_state: mut state,
+        memory_before,
+        registers_before,
+        registers_after,
+    } = segment_data;
 
-    // state.memory.set(
-    //     MemoryAddress {
-    //         context: 0,
-    //         segment: Segment::RegistersStates.unscale(),
-    //         virt: 12,
-    //     },
-    //     U256::from(inputs.registers_before.program_counter)
-    //         + (U256::from(inputs.registers_before.is_kernel as usize) << 32)
-    //         + (U256::from(inputs.registers_before.gas_used) << 192),
-    // );
-    for &(address, val) in &mem_before_values {
+    state.memory = MemoryState::default();
+
+    for &(address, val) in &memory_before {
         state.memory.set(address, val);
     }
 
-    apply_metadata_and_tries_memops(&mut state, &inputs);
+    apply_metadata_and_tries_memops(&mut state, &inputs, &registers_before, &registers_after);
 
     let cpu_res = timed!(
         timing,
@@ -383,8 +346,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         state.traces.get_lengths()
     );
 
-    let mut next_state = state.soft_clone();
-
     let read_metadata = |field| state.memory.read_global_metadata(field);
     let trie_roots_before = TrieRoots {
         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
@@ -409,24 +370,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         gas_used_after,
     };
 
-    // Set the registers `before` and `after`, as well as `exit_kernel`.
-    let registers_before = RegistersData {
-        program_counter: inputs.registers_before.program_counter.into(),
-        is_kernel: (inputs.registers_before.is_kernel as u64).into(),
-        stack_len: inputs.registers_before.stack_len.into(),
-        stack_top: inputs.registers_before.stack_top,
-        context: inputs.registers_before.context.into(),
-        gas_used: inputs.registers_before.gas_used.into(),
-    };
-    let registers_after = RegistersData {
-        program_counter: inputs.registers_after.program_counter.into(),
-        is_kernel: (inputs.registers_after.is_kernel as u64).into(),
-        stack_len: inputs.registers_after.stack_len.into(),
-        stack_top: inputs.registers_after.stack_top,
-        context: inputs.registers_after.context.into(),
-        gas_used: inputs.registers_after.gas_used.into(),
-    };
-
     // `mem_before` and `mem_after` are intialized with an empty cap.
     // But they are set to the caps of `MemBefore` and `MemAfter`
     // respectively while proving.
@@ -447,22 +390,218 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         "convert trace data to tables",
         state
             .traces
-            .into_tables(all_stark, &mem_before_values, config, timing)
+            .into_tables(all_stark, &memory_before, config, timing)
     );
-
-    // Reconstruct the new memory_before from the final values.
-    next_state.inputs.memory_before = final_values
-        .iter()
-        .map(|row| get_mem_after_value_from_row(row))
-        .collect::<Vec<_>>();
-    Ok((
-        tables,
-        final_values,
-        final_registers,
-        public_values,
-        next_state,
-    ))
+    Ok((tables, public_values))
 }
+
+// pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
+//     all_stark: &AllStark<F, D>,
+//     inputs: GenerationInputs,
+//     config: &StarkConfig,
+//     max_cpu_len: usize,
+//     previous_state: &mut GenerationState<F>,
+//     segment_index: usize,
+//     timing: &mut TimingTree,
+// ) -> anyhow::Result<(
+//     [Vec<PolynomialValues<F>>; NUM_TABLES],
+//     Vec<Vec<F>>,
+//     RegistersState,
+//     PublicValues,
+//     GenerationState<F>,
+// )> {
+//     // Initialize the state with the state at the end of the
+//     // previous segment execution, if any.
+
+//     let mut state = previous_state;
+//     // If the current execution is that of the first segment in the proof,
+//     // then preinitialize the `ShiftTable` by adding it to the
+//     // `mem_before_values`. Otherwise, `mem_before_values`
+//     // already contain it.
+//     // let mem_before_values = if segment_index == 0 {
+//     //     let mut addr = MemoryAddress {
+//     //         context: 0,
+//     //         segment: Segment::ShiftTable.unscale(),
+//     //         virt: 0,
+//     //     };
+//     //     let mut val = U256::from(1); // 2^0
+//     //     let mut shift_table = (0..256)
+//     //         .map(|i| {
+//     //             let value = (addr, val);
+//     //             state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
+//     //                 .content
+//     //                 .push(Some(val));
+//     //             // state.memory.set(addr, val);
+//     //             addr.increment();
+//     //             val <<= 1;
+//     //             value
+//     //         })
+//     //         .collect::<Vec<_>>();
+//     //     shift_table.extend(inputs.memory_before.clone());
+//     //     shift_table
+//     // } else {
+//     //     inputs.memory_before.clone()
+//     // };
+//     let mem_before_values = inputs.memory_before.clone();
+
+//     // state.memory.set(
+//     //     MemoryAddress {
+//     //         context: 0,
+//     //         segment: Segment::RegistersStates.unscale(),
+//     //         virt: 12,
+//     //     },
+//     //     U256::from(inputs.registers_before.program_counter)
+//     //         + (U256::from(inputs.registers_before.is_kernel as usize) << 32)
+//     //         + (U256::from(inputs.registers_before.gas_used) << 192),
+//     // );
+//     for &(address, val) in &mem_before_values {
+//         state.memory.set(address, val);
+//     }
+
+//     apply_metadata_and_tries_memops(&mut state, &inputs);
+
+//     let cpu_res = timed!(
+//         timing,
+//         "simulate CPU",
+//         simulate_cpu(&mut state, max_cpu_len)
+//     );
+//     let final_registers = if let Ok(res) = cpu_res {
+//         res
+//     } else {
+//         // Retrieve previous PC (before jumping to KernelPanic), to see if we reached `hash_final_tries`.
+//         // We will output debugging information on the final tries only if we got a root mismatch.
+//         let previous_pc = state
+//             .traces
+//             .cpu
+//             .last()
+//             .expect("We should have CPU rows")
+//             .program_counter
+//             .to_canonical_u64() as usize;
+
+//         if KERNEL.offset_name(previous_pc).contains("hash_final_tries") {
+//             let state_trie_ptr = u256_to_usize(
+//                 state
+//                     .memory
+//                     .read_global_metadata(GlobalMetadata::StateTrieRoot),
+//             )
+//             .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
+//             log::debug!(
+//                 "Computed state trie: {:?}",
+//                 get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr)
+//             );
+
+//             let txn_trie_ptr = u256_to_usize(
+//                 state
+//                     .memory
+//                     .read_global_metadata(GlobalMetadata::TransactionTrieRoot),
+//             )
+//             .map_err(|_| anyhow!("Transactions trie pointer is too large to fit in a usize."))?;
+//             log::debug!(
+//                 "Computed transactions trie: {:?}",
+//                 get_txn_trie::<HashedPartialTrie>(&state.memory, txn_trie_ptr)
+//             );
+
+//             let receipt_trie_ptr = u256_to_usize(
+//                 state
+//                     .memory
+//                     .read_global_metadata(GlobalMetadata::ReceiptTrieRoot),
+//             )
+//             .map_err(|_| anyhow!("Receipts trie pointer is too large to fit in a usize."))?;
+//             log::debug!(
+//                 "Computed receipts trie: {:?}",
+//                 get_receipt_trie::<HashedPartialTrie>(&state.memory, receipt_trie_ptr)
+//             );
+//         }
+
+//         cpu_res?;
+//         RegistersState::default()
+//     };
+
+//     log::info!(
+//         "Trace lengths (before padding): {:?}",
+//         state.traces.get_lengths()
+//     );
+
+//     let mut next_state = state.soft_clone();
+
+//     let read_metadata = |field| state.memory.read_global_metadata(field);
+//     let trie_roots_before = TrieRoots {
+//         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
+//         transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestBefore)),
+//         receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestBefore)),
+//     };
+//     let trie_roots_after = TrieRoots {
+//         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestAfter)),
+//         transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestAfter)),
+//         receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestAfter)),
+//     };
+
+//     let gas_used_after = read_metadata(GlobalMetadata::BlockGasUsedAfter);
+//     let txn_number_after = read_metadata(GlobalMetadata::TxnNumberAfter);
+
+//     let trie_root_ptrs = state.trie_root_ptrs;
+//     let extra_block_data = ExtraBlockData {
+//         checkpoint_state_trie_root: inputs.checkpoint_state_trie_root,
+//         txn_number_before: inputs.txn_number_before,
+//         txn_number_after,
+//         gas_used_before: inputs.gas_used_before,
+//         gas_used_after,
+//     };
+
+//     // Set the registers `before` and `after`, as well as `exit_kernel`.
+//     let registers_before = RegistersData {
+//         program_counter: inputs.registers_before.program_counter.into(),
+//         is_kernel: (inputs.registers_before.is_kernel as u64).into(),
+//         stack_len: inputs.registers_before.stack_len.into(),
+//         stack_top: inputs.registers_before.stack_top,
+//         context: inputs.registers_before.context.into(),
+//         gas_used: inputs.registers_before.gas_used.into(),
+//     };
+//     let registers_after = RegistersData {
+//         program_counter: inputs.registers_after.program_counter.into(),
+//         is_kernel: (inputs.registers_after.is_kernel as u64).into(),
+//         stack_len: inputs.registers_after.stack_len.into(),
+//         stack_top: inputs.registers_after.stack_top,
+//         context: inputs.registers_after.context.into(),
+//         gas_used: inputs.registers_after.gas_used.into(),
+//     };
+
+//     // `mem_before` and `mem_after` are intialized with an empty cap.
+//     // But they are set to the caps of `MemBefore` and `MemAfter`
+//     // respectively while proving.
+//     let public_values = PublicValues {
+//         trie_roots_before,
+//         trie_roots_after,
+//         block_metadata: inputs.block_metadata,
+//         block_hashes: inputs.block_hashes,
+//         extra_block_data,
+//         registers_before,
+//         registers_after,
+//         mem_before: MemCap { mem_cap: vec![] },
+//         mem_after: MemCap { mem_cap: vec![] },
+//     };
+
+//     let (tables, final_values) = timed!(
+//         timing,
+//         "convert trace data to tables",
+//         state
+//             .traces
+//             .into_tables(all_stark, &mem_before_values, config, timing)
+//     );
+
+//     // Reconstruct the new memory_before from the final values.
+//     next_state.inputs.memory_before = final_values
+//         .iter()
+//         .map(|row| get_mem_after_value_from_row(row))
+//         .collect::<Vec<_>>();
+//     Ok((
+//         tables,
+//         final_values,
+//         final_registers,
+//         public_values,
+//         next_state,
+//     ))
+// }
 
 fn simulate_cpu<F: Field>(
     state: &mut GenerationState<F>,
