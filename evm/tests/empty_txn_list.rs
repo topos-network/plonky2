@@ -16,7 +16,6 @@ use plonky2_evm::config::StarkConfig;
 use plonky2_evm::fixed_recursive_verifier::{AllRecursiveCircuits, ProverOutputData};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
-use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 
 type F = GoldilocksField;

@@ -190,8 +190,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         // fill_gaps may have added operations at the end which break the order, so sort again.
         memory_ops.sort_by_key(MemoryOp::sorting_key);
 
-        println!("first memoop {:?}", memory_ops[0]);
-
         let mut trace_rows = memory_ops
             .into_par_iter()
             .map(|op| op.into_row())
@@ -284,7 +282,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             kind: Read,
             ..last_op
         };
-        println!("padding op {:?}", padding_op);
         let num_ops = memory_ops.len();
         let num_ops_padded = num_ops.next_power_of_two();
         for _ in num_ops..num_ops_padded {
@@ -352,10 +349,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             }
         }
 
-        // let faulty_row = 144767;
-        // println!("Row {}: {:?}", faulty_row - 1, final_rows[faulty_row - 1]);
-        // println!("Row {}: {:?}", faulty_row, final_rows[faulty_row]);
-        // println!("Row {}: {:?}\n", faulty_row + 1, final_rows[faulty_row + 1]);
         (
             trace_col_vecs
                 .into_iter()
@@ -458,18 +451,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for MemoryStark<F
 
         for i in 0..8 {
             // Enumerate purportedly-ordered log.
-            if next_is_read.as_slice().to_vec().contains(&FE::ONE)
-                && address_unchanged.as_slice().to_vec().contains(&FE::ONE)
-                && (next_values_limbs[i] - value_limbs[i]).as_slice().to_vec()[0].is_nonzero()
-            {
-                println!(
-                    "next is read {:?}, address unchanged {:?}, diff in vals {:?}, context {:?}, segment {:?}, virt {:?}, next val {:?}, val limb {:?}, timestamp {:?}, cur  context {:?}, segment {:?}, virt {:?}",
-                    next_is_read,
-                    address_unchanged,
-                    (next_values_limbs[i] - value_limbs[i]), next_addr_context, next_addr_segment, next_addr_virtual, next_values_limbs[i], value_limbs[i], next_timestamp, addr_context, addr_segment, addr_virtual
-                );
-            }
-
             yield_constr.constraint_transition(
                 next_is_read * address_unchanged * (next_values_limbs[i] - value_limbs[i]),
             );

@@ -132,7 +132,44 @@ pub(crate) fn generate_segment(
     // TODO: compute it.
     let num_cycles_before = max_cpu_len;
 
-    let (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
+    let (mut registers_before, mut memory_before) = (
+        initial_registers,
+        interpreter.generation_state.memory.clone(),
+    );
+
+    if index > 0 {
+        (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
+    }
+    interpreter.generation_state.registers = RegistersState {
+        program_counter: main_label,
+        is_kernel: true,
+        ..registers_before
+    };
+
+    // Write initial registers.
+    let registers_before_values = [
+        registers_before.program_counter.into(),
+        (registers_before.is_kernel as usize).into(),
+        registers_before.stack_len.into(),
+        registers_before.stack_top,
+        registers_before.context.into(),
+        registers_before.gas_used.into(),
+    ];
+    let registers_before_fields = (0..registers_before_values.len())
+        .map(|i| {
+            (
+                MemoryAddress::new_u256s(
+                    0.into(),
+                    (Segment::RegistersStates.unscale()).into(),
+                    i.into(),
+                )
+                .unwrap(),
+                registers_before_values[i],
+            )
+        })
+        .collect::<Vec<_>>();
+
+    interpreter.set_memory_multi_addresses(&registers_before_fields);
 
     let (registers_after, memory_after) = interpreter.run(Some(max_cpu_len))?;
 
@@ -221,11 +258,12 @@ impl<'a> Interpreter<'a> {
         kernel_code_len: usize,
     ) {
         // Initialize registers.
-        let registers_before = RegistersState {
+        let registers_before = RegistersState::new_with_main_label();
+        self.generation_state.registers = RegistersState {
             program_counter: self.generation_state.registers.program_counter,
-            ..RegistersState::new_with_main_label()
+            is_kernel: self.generation_state.registers.is_kernel,
+            ..registers_before
         };
-        self.generation_state.registers = registers_before;
 
         let tries = &inputs.tries;
 
@@ -368,33 +406,6 @@ impl<'a> Interpreter<'a> {
             .collect::<Vec<_>>();
 
         self.set_memory_multi_addresses(&registers_before_fields);
-
-        // let length = registers_before.len();
-
-        // Write final registers.
-        // let registers_after = [
-        //     registers_after.program_counter.into(),
-        //     (registers_after.is_kernel as usize).into(),
-        //     registers_after.stack_len.into(),
-        //     registers_after.stack_top,
-        //     registers_after.context.into(),
-        //     registers_after.gas_used.into(),
-        // ];
-
-        // let registers_after_fields = (0..registers_before.len())
-        //     .map(|i| {
-        //         (
-        //             MemoryAddress::new_u256s(
-        //                 0.into(),
-        //                 (Segment::RegistersStates.unscale()).into(),
-        //                 (length + i).into(),
-        //             )
-        //             .unwrap(),
-        //             registers_after[i],
-        //         )
-        //     })
-        //     .collect::<Vec<_>>();
-        // self.set_memory_multi_addresses(&registers_after_fields);
     }
 
     fn interpreter_pop<const N: usize>(&mut self) -> Result<[U256; N], ProgramError> {
@@ -551,12 +562,7 @@ impl<'a> Interpreter<'a> {
                     final_registers.context.into(),
                     final_registers.gas_used.into(),
                 ];
-                println!("final registers {:?}", final_registers);
-                println!(
-                    "memory {:?}",
-                    self.generation_state.memory.contexts[0].segments[Segment::Stack.unscale()]
-                        .content,
-                );
+
                 let length = registers_after.len();
                 let registers_after_fields = (0..length)
                     .map(|i| {

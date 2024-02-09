@@ -315,16 +315,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         transactions_root: transactions_trie.hash(),
         receipts_root: receipts_trie.hash(),
     };
-    let registers_after = RegistersState {
-        program_counter: 33864,
-        is_kernel: true,
-        stack_len: 17,
-        stack_top: U256::from("48532eb2c69d9d9f4bc72ba696da089471a6980f72f92215204120f571f5548d"),
-        is_stack_top_read: false,
-        check_overflow: true,
-        context: 0,
-        gas_used: 112598,
-    };
+
     let inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],
@@ -351,7 +342,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
             10..15,
             8..11,
             8..13,
-            18..19,
+            18..20,
             8..18,
             12..18,
         ], // Minimal ranges to prove an empty list

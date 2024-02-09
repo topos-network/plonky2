@@ -16,7 +16,6 @@ use plonky2_evm::generation::{GenerationInputs, TrieInputs};
 use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
-use plonky2_evm::witness::state::RegistersState;
 use plonky2_evm::Node;
 use rand::random;
 

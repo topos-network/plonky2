@@ -78,26 +78,31 @@ where
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
     let (registers_before, registers_after, memory_before, memory_after) =
         generate_segment(max_cpu_len, segment_index, &inputs)?;
+
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
-    state.registers = registers_before;
+    state.registers = RegistersState {
+        program_counter: state.registers.program_counter,
+        is_kernel: state.registers.is_kernel,
+        ..registers_before
+    };
 
-    let actual_mem_before = if segment_index == 0 {
+    let actual_mem_before = {
         let mut addr = MemoryAddress {
             context: 0,
             segment: Segment::ShiftTable.unscale(),
             virt: 0,
         };
         let mut val = U256::from(1); // 2^0
-        (0..256)
+        let shift_table = (0..256)
             .map(|i| {
                 let value = (addr, val);
                 addr.increment();
                 val <<= 1;
                 value
             })
-            .collect::<Vec<_>>()
-    } else {
+            .collect::<Vec<_>>();
+
         let mut res = vec![];
         for ctx in 0..memory_before.contexts.len() {
             for segment in 0..memory_before.contexts[ctx].segments.len() {
@@ -115,15 +120,40 @@ where
                 }
             }
         }
+        res.extend(shift_table);
+        res.push((
+            MemoryAddress {
+                context: 0,
+                segment: Segment::RlpRaw.unscale(),
+                virt: 0xFFFFFFFF,
+            },
+            0x80.into(),
+        ));
         res
     };
 
+    let registers_data_before = RegistersData {
+        program_counter: registers_before.program_counter.into(),
+        is_kernel: (registers_before.is_kernel as u64).into(),
+        stack_len: registers_before.stack_len.into(),
+        stack_top: registers_before.stack_top,
+        context: registers_before.context.into(),
+        gas_used: registers_before.gas_used.into(),
+    };
+    let registers_data_after = RegistersData {
+        program_counter: registers_after.program_counter.into(),
+        is_kernel: (registers_after.is_kernel as u64).into(),
+        stack_len: registers_after.stack_len.into(),
+        stack_top: registers_after.stack_top,
+        context: registers_after.context.into(),
+        gas_used: registers_after.gas_used.into(),
+    };
     let segment_data = SegmentData {
         max_cpu_len,
         starting_state: state,
-        memory_before: vec![],
-        registers_before: RegistersData::default(),
-        registers_after: RegistersData::default(),
+        memory_before: actual_mem_before,
+        registers_before: registers_data_before,
+        registers_after: registers_data_after,
     };
 
     let (traces, mut public_values) = timed!(
