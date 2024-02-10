@@ -961,8 +961,21 @@ where
     ) where
         F: RichField + Extendable<D>,
     {
-        // At the start of a transaction proof, `MemBefore` only contains the `ShiftTable`.
+        // At the start of a transaction proof, `MemBefore` only contains the RLP constant and the `ShiftTable`.
         let mut trace = vec![];
+
+        // Push constant.
+        let mut constant_row = vec![F::ZERO; crate::mem_before::columns::NUM_COLUMNS];
+        constant_row[crate::mem_before::columns::FILTER] = F::ONE;
+        constant_row[crate::mem_before::columns::ADDR_CONTEXT] = F::ZERO;
+        constant_row[crate::mem_before::columns::ADDR_SEGMENT] =
+            F::from_canonical_usize(Segment::RlpRaw.unscale());
+        constant_row[crate::mem_before::columns::ADDR_VIRTUAL] =
+            F::from_canonical_usize(0xFFFFFFFF);
+        constant_row[4] = F::from_canonical_usize(0x80);
+        trace.push(constant_row);
+
+        // Push shift table.
         for i in 0..256 {
             let mut row = vec![F::ZERO; crate::mem_before::columns::NUM_COLUMNS];
             let val = U256::from(1) << i;
@@ -976,6 +989,14 @@ where
             }
             trace.push(row);
         }
+
+        // Padding.
+        let num_rows = trace.len();
+        let num_rows_padded = num_rows.next_power_of_two();
+        for _ in num_rows..num_rows_padded {
+            trace.push(vec![F::ZERO; crate::mem_before::columns::NUM_COLUMNS]);
+        }
+
         let cols = transpose(&trace);
         let polys = cols
             .into_iter()

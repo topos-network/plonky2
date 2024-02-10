@@ -401,7 +401,7 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         .prove_segment_aggregation(
             false,
             &root_proof,
-            public_values.clone(),
+            public_values,
             false,
             &second_root_proof,
             second_public_values,

@@ -180,6 +180,10 @@ pub(crate) fn generate_first_change_flags_and_rc<F: RichField>(
         let address_changed =
             row[CONTEXT_FIRST_CHANGE] + row[SEGMENT_FIRST_CHANGE] + row[VIRTUAL_FIRST_CHANGE];
         row[INITIALIZE_AUX] = next_segment * address_changed * next_is_read;
+
+        if idx == 301380 || idx == 301381 {
+            println!("Memory row: {:?}", row);
+        }
     }
 }
 
@@ -289,9 +293,15 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         // with a few changes:
         // - We change its filter to 0 to indicate that this is a dummy operation.
         // - We make sure it's a read, since dummy operations must be reads.
+        let padding_addr = MemoryAddress {
+            virt: last_op.address.virt + 1,
+            ..last_op.address
+        };
         let padding_op = MemoryOp {
             filter: false,
             kind: Read,
+            address: padding_addr,
+            value: U256::zero(),
             ..last_op
         };
         let num_ops = memory_ops.len();
@@ -325,7 +335,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
         );
         // Extract final values for `MemoryAfterStark`.
         let mut final_values = Vec::<Vec<_>>::new();
-        for i in 0..trace_rows.len() - 1 {
+        for i in 0..trace_rows.len() {
             let row = trace_rows[i];
             if row[CONTEXT_FIRST_CHANGE] + row[SEGMENT_FIRST_CHANGE] + row[VIRTUAL_FIRST_CHANGE]
                 == F::ONE

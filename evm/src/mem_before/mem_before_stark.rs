@@ -72,7 +72,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
     ) -> Vec<PolynomialValues<F>> {
         let mut rows: Vec<_> = vec![];
 
-        // Add all `mem_before_vamues`.
+        // Add all `mem_before_values`.
         rows.extend(mem_before_values.iter().map(|mem_data| {
             let mut row = vec![F::ZERO; NUM_COLUMNS];
             row[FILTER] = F::ONE;
@@ -90,6 +90,9 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
         for _ in num_rows..num_rows_padded {
             rows.push(vec![F::ZERO; NUM_COLUMNS]);
         }
+
+        // println!("Mem before actual trace:\n{:?}", rows);
+        // panic!();
 
         let cols = transpose(&rows);
 

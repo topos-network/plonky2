@@ -264,7 +264,11 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     config: &StarkConfig,
     segment_data: SegmentData<F>,
     timing: &mut TimingTree,
-) -> anyhow::Result<([Vec<PolynomialValues<F>>; NUM_TABLES], PublicValues)> {
+) -> anyhow::Result<(
+    [Vec<PolynomialValues<F>>; NUM_TABLES],
+    PublicValues,
+    Vec<Vec<F>>,
+)> {
     // Initialize the state with the state at the end of the
     // previous segment execution, if any.
 
@@ -392,7 +396,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
             .traces
             .into_tables(all_stark, &memory_before, config, timing)
     );
-    Ok((tables, public_values))
+    Ok((tables, public_values, final_values))
 }
 
 // pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(

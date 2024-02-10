@@ -132,12 +132,10 @@ pub(crate) fn generate_segment(
     // TODO: compute it.
     let num_cycles_before = max_cpu_len;
 
-    let (mut registers_before, mut memory_before) = (
-        initial_registers,
-        interpreter.generation_state.memory.clone(),
-    );
+    let (mut registers_before, mut memory_before) = (initial_registers, MemoryState::default());
 
     if index > 0 {
+        println!("Running for index 1...");
         (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
     }
     interpreter.generation_state.registers = RegistersState {
@@ -170,8 +168,9 @@ pub(crate) fn generate_segment(
         .collect::<Vec<_>>();
 
     interpreter.set_memory_multi_addresses(&registers_before_fields);
-
+    println!("Running for segment {}...", index);
     let (registers_after, memory_after) = interpreter.run(Some(max_cpu_len))?;
+    println!("Donefor segment {}.", index);
 
     Ok((
         registers_before,
@@ -577,8 +576,10 @@ impl<'a> Interpreter<'a> {
                 let checkpoint = self.checkpoint();
                 self.run_exception(6);
                 self.apply_memops(checkpoint.mem_len);
+                println!("Exc_stop at cycle {}", cpu_counter);
             };
             if self.is_kernel() && self.halt_offsets.contains(&pc) {
+                println!("Final stop at {}...", cpu_counter);
                 final_mem = self.generation_state.memory.clone();
                 return Ok((final_registers, final_mem));
             }
@@ -898,6 +899,8 @@ impl<'a> Interpreter<'a> {
         self.opcode_count[opcode as usize] += 1;
         self.incr(1);
 
+        // println!("{}, stack: {:?}", get_mnemonic(opcode), self.stack());
+
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge nothing.
             .unwrap_or(Operation::ProverInput);
@@ -1025,18 +1028,18 @@ impl<'a> Interpreter<'a> {
             }
         }?;
 
-        if self
-            .debug_offsets
-            .contains(&self.generation_state.registers.program_counter)
-        {
-            println!(
-                "At {}, stack={:?}",
-                self.offset_name(),
-                self.generation_state.stack()
-            );
-        } else if let Some(label) = self.offset_label() {
-            println!("At {label}");
-        }
+        // if self
+        //     .debug_offsets
+        //     .contains(&self.generation_state.registers.program_counter)
+        // {
+        //     println!(
+        //         "At {}, stack={:?}",
+        //         self.offset_name(),
+        //         self.generation_state.stack()
+        //     );
+        // } else if let Some(label) = self.offset_label() {
+        //     println!("At {label}");
+        // }
 
         self.generation_state.registers.gas_used += gas_to_charge(op);
 
@@ -1236,7 +1239,7 @@ impl<'a> Interpreter<'a> {
         let bytes = (offset..offset + size.as_usize())
             .map(|i| self.mload_queue(context, segment, i).byte(0))
             .collect::<Vec<_>>();
-        println!("Hashing {:?}", &bytes);
+        // println!("Hashing {:?}", &bytes);
         let hash = keccak(bytes);
         self.interpreter_push_no_write(U256::from_big_endian(hash.as_bytes()))
     }

@@ -44,6 +44,7 @@ use crate::proof::{
     StarkProofWithMetadata,
 };
 use crate::stark::{PublicRegisterStates, Stark};
+use crate::util::get_u256;
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::witness::errors::ProgramError;
 use crate::witness::memory::MemoryAddress;
@@ -76,8 +77,10 @@ where
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (registers_before, registers_after, memory_before, memory_after) =
+    let (registers_before, registers_after, mut memory_before, memory_after) =
         generate_segment(max_cpu_len, segment_index, &inputs)?;
+
+    println!("Generated data for segment {}", segment_index);
 
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
@@ -87,25 +90,30 @@ where
         ..registers_before
     };
 
-    let actual_mem_before = {
-        let mut addr = MemoryAddress {
-            context: 0,
-            segment: Segment::ShiftTable.unscale(),
-            virt: 0,
-        };
-        let mut val = U256::from(1); // 2^0
-        let shift_table = (0..256)
-            .map(|i| {
-                let value = (addr, val);
-                addr.increment();
-                val <<= 1;
-                value
-            })
-            .collect::<Vec<_>>();
+    let mut shift_addr = MemoryAddress::new(0, Segment::ShiftTable, 0);
+    let mut shift_val = U256::one();
 
+    for _ in 0..256 {
+        memory_before.set(shift_addr, shift_val);
+        shift_addr.increment();
+        shift_val <<= 1;
+    }
+
+    memory_before.set(
+        MemoryAddress::new(0, Segment::RlpRaw, 0xFFFFFFFF),
+        0x80.into(),
+    );
+
+    let actual_mem_before = {
         let mut res = vec![];
         for ctx in 0..memory_before.contexts.len() {
             for segment in 0..memory_before.contexts[ctx].segments.len() {
+                if segment == 13 {
+                    res.push((
+                        MemoryAddress::new(0, Segment::RlpRaw, 0xFFFFFFFF),
+                        0x80.into(),
+                    ))
+                }
                 for virt in 0..memory_before.contexts[ctx].segments[segment].content.len() {
                     if memory_before.contexts[ctx].segments[segment].content[virt].is_some() {
                         res.push((
@@ -120,17 +128,13 @@ where
                 }
             }
         }
-        res.extend(shift_table);
-        res.push((
-            MemoryAddress {
-                context: 0,
-                segment: Segment::RlpRaw.unscale(),
-                virt: 0xFFFFFFFF,
-            },
-            0x80.into(),
-        ));
         res
     };
+
+    // if segment_index == 0 {
+    //     println!("Mem before:\n{:?}", actual_mem_before);
+    //     panic!();
+    // }
 
     let registers_data_before = RegistersData {
         program_counter: registers_before.program_counter.into(),
@@ -156,11 +160,64 @@ where
         registers_after: registers_data_after,
     };
 
-    let (traces, mut public_values) = timed!(
+    let (traces, mut public_values, final_values) = timed!(
         timing,
         "generate all traces",
-        generate_traces(all_stark, inputs, config, segment_data, timing)?
+        generate_traces(all_stark, inputs.clone(), config, segment_data, timing)?
     );
+
+    // DEBUG
+    // if segment_index == 0 {
+    //     let (_, _, new_memory_before, _) = generate_segment(max_cpu_len, 1, &inputs)?;
+    //     // new_mem_before incl. in prev_mem_after?
+    //     let memory_after: Vec<_> = final_values
+    //         .iter()
+    //         .map(|row| {
+    //             (
+    //                 (
+    //                     row[1].to_canonical_u64() as usize,
+    //                     row[2].to_canonical_u64() as usize,
+    //                     row[3].to_canonical_u64() as usize,
+    //                 ),
+    //                 get_u256(&row[4..]),
+    //             )
+    //         })
+    //         .collect();
+    //     for (i, context) in new_memory_before.contexts.iter().enumerate() {
+    //         for (j, segment) in context.segments.iter().enumerate() {
+    //             for (k, opt) in segment.content.iter().enumerate() {
+    //                 if let Some(val) = opt {
+    //                     if memory_after.binary_search(&((i, j, k), *val)).is_err() {
+    //                         println!(
+    //                             "{:?} in new_memory_before, but not in memory_after",
+    //                             ((i, j, k), val)
+    //                         );
+    //                     };
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     // prev_mem_after incl. in new_mem_before?
+    //     for ((i, j, k), val) in memory_after {
+    //         if let Some(before_val) =
+    //             new_memory_before.get_option(MemoryAddress::new(i, Segment::all()[j], k))
+    //         {
+    //             if val != before_val {
+    //                 println!(
+    //                     "{:?} in memory_after, but {} in new_memory_before",
+    //                     ((i, j, k), val),
+    //                     before_val
+    //                 );
+    //             }
+    //         } else {
+    //             println!(
+    //                 "{:?} in memory_after, but not in new_memory_before",
+    //                 ((i, j, k), val)
+    //             );
+    //         }
+    //     }
+    //     panic!();
+    // }
 
     check_abort_signal(abort_signal.clone())?;
 
@@ -608,7 +665,7 @@ where
 
     let num_ctl_polys = ctl_data.num_ctl_helper_polys();
 
-    #[cfg(test)]
+    // #[cfg(test)]
     {
         check_constraints(
             stark,
@@ -909,7 +966,7 @@ pub fn check_abort_signal(abort_signal: Option<Arc<AtomicBool>>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 /// Check that all constraints evaluate to zero on `H`.
 /// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
 fn check_constraints<'a, F, C, S, const D: usize>(
