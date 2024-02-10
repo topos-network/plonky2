@@ -280,7 +280,7 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         registers_after,
     } = segment_data;
 
-    state.memory = MemoryState::new(&KERNEL.code);
+    // state.memory = MemoryState::new(&KERNEL.code);
 
     for &(address, val) in &memory_before {
         state.memory.set(address, val);
