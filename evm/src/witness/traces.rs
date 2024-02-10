@@ -43,13 +43,15 @@ pub(crate) struct Traces<T: Copy> {
 impl<T: Copy> Traces<T> {
     pub(crate) fn new() -> Self {
         Traces {
-            arithmetic_ops: vec![],
-            byte_packing_ops: vec![],
-            cpu: vec![],
-            logic_ops: vec![],
-            memory_ops: vec![],
-            keccak_inputs: vec![],
-            keccak_sponge_ops: vec![],
+            // The initial capacities are somewhat arbitrary, but respecting the overall ratios between trace lengths.
+            // TODO: Once continuations are implemented, have this method take the segment size bounds as parameters.
+            arithmetic_ops: Vec::with_capacity(1 << 13), // 8k
+            byte_packing_ops: Vec::with_capacity(1 << 14), // 16k
+            cpu: Vec::with_capacity(1 << 16),            // 64k
+            logic_ops: Vec::with_capacity(1 << 12),      // 4k
+            memory_ops: Vec::with_capacity(1 << 17),     // 128k
+            keccak_inputs: Vec::with_capacity(1 << 10),  // 1k
+            keccak_sponge_ops: Vec::with_capacity(1 << 10), // 1k
         }
     }
 

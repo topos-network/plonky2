@@ -7,7 +7,7 @@ pub(crate) fn all_rlp_prover_inputs_reversed(signed_txn: &[u8]) -> Vec<U256> {
 }
 
 fn all_rlp_prover_inputs(signed_txn: &[u8]) -> Vec<U256> {
-    let mut prover_inputs = vec![];
+    let mut prover_inputs = Vec::with_capacity(signed_txn.len() / 32 + 2);
     prover_inputs.push(signed_txn.len().into());
     let mut chunks = signed_txn.chunks_exact(32);
     for bytes in chunks.by_ref() {
