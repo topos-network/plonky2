@@ -25,7 +25,7 @@ use crate::generation::trie_extractor::{get_receipt_trie, get_state_trie, get_tx
 use crate::memory::segments::Segment;
 use crate::proof::{BlockHashes, BlockMetadata, ExtraBlockData, PublicValues, TrieRoots};
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
-use crate::witness::memory::{MemoryAddress, MemoryChannel};
+use crate::witness::memory::{MemoryAddress, MemoryChannel, MemoryOp};
 use crate::witness::transition::transition;
 
 pub mod mpt;
@@ -176,18 +176,14 @@ fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>
     }));
 
     // Write previous block hashes.
-    ops.extend(
-        (0..256)
-            .map(|i| {
-                mem_write_log(
-                    channel,
-                    MemoryAddress::new(0, Segment::BlockHashes, i),
-                    state,
-                    h2u(inputs.block_hashes.prev_hashes[i]),
-                )
-            })
-            .collect::<Vec<_>>(),
-    );
+    ops.extend(&core::array::from_fn::<MemoryOp, 256, _>(|i| {
+        mem_write_log(
+            channel,
+            MemoryAddress::new(0, Segment::BlockHashes, i),
+            state,
+            h2u(inputs.block_hashes.prev_hashes[i]),
+        )
+    }));
 
     state.memory.apply_ops(&ops);
     state.traces.memory_ops.extend(ops);

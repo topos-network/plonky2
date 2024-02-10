@@ -59,16 +59,14 @@ pub(crate) fn ctl_looked_data<F: Field>() -> Vec<Column<F>> {
     // being read/written from the underlying byte values. For each,
     // we pack 4 consecutive bytes and shift them accordingly to
     // obtain the corresponding limb.
-    let outputs: Vec<Column<F>> = (0..8)
-        .map(|i| {
-            let range = value_bytes(i * 4)..value_bytes(i * 4) + 4;
-            Column::linear_combination(
-                range
-                    .enumerate()
-                    .map(|(j, c)| (c, F::from_canonical_u64(1 << (8 * j)))),
-            )
-        })
-        .collect();
+    let outputs: [Column<F>; 8] = core::array::from_fn(|i| {
+        let range = value_bytes(i * 4)..value_bytes(i * 4) + 4;
+        Column::linear_combination(
+            range
+                .enumerate()
+                .map(|(j, c)| (c, F::from_canonical_u64(1 << (8 * j)))),
+        )
+    });
 
     let sequence_len: Column<F> = Column::linear_combination(
         (0..NUM_BYTES).map(|i| (index_len(i), F::from_canonical_usize(i + 1))),
@@ -93,9 +91,8 @@ pub(crate) fn ctl_looking_memory<F: Field>(i: usize) -> Vec<Column<F>> {
     let mut res = Column::singles([IS_READ, ADDR_CONTEXT, ADDR_SEGMENT]).collect_vec();
 
     // Compute the virtual address: `ADDR_VIRTUAL` + `sequence_len` - 1 - i.
-    let sequence_len_minus_one = (0..NUM_BYTES)
-        .map(|j| (index_len(j), F::from_canonical_usize(j)))
-        .collect::<Vec<_>>();
+    let sequence_len_minus_one: [(usize, F); NUM_BYTES] =
+        core::array::from_fn(|j| (index_len(j), F::from_canonical_usize(j)));
     let mut addr_virt_cols = vec![(ADDR_VIRTUAL, F::ONE)];
     addr_virt_cols.extend(sequence_len_minus_one);
     let addr_virt = Column::linear_combination_with_constant(

@@ -432,22 +432,14 @@ impl<F: RichField + Extendable<D>, const D: usize> KeccakSpongeStark<F, D> {
         for (state_i, block_i) in sponge_state.iter_mut().zip(block_u32s) {
             *state_i ^= block_i;
         }
-        let xored_rate_u32s: [u32; KECCAK_RATE_U32S] = sponge_state[..KECCAK_RATE_U32S]
-            .to_vec()
-            .try_into()
-            .unwrap();
-        row.xored_rate_u32s = xored_rate_u32s.map(F::from_canonical_u32);
+        row.xored_rate_u32s = core::array::from_fn(|i| F::from_canonical_u32(sponge_state[i]));
 
         keccakf_u32s(&mut sponge_state);
         // Store all but the first `KECCAK_DIGEST_U32S` limbs in the updated state.
         // Those missing limbs will be broken down into bytes and stored separately.
-        row.partial_updated_state_u32s.copy_from_slice(
-            &sponge_state[KECCAK_DIGEST_U32S..]
-                .iter()
-                .copied()
-                .map(|i| F::from_canonical_u32(i))
-                .collect::<Vec<_>>(),
-        );
+        row.partial_updated_state_u32s =
+            core::array::from_fn(|i| F::from_canonical_u32(sponge_state[KECCAK_DIGEST_U32S + i]));
+
         sponge_state[..KECCAK_DIGEST_U32S]
             .iter()
             .enumerate()
