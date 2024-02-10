@@ -6,6 +6,7 @@ use crate::types::{Field, Sample};
 macro_rules! test_field_arithmetic {
     ($field:ty) => {
         mod field_arithmetic {
+            #[cfg(not(feature = "std"))]
             use alloc::vec::Vec;
 
             use num::bigint::BigUint;

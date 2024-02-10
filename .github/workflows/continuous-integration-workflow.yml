@@ -124,6 +124,14 @@ jobs:
         with:
             cache-on-failure: true
 
+      - name: Run cargo test in field subdirectory (no-std)
+        run: cargo test --manifest-path field/Cargo.toml --no-default-features --lib
+        env:
+          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
+          RUST_LOG: 1
+          CARGO_INCREMENTAL: 1
+          RUST_BACKTRACE: 1
+
       - name: Run cargo test in plonky2 subdirectory (no-std)
         run: cargo test --manifest-path plonky2/Cargo.toml --no-default-features --lib
         env:

@@ -1,7 +1,7 @@
 pub(crate) mod division;
 
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 use core::cmp::max;
 use core::iter::Sum;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};

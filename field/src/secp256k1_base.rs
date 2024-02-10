@@ -1,3 +1,4 @@
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Display, Formatter};
 use core::hash::{Hash, Hasher};

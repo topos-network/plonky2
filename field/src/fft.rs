@@ -1,3 +1,4 @@
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::cmp::{max, min};
 
@@ -207,14 +208,10 @@ pub(crate) fn fft_classic<F: Field>(values: &mut [F], r: usize, root_table: &Fft
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec::Vec;
+    use plonky2_util::log2_ceil;
 
-    use plonky2_util::{log2_ceil, log2_strict};
-
-    use crate::fft::{fft, fft_with_options, ifft};
+    use super::*;
     use crate::goldilocks_field::GoldilocksField;
-    use crate::polynomial::{PolynomialCoeffs, PolynomialValues};
-    use crate::types::Field;
 
     #[test]
     fn fft_and_ifft() {

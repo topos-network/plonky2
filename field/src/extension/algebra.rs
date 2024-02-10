@@ -1,3 +1,4 @@
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Display, Formatter};
 use core::iter::{Product, Sum};
@@ -191,11 +192,9 @@ impl<F: OEF<D>, const D: usize> PolynomialCoeffsAlgebra<F, D> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec::Vec;
-
     use itertools::Itertools;
 
-    use crate::extension::algebra::ExtensionAlgebra;
+    use super::*;
     use crate::extension::{Extendable, FieldExtension};
     use crate::goldilocks_field::GoldilocksField;
     use crate::types::{Field, Sample};
