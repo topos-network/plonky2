@@ -415,29 +415,17 @@ impl<F: RichField + Extendable<D>, const D: usize> KeccakSpongeStark<F, D> {
         row.timestamp = F::from_canonical_usize(op.timestamp);
         row.already_absorbed_bytes = F::from_canonical_usize(already_absorbed_bytes);
 
-        row.original_rate_u32s = sponge_state[..KECCAK_RATE_U32S]
-            .iter()
-            .map(|x| F::from_canonical_u32(*x))
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        row.original_rate_u32s = core::array::from_fn(|i| F::from_canonical_u32(sponge_state[i]));
 
-        row.original_capacity_u32s = sponge_state[KECCAK_RATE_U32S..]
-            .iter()
-            .map(|x| F::from_canonical_u32(*x))
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        row.original_capacity_u32s =
+            core::array::from_fn(|i| F::from_canonical_u32(sponge_state[KECCAK_RATE_U32S + i]));
 
-        let block_u32s = (0..KECCAK_RATE_U32S).map(|i| {
-            u32::from_le_bytes(
-                row.block_bytes[i * 4..(i + 1) * 4]
-                    .iter()
-                    .map(|x| x.to_canonical_u64() as u8)
-                    .collect_vec()
-                    .try_into()
-                    .unwrap(),
-            )
+        let block_u32s: [u32; KECCAK_RATE_U32S] = core::array::from_fn(|i| {
+            row.block_bytes[i * 4..(i + 1) * 4]
+                .iter()
+                .enumerate()
+                .map(|(j, &x)| (x.to_canonical_u64() as u32) * (1 << (8 * j)))
+                .sum::<u32>()
         });
 
         // xor in the block

@@ -376,9 +376,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
         }
 
         // A'''[0, 0] = A''[0, 0] XOR RC
-        let a_prime_prime_0_0_bits = (0..64)
-            .map(|i| local_values[reg_a_prime_prime_0_0_bit(i)])
-            .collect_vec();
+        let a_prime_prime_0_0_bits: [P; 64] =
+            core::array::from_fn(|i| local_values[reg_a_prime_prime_0_0_bit(i)]);
         let computed_a_prime_prime_0_0_lo = (0..32)
             .rev()
             .fold(P::ZEROS, |acc, z| acc.doubles() + a_prime_prime_0_0_bits[z]);
@@ -494,8 +493,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                     let c_prime = local_values[reg_c_prime(x, z)];
                     xor3_gen_circuit(builder, a_prime, c, c_prime)
                 };
-                let bits_lo = (0..32).map(&mut get_bit).collect_vec();
-                let bits_hi = (32..64).map(get_bit).collect_vec();
+                let bits_lo: [ExtensionTarget<D>; 32] = core::array::from_fn(|i| get_bit(i));
+                let bits_hi: [ExtensionTarget<D>; 32] = core::array::from_fn(|i| get_bit(32 + i));
                 let computed_lo = reduce_with_powers_ext_circuit(builder, &bits_lo, two);
                 let computed_hi = reduce_with_powers_ext_circuit(builder, &bits_hi, two);
                 let diff = builder.sub_extension(computed_lo, a_lo);
@@ -538,8 +537,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
                 let reg_hi = reg_lo + 1;
                 let lo = local_values[reg_lo];
                 let hi = local_values[reg_hi];
-                let bits_lo = (0..32).map(&mut get_bit).collect_vec();
-                let bits_hi = (32..64).map(get_bit).collect_vec();
+                let bits_lo: [ExtensionTarget<D>; 32] = core::array::from_fn(|i| get_bit(i));
+                let bits_hi: [ExtensionTarget<D>; 32] = core::array::from_fn(|i| get_bit(32 + i));
                 let computed_lo = reduce_with_powers_ext_circuit(builder, &bits_lo, two);
                 let computed_hi = reduce_with_powers_ext_circuit(builder, &bits_hi, two);
                 let diff = builder.sub_extension(computed_lo, lo);
@@ -550,9 +549,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
         }
 
         // A'''[0, 0] = A''[0, 0] XOR RC
-        let a_prime_prime_0_0_bits = (0..64)
-            .map(|i| local_values[reg_a_prime_prime_0_0_bit(i)])
-            .collect_vec();
+        let a_prime_prime_0_0_bits: [ExtensionTarget<D>; 64] =
+            core::array::from_fn(|i| local_values[reg_a_prime_prime_0_0_bit(i)]);
         let computed_a_prime_prime_0_0_lo =
             reduce_with_powers_ext_circuit(builder, &a_prime_prime_0_0_bits[0..32], two);
         let computed_a_prime_prime_0_0_hi =
@@ -578,8 +576,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for KeccakStark<F
 
         let a_prime_prime_prime_0_0_lo = local_values[reg_a_prime_prime_prime(0, 0)];
         let a_prime_prime_prime_0_0_hi = local_values[reg_a_prime_prime_prime(0, 0) + 1];
-        let bits_lo = (0..32).map(&mut get_xored_bit).collect_vec();
-        let bits_hi = (32..64).map(get_xored_bit).collect_vec();
+        let bits_lo: [ExtensionTarget<D>; 32] = core::array::from_fn(|i| get_xored_bit(i));
+        let bits_hi: [ExtensionTarget<D>; 32] = core::array::from_fn(|i| get_xored_bit(32 + i));
         let computed_a_prime_prime_prime_0_0_lo =
             reduce_with_powers_ext_circuit(builder, &bits_lo, two);
         let computed_a_prime_prime_prime_0_0_hi =

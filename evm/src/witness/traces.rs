@@ -147,12 +147,13 @@ impl<T: Copy> Traces<T> {
     }
 
     pub(crate) fn push_keccak_bytes(&mut self, input: [u8; KECCAK_WIDTH_BYTES], clock: usize) {
-        let chunks = input
-            .chunks(size_of::<u64>())
-            .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        let chunks: [u64; keccak::keccak_stark::NUM_INPUTS] = core::array::from_fn(|i| {
+            u64::from_le_bytes(
+                input[size_of::<u64>() * i..size_of::<u64>() * (i + 1)]
+                    .try_into()
+                    .unwrap(),
+            )
+        });
         self.push_keccak(chunks, clock);
     }
 
