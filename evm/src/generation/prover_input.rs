@@ -246,6 +246,7 @@ impl<F: Field> GenerationState<F> {
         match input_fn.0[1].as_str() {
             "next_address" => self.run_next_jumpdest_table_address(),
             "next_proof" => self.run_next_jumpdest_table_proof(),
+            "non_jumpdest_proof" => self.run_next_non_jumpdest_proof(),
             _ => Err(ProgramError::ProverInputError(InvalidInput)),
         }
     }
@@ -271,11 +272,6 @@ impl<F: Field> GenerationState<F> {
         if let Some(ctx_jumpdest_table) = jumpdest_table.get_mut(&context)
             && let Some(next_jumpdest_address) = ctx_jumpdest_table.pop()
         {
-            log::debug!(
-                "jumpdest_table_len = {:?}, ctx_jumpdest_table.len = {:?}",
-                jd_len,
-                ctx_jumpdest_table.len()
-            );
             Ok((next_jumpdest_address + 1).into())
         } else {
             jumpdest_table.remove(&context);
@@ -297,11 +293,6 @@ impl<F: Field> GenerationState<F> {
         if let Some(ctx_jumpdest_table) = jumpdest_table.get_mut(&context)
             && let Some(next_jumpdest_proof) = ctx_jumpdest_table.pop()
         {
-            log::debug!(
-                "jumpdest_table_len = {:?}, ctx_jumpdest_table.len = {:?}",
-                jd_len,
-                ctx_jumpdest_table.len()
-            );
             Ok(next_jumpdest_proof.into())
         } else {
             Err(ProgramError::ProverInputError(
@@ -309,9 +300,13 @@ impl<F: Field> GenerationState<F> {
             ))
         }
     }
-}
 
-impl<F: Field> GenerationState<F> {
+    fn run_next_non_jumpdest_proof(&mut self) -> Result<U256, ProgramError> {
+        let code = self.get_current_code()?;
+        let address = u256_to_usize(stack_peek(self, 0)?)?;
+        let proof = get_closest_opcode(&code, address);
+        Ok(proof.into())
+    }
     /// Simulate the user's code and store all the jump addresses with their respective contexts.
     fn generate_jumpdest_table(&mut self) -> Result<(), ProgramError> {
         let checkpoint = self.checkpoint();
@@ -434,6 +429,17 @@ fn get_proofs_and_jumpdests(
         },
     );
     proofs
+}
+
+/// Return the largest prev_addr in `code` such that `code[pred_addr]` is an opcode (and not the argument of some PUSHXX)
+/// and pred_addr <= address
+fn get_closest_opcode(code: &[u8], address: usize) -> usize {
+    const PUSH1_OPCODE: u8 = 0x60;
+    const PUSH32_OPCODE: u8 = 0x7f;
+    let (prev_addr, _) = CodeIterator::until(code, address + 1)
+        .last()
+        .unwrap_or((0, 0));
+    prev_addr
 }
 
 /// An iterator over the EVM code contained in `code`, which skips the bytes

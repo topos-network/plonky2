@@ -342,3 +342,26 @@ check_proof:
     %jump(jumpdest_analysis)
 %%after:
 %endmacro
+
+%macro verify_non_jumpdest
+    %stack (addr) -> (addr, %%after)
+    %jump(verify_non_jumpdest)
+%%after:
+%endmacro
+
+// Non-deterministacally find the closest opcode to addr
+// and call write_table_if_jumpdest so that `@SEGMENT_JUMPDEST_BITS`
+// will contain a 0 if and only if addr is not a jumpdest
+global verify_non_jumpdest:
+    // stack: addr, retdest
+    GET_CONTEXT
+    SWAP1
+    // stack: addr, ctx, addr
+    PROVER_INPUT(jumpdest_table::non_jumpdest_proof)
+    // stack: proof, addr, ctx,
+    %write_table_if_jumpdest
+    // Check that `addr` was not written to @SEGMENT_JUMPDEST_BITS
+    JUMP
+
+
+
