@@ -49,7 +49,8 @@ mod trie_extractor;
 use self::mpt::{load_all_mpts, TrieRootPtrs};
 use crate::witness::util::{mem_write_log, mem_write_log_timestamp_zero, stack_peek};
 
-pub const NUM_EXTRA_CYCLES: usize = 78;
+pub const NUM_EXTRA_CYCLES_AFTER: usize = 78;
+pub const NUM_EXTRA_CYCLES_BEFORE: usize = 62;
 /// Memory values used to initialize `MemBefore`.
 pub type MemBeforeValues = Vec<(MemoryAddress, U256)>;
 
@@ -621,7 +622,7 @@ fn simulate_cpu<F: Field>(
         let halt = state.registers.is_kernel && pc == halt_pc;
         // If the maximum trace length (minus some cycles for running `exc_stop`) is reached, or if we reached
         // the halt routine, raise the stop exception.
-        if halt || state.traces.clock() == max_cpu_len - NUM_EXTRA_CYCLES {
+        if halt || state.traces.clock() == max_cpu_len - NUM_EXTRA_CYCLES_AFTER {
             final_registers = state.registers;
             // If `stack_len` is 0, `stack_top` still contains a residual value.
             if final_registers.stack_len == 0 {

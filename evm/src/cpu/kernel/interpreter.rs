@@ -26,7 +26,7 @@ use crate::generation::mpt::load_all_mpts;
 use crate::generation::prover_input::ProverInputFn;
 use crate::generation::rlp::all_rlp_prover_inputs_reversed;
 use crate::generation::state::{self, all_withdrawals_prover_inputs_reversed, GenerationState};
-use crate::generation::{GenerationInputs, NUM_EXTRA_CYCLES};
+use crate::generation::{GenerationInputs, NUM_EXTRA_CYCLES_AFTER, NUM_EXTRA_CYCLES_BEFORE};
 use crate::memory::segments::{Segment, SEGMENT_SCALING_FACTOR};
 use crate::util::{h2u, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
@@ -51,6 +51,7 @@ pub(crate) struct Interpreter<'a> {
     running: bool,
     opcode_count: [usize; 0x100],
     memops: Vec<InterpreterMemOpKind>,
+    preinitialized_segments: HashMap<Segment, MemorySegmentState>,
 }
 
 /// Structure storing the state of the interpreter's registers.
@@ -129,13 +130,12 @@ pub(crate) fn generate_segment(
     let mut interpreter =
         Interpreter::new_with_generation_inputs_and_kernel(main_label, vec![], interpreter_inputs);
 
-    // TODO: compute it.
-    let num_cycles_before = max_cpu_len;
-
     let (mut registers_before, mut memory_before) = (initial_registers, MemoryState::default());
 
     if index > 0 {
         println!("Running for index 1...");
+        let num_cycles_before = max_cpu_len - NUM_EXTRA_CYCLES_AFTER
+            + (index - 1) * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE));
         (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
     }
     interpreter.generation_state.registers = RegistersState {
@@ -169,8 +169,9 @@ pub(crate) fn generate_segment(
 
     interpreter.set_memory_multi_addresses(&registers_before_fields);
     println!("Running for segment {}...", index);
-    let (registers_after, memory_after) = interpreter.run(Some(max_cpu_len))?;
-    println!("Donefor segment {}.", index);
+    let (registers_after, memory_after) =
+        interpreter.run(Some(max_cpu_len - NUM_EXTRA_CYCLES_AFTER))?;
+    println!("Done for segment {}.", index);
 
     Ok((
         registers_before,
@@ -228,6 +229,7 @@ impl<'a> Interpreter<'a> {
             running: false,
             opcode_count: [0; 256],
             memops: vec![],
+            preinitialized_segments: HashMap::default(),
         };
         result.generation_state.registers.program_counter = initial_offset;
         let initial_stack_len = initial_stack.len();
@@ -276,10 +278,11 @@ impl<'a> Interpreter<'a> {
         self.generation_state.trie_root_ptrs = trie_root_ptrs;
 
         // Initialize the `TrieData` segment.
-        for (i, data) in trie_data.iter().enumerate() {
-            let trie_addr = MemoryAddress::new(0, Segment::TrieData, i);
-            self.generation_state.memory.set(trie_addr, data.into());
-        }
+        let preinit_trie_data_segment = MemorySegmentState {
+            content: trie_data.iter().map(|&elt| Some(elt)).collect::<Vec<_>>(),
+        };
+        self.preinitialized_segments
+            .insert(Segment::TrieData, preinit_trie_data_segment);
 
         // Update the RLP and withdrawal prover inputs.
         let rlp_prover_inputs =
@@ -464,7 +467,23 @@ impl<'a> Interpreter<'a> {
     // Does NOT change the memory. All queued operations will be applied at the end of the transition step.
     pub(crate) fn mload_queue(&mut self, context: usize, segment: Segment, offset: usize) -> U256 {
         let address = MemoryAddress::new(context, segment, offset);
-        let val = self.generation_state.memory.get(address);
+        let val = self.generation_state.memory.get_option(address);
+        let val = if val.is_none()
+            && self.preinitialized_segments.contains_key(&segment)
+            && offset
+                < self
+                    .preinitialized_segments
+                    .get(&segment)
+                    .unwrap()
+                    .content
+                    .len()
+        {
+            self.preinitialized_segments.get(&segment).unwrap().content[offset].unwrap()
+        } else if val.is_none() {
+            U256::zero()
+        } else {
+            val.unwrap()
+        };
         self.memops.push(InterpreterMemOpKind::Read(val, address));
         val
     }
@@ -482,7 +501,12 @@ impl<'a> Interpreter<'a> {
             match memop {
                 &InterpreterMemOpKind::Read(val, addr) => {
                     if self.generation_state.memory.get_option(addr).is_none() {
-                        assert_eq!(val, 0.into());
+                        if !self
+                            .preinitialized_segments
+                            .contains_key(&Segment::all()[addr.segment])
+                        {
+                            assert_eq!(val, 0.into());
+                        }
                         self.generation_state.memory.set(addr, val);
                     }
                 }
@@ -547,8 +571,7 @@ impl<'a> Interpreter<'a> {
             let pc = self.generation_state.registers.program_counter;
 
             if self.is_kernel() && pc == KERNEL.global_labels["halt"]
-                || (max_cpu_len.is_some()
-                    && cpu_counter == (max_cpu_len.unwrap() - NUM_EXTRA_CYCLES - 1))
+                || (max_cpu_len.is_some() && cpu_counter == max_cpu_len.unwrap() - 1)
             {
                 final_registers = self.generation_state.registers;
 
@@ -720,15 +743,34 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn get_memory_segment(&self, segment: Segment) -> Vec<U256> {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()].return_content()
+        if self.preinitialized_segments.contains_key(&segment) {
+            let total_len = self.generation_state.memory.contexts[0].segments[segment.unscale()]
+                .content
+                .len();
+            let get_vals = |opt_vals: &[Option<U256>]| {
+                opt_vals
+                    .iter()
+                    .map(|&elt| match elt {
+                        Some(val) => val,
+                        None => U256::zero(),
+                    })
+                    .collect::<Vec<U256>>()
+            };
+            let mut res = get_vals(&self.preinitialized_segments.get(&segment).unwrap().content);
+            let init_len = res.len();
+            res.extend(&get_vals(
+                &self.generation_state.memory.contexts[0].segments[segment.unscale()].content
+                    [init_len..],
+            ));
+            res
+        } else {
+            self.generation_state.memory.contexts[0].segments[segment.unscale()].return_content()
+        }
     }
 
     pub(crate) fn get_memory_segment_bytes(&self, segment: Segment) -> Vec<u8> {
-        self.generation_state.memory.contexts[0].segments[segment.unscale()]
-            .content
-            .iter()
-            .map(|x| x.unwrap_or_default().low_u32() as u8)
-            .collect()
+        let content = self.get_memory_segment(segment);
+        content.iter().map(|x| x.low_u32() as u8).collect()
     }
 
     pub(crate) fn get_current_general_memory(&self) -> Vec<U256> {
@@ -1028,18 +1070,18 @@ impl<'a> Interpreter<'a> {
             }
         }?;
 
-        // if self
-        //     .debug_offsets
-        //     .contains(&self.generation_state.registers.program_counter)
-        // {
-        //     println!(
-        //         "At {}, stack={:?}",
-        //         self.offset_name(),
-        //         self.generation_state.stack()
-        //     );
-        // } else if let Some(label) = self.offset_label() {
-        //     println!("At {label}");
-        // }
+        if self
+            .debug_offsets
+            .contains(&self.generation_state.registers.program_counter)
+        {
+            println!(
+                "At {}, stack={:?}",
+                self.offset_name(),
+                self.generation_state.stack()
+            );
+        } else if let Some(label) = self.offset_label() {
+            println!("At {label}");
+        }
 
         self.generation_state.registers.gas_used += gas_to_charge(op);
 

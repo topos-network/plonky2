@@ -99,11 +99,6 @@ where
         shift_val <<= 1;
     }
 
-    memory_before.set(
-        MemoryAddress::new(0, Segment::RlpRaw, 0xFFFFFFFF),
-        0x80.into(),
-    );
-
     let actual_mem_before = {
         let mut res = vec![];
         for ctx in 0..memory_before.contexts.len() {
@@ -130,11 +125,6 @@ where
         }
         res
     };
-
-    // if segment_index == 0 {
-    //     println!("Mem before:\n{:?}", actual_mem_before);
-    //     panic!();
-    // }
 
     let registers_data_before = RegistersData {
         program_counter: registers_before.program_counter.into(),
@@ -165,59 +155,6 @@ where
         "generate all traces",
         generate_traces(all_stark, inputs.clone(), config, segment_data, timing)?
     );
-
-    // DEBUG
-    // if segment_index == 0 {
-    //     let (_, _, new_memory_before, _) = generate_segment(max_cpu_len, 1, &inputs)?;
-    //     // new_mem_before incl. in prev_mem_after?
-    //     let memory_after: Vec<_> = final_values
-    //         .iter()
-    //         .map(|row| {
-    //             (
-    //                 (
-    //                     row[1].to_canonical_u64() as usize,
-    //                     row[2].to_canonical_u64() as usize,
-    //                     row[3].to_canonical_u64() as usize,
-    //                 ),
-    //                 get_u256(&row[4..]),
-    //             )
-    //         })
-    //         .collect();
-    //     for (i, context) in new_memory_before.contexts.iter().enumerate() {
-    //         for (j, segment) in context.segments.iter().enumerate() {
-    //             for (k, opt) in segment.content.iter().enumerate() {
-    //                 if let Some(val) = opt {
-    //                     if memory_after.binary_search(&((i, j, k), *val)).is_err() {
-    //                         println!(
-    //                             "{:?} in new_memory_before, but not in memory_after",
-    //                             ((i, j, k), val)
-    //                         );
-    //                     };
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     // prev_mem_after incl. in new_mem_before?
-    //     for ((i, j, k), val) in memory_after {
-    //         if let Some(before_val) =
-    //             new_memory_before.get_option(MemoryAddress::new(i, Segment::all()[j], k))
-    //         {
-    //             if val != before_val {
-    //                 println!(
-    //                     "{:?} in memory_after, but {} in new_memory_before",
-    //                     ((i, j, k), val),
-    //                     before_val
-    //                 );
-    //             }
-    //         } else {
-    //             println!(
-    //                 "{:?} in memory_after, but not in new_memory_before",
-    //                 ((i, j, k), val)
-    //             );
-    //         }
-    //     }
-    //     panic!();
-    // }
 
     check_abort_signal(abort_signal.clone())?;
 
