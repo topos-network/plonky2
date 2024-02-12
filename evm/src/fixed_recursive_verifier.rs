@@ -60,7 +60,7 @@ use crate::recursive_verifier::{
     StarkWrapperCircuit,
 };
 use crate::stark::{PublicRegisterStates, Stark};
-use crate::util::h256_limbs;
+use crate::util::{h160_limbs, h256_limbs, u256_limbs};
 use crate::witness::memory::MemoryAddress;
 
 /// The recursion threshold. We end a chain of recursive proofs once we reach this size.
@@ -881,11 +881,21 @@ where
             public_values.block_hashes,
             agg_pv.block_hashes,
         );
+        BlockHashesTarget::connect(
+            &mut builder,
+            public_values.block_hashes,
+            parent_pv.block_hashes,
+        );
         // Connect all block metadata values.
         BlockMetadataTarget::connect(
             &mut builder,
             public_values.block_metadata,
             agg_pv.block_metadata,
+        );
+        BlockMetadataTarget::connect(
+            &mut builder,
+            public_values.block_metadata,
+            parent_pv.block_metadata,
         );
         // Connect aggregation `trie_roots_after` with rhs `trie_roots_after`.
         TrieRootsTarget::connect(
@@ -1634,7 +1644,7 @@ where
                 parent_txn_proof,
             );
         } else {
-            // Initialize some public inputs for correct connection between the first transaction and the current one.
+            // Initialize some public inputs for a correct connection between the first transaction and the current one.
             let mut nonzero_pis = HashMap::new();
 
             // Initialize checkpoint state trie.
@@ -1648,6 +1658,93 @@ where
                 public_values.extra_block_data.checkpoint_state_trie_root,
             )) {
                 nonzero_pis.insert(key, value);
+            }
+
+            // Initialize the block metadata for a correct connection between the first transaction and the current one.
+            // Beneficiary.
+            let block_metadata_keys = TrieRootsTarget::SIZE * 2..TrieRootsTarget::SIZE * 2 + 5;
+            for (key, value) in block_metadata_keys.zip_eq(
+                u256_limbs::<F>(U256::from_big_endian(
+                    &public_values.block_metadata.block_beneficiary.0,
+                ))[..5]
+                    .to_vec(),
+            ) {
+                nonzero_pis.insert(key, value);
+            }
+            let block_timestamp_key = TrieRootsTarget::SIZE * 2 + 5;
+            nonzero_pis.insert(
+                block_timestamp_key,
+                F::from_canonical_u64(public_values.block_metadata.block_timestamp.as_u64()),
+            );
+            let block_number_key = block_timestamp_key + 1;
+            nonzero_pis.insert(
+                block_number_key,
+                F::from_canonical_u64(public_values.block_metadata.block_number.as_u64()),
+            );
+            let block_difficulty_key = block_number_key + 1;
+            nonzero_pis.insert(
+                block_difficulty_key,
+                F::from_canonical_u64(public_values.block_metadata.block_difficulty.as_u64()),
+            );
+            let block_random_keys = block_difficulty_key + 1..block_difficulty_key + 9;
+            for (key, &value) in
+                block_random_keys.zip_eq(&h256_limbs(public_values.block_metadata.block_random))
+            {
+                nonzero_pis.insert(key, value);
+            }
+            let block_gaslimit_key = block_difficulty_key + 9;
+            nonzero_pis.insert(
+                block_gaslimit_key,
+                F::from_canonical_u64(public_values.block_metadata.block_gaslimit.as_u64()),
+            );
+            let block_chain_id_key = block_gaslimit_key + 1;
+            nonzero_pis.insert(
+                block_chain_id_key,
+                F::from_canonical_u64(public_values.block_metadata.block_chain_id.as_u64()),
+            );
+            let block_basefee_key_low = block_chain_id_key + 1;
+            nonzero_pis.insert(
+                block_basefee_key_low,
+                F::from_canonical_u64(public_values.block_metadata.block_base_fee.low_u32() as u64),
+            );
+            let block_basefee_key_hi = block_basefee_key_low + 1;
+            nonzero_pis.insert(
+                block_basefee_key_hi,
+                F::from_canonical_u64(
+                    (public_values.block_metadata.block_base_fee >> 32).low_u32() as u64,
+                ),
+            );
+            let block_gas_used_key = block_basefee_key_hi + 1;
+            nonzero_pis.insert(
+                block_gas_used_key,
+                F::from_canonical_u64(public_values.block_metadata.block_gas_used.as_u64()),
+            );
+            let init_block_bloom = block_gas_used_key + 1;
+            for i in 0..8 {
+                let block_bloom_keys = init_block_bloom + i * 8..init_block_bloom + (i + 1) * 8;
+                for (key, &value) in block_bloom_keys
+                    .zip_eq(&u256_limbs(public_values.block_metadata.block_bloom[i]))
+                {
+                    nonzero_pis.insert(key, value);
+                }
+            }
+
+            // Initialize the block hashes. They are all the same within the same block.
+            let block_hashes_keys = TrieRootsTarget::SIZE * 2 + BlockMetadataTarget::SIZE
+                ..TrieRootsTarget::SIZE * 2 + BlockMetadataTarget::SIZE + BlockHashesTarget::SIZE
+                    - 8;
+
+            for i in 0..public_values.block_hashes.prev_hashes.len() {
+                let targets = h256_limbs::<F>(public_values.block_hashes.prev_hashes[i]);
+                for j in 0..8 {
+                    nonzero_pis.insert(block_hashes_keys.start + 8 * i + j, targets[j]);
+                }
+            }
+            let block_hashes_current_start =
+                TrieRootsTarget::SIZE * 2 + BlockMetadataTarget::SIZE + BlockHashesTarget::SIZE - 8;
+            let cur_targets = h256_limbs::<F>(public_values.block_hashes.cur_hash);
+            for i in 0..8 {
+                nonzero_pis.insert(block_hashes_current_start + i, cur_targets[i]);
             }
 
             // Initialize the first transaction roots before, and state root after.
