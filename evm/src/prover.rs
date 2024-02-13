@@ -77,16 +77,16 @@ where
     C: GenericConfig<D, F = F>,
 {
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
-    let (registers_before, registers_after, mut memory_before, memory_after) =
+    let (registers_before, registers_after, mut memory_before) =
         generate_segment(max_cpu_len, segment_index, &inputs)?;
-
-    println!("Generated data for segment {}", segment_index);
 
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;
     state.registers = RegistersState {
         program_counter: state.registers.program_counter,
         is_kernel: state.registers.is_kernel,
+        is_stack_top_read: false,
+        check_overflow: false,
         ..registers_before
     };
 

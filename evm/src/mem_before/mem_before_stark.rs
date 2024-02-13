@@ -91,9 +91,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
             rows.push(vec![F::ZERO; NUM_COLUMNS]);
         }
 
-        // println!("Mem before actual trace:\n{:?}", rows);
-        // panic!();
-
         let cols = transpose(&rows);
 
         cols.into_iter()

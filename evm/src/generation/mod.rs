@@ -281,8 +281,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         registers_after,
     } = segment_data;
 
-    // state.memory = MemoryState::new(&KERNEL.code);
-
     for &(address, val) in &memory_before {
         state.memory.set(address, val);
     }
@@ -400,214 +398,6 @@ pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     Ok((tables, public_values, final_values))
 }
 
-// pub(crate) fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
-//     all_stark: &AllStark<F, D>,
-//     inputs: GenerationInputs,
-//     config: &StarkConfig,
-//     max_cpu_len: usize,
-//     previous_state: &mut GenerationState<F>,
-//     segment_index: usize,
-//     timing: &mut TimingTree,
-// ) -> anyhow::Result<(
-//     [Vec<PolynomialValues<F>>; NUM_TABLES],
-//     Vec<Vec<F>>,
-//     RegistersState,
-//     PublicValues,
-//     GenerationState<F>,
-// )> {
-//     // Initialize the state with the state at the end of the
-//     // previous segment execution, if any.
-
-//     let mut state = previous_state;
-//     // If the current execution is that of the first segment in the proof,
-//     // then preinitialize the `ShiftTable` by adding it to the
-//     // `mem_before_values`. Otherwise, `mem_before_values`
-//     // already contain it.
-//     // let mem_before_values = if segment_index == 0 {
-//     //     let mut addr = MemoryAddress {
-//     //         context: 0,
-//     //         segment: Segment::ShiftTable.unscale(),
-//     //         virt: 0,
-//     //     };
-//     //     let mut val = U256::from(1); // 2^0
-//     //     let mut shift_table = (0..256)
-//     //         .map(|i| {
-//     //             let value = (addr, val);
-//     //             state.memory.contexts[0].segments[Segment::ShiftTable.unscale()]
-//     //                 .content
-//     //                 .push(Some(val));
-//     //             // state.memory.set(addr, val);
-//     //             addr.increment();
-//     //             val <<= 1;
-//     //             value
-//     //         })
-//     //         .collect::<Vec<_>>();
-//     //     shift_table.extend(inputs.memory_before.clone());
-//     //     shift_table
-//     // } else {
-//     //     inputs.memory_before.clone()
-//     // };
-//     let mem_before_values = inputs.memory_before.clone();
-
-//     // state.memory.set(
-//     //     MemoryAddress {
-//     //         context: 0,
-//     //         segment: Segment::RegistersStates.unscale(),
-//     //         virt: 12,
-//     //     },
-//     //     U256::from(inputs.registers_before.program_counter)
-//     //         + (U256::from(inputs.registers_before.is_kernel as usize) << 32)
-//     //         + (U256::from(inputs.registers_before.gas_used) << 192),
-//     // );
-//     for &(address, val) in &mem_before_values {
-//         state.memory.set(address, val);
-//     }
-
-//     apply_metadata_and_tries_memops(&mut state, &inputs);
-
-//     let cpu_res = timed!(
-//         timing,
-//         "simulate CPU",
-//         simulate_cpu(&mut state, max_cpu_len)
-//     );
-//     let final_registers = if let Ok(res) = cpu_res {
-//         res
-//     } else {
-//         // Retrieve previous PC (before jumping to KernelPanic), to see if we reached `hash_final_tries`.
-//         // We will output debugging information on the final tries only if we got a root mismatch.
-//         let previous_pc = state
-//             .traces
-//             .cpu
-//             .last()
-//             .expect("We should have CPU rows")
-//             .program_counter
-//             .to_canonical_u64() as usize;
-
-//         if KERNEL.offset_name(previous_pc).contains("hash_final_tries") {
-//             let state_trie_ptr = u256_to_usize(
-//                 state
-//                     .memory
-//                     .read_global_metadata(GlobalMetadata::StateTrieRoot),
-//             )
-//             .map_err(|_| anyhow!("State trie pointer is too large to fit in a usize."))?;
-//             log::debug!(
-//                 "Computed state trie: {:?}",
-//                 get_state_trie::<HashedPartialTrie>(&state.memory, state_trie_ptr)
-//             );
-
-//             let txn_trie_ptr = u256_to_usize(
-//                 state
-//                     .memory
-//                     .read_global_metadata(GlobalMetadata::TransactionTrieRoot),
-//             )
-//             .map_err(|_| anyhow!("Transactions trie pointer is too large to fit in a usize."))?;
-//             log::debug!(
-//                 "Computed transactions trie: {:?}",
-//                 get_txn_trie::<HashedPartialTrie>(&state.memory, txn_trie_ptr)
-//             );
-
-//             let receipt_trie_ptr = u256_to_usize(
-//                 state
-//                     .memory
-//                     .read_global_metadata(GlobalMetadata::ReceiptTrieRoot),
-//             )
-//             .map_err(|_| anyhow!("Receipts trie pointer is too large to fit in a usize."))?;
-//             log::debug!(
-//                 "Computed receipts trie: {:?}",
-//                 get_receipt_trie::<HashedPartialTrie>(&state.memory, receipt_trie_ptr)
-//             );
-//         }
-
-//         cpu_res?;
-//         RegistersState::default()
-//     };
-
-//     log::info!(
-//         "Trace lengths (before padding): {:?}",
-//         state.traces.get_lengths()
-//     );
-
-//     let mut next_state = state.soft_clone();
-
-//     let read_metadata = |field| state.memory.read_global_metadata(field);
-//     let trie_roots_before = TrieRoots {
-//         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
-//         transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestBefore)),
-//         receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestBefore)),
-//     };
-//     let trie_roots_after = TrieRoots {
-//         state_root: H256::from_uint(&read_metadata(StateTrieRootDigestAfter)),
-//         transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestAfter)),
-//         receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestAfter)),
-//     };
-
-//     let gas_used_after = read_metadata(GlobalMetadata::BlockGasUsedAfter);
-//     let txn_number_after = read_metadata(GlobalMetadata::TxnNumberAfter);
-
-//     let trie_root_ptrs = state.trie_root_ptrs;
-//     let extra_block_data = ExtraBlockData {
-//         checkpoint_state_trie_root: inputs.checkpoint_state_trie_root,
-//         txn_number_before: inputs.txn_number_before,
-//         txn_number_after,
-//         gas_used_before: inputs.gas_used_before,
-//         gas_used_after,
-//     };
-
-//     // Set the registers `before` and `after`, as well as `exit_kernel`.
-//     let registers_before = RegistersData {
-//         program_counter: inputs.registers_before.program_counter.into(),
-//         is_kernel: (inputs.registers_before.is_kernel as u64).into(),
-//         stack_len: inputs.registers_before.stack_len.into(),
-//         stack_top: inputs.registers_before.stack_top,
-//         context: inputs.registers_before.context.into(),
-//         gas_used: inputs.registers_before.gas_used.into(),
-//     };
-//     let registers_after = RegistersData {
-//         program_counter: inputs.registers_after.program_counter.into(),
-//         is_kernel: (inputs.registers_after.is_kernel as u64).into(),
-//         stack_len: inputs.registers_after.stack_len.into(),
-//         stack_top: inputs.registers_after.stack_top,
-//         context: inputs.registers_after.context.into(),
-//         gas_used: inputs.registers_after.gas_used.into(),
-//     };
-
-//     // `mem_before` and `mem_after` are intialized with an empty cap.
-//     // But they are set to the caps of `MemBefore` and `MemAfter`
-//     // respectively while proving.
-//     let public_values = PublicValues {
-//         trie_roots_before,
-//         trie_roots_after,
-//         block_metadata: inputs.block_metadata,
-//         block_hashes: inputs.block_hashes,
-//         extra_block_data,
-//         registers_before,
-//         registers_after,
-//         mem_before: MemCap { mem_cap: vec![] },
-//         mem_after: MemCap { mem_cap: vec![] },
-//     };
-
-//     let (tables, final_values) = timed!(
-//         timing,
-//         "convert trace data to tables",
-//         state
-//             .traces
-//             .into_tables(all_stark, &mem_before_values, config, timing)
-//     );
-
-//     // Reconstruct the new memory_before from the final values.
-//     next_state.inputs.memory_before = final_values
-//         .iter()
-//         .map(|row| get_mem_after_value_from_row(row))
-//         .collect::<Vec<_>>();
-//     Ok((
-//         tables,
-//         final_values,
-//         final_registers,
-//         public_values,
-//         next_state,
-//     ))
-// }
-
 fn simulate_cpu<F: Field>(
     state: &mut GenerationState<F>,
     max_cpu_len: usize,
@@ -615,20 +405,20 @@ fn simulate_cpu<F: Field>(
     let halt_pc = KERNEL.global_labels["halt"];
     let halt_final_pc = KERNEL.global_labels["halt_final"];
     let mut final_registers = RegistersState::default();
-
+    let mut running = true;
     loop {
         // If we've reached the kernel's halt routine, and our trace length is a power of 2, stop.
         let pc = state.registers.program_counter;
         let halt = state.registers.is_kernel && pc == halt_pc;
         // If the maximum trace length (minus some cycles for running `exc_stop`) is reached, or if we reached
         // the halt routine, raise the stop exception.
-        if halt || state.traces.clock() == max_cpu_len - NUM_EXTRA_CYCLES_AFTER {
+        if running && (halt || state.traces.clock() == max_cpu_len - NUM_EXTRA_CYCLES_AFTER) {
+            running = false;
             final_registers = state.registers;
             // If `stack_len` is 0, `stack_top` still contains a residual value.
             if final_registers.stack_len == 0 {
                 final_registers.stack_top = 0.into();
             }
-            println!("Current registers: {:?}", final_registers);
             final_exception(state)?;
         }
         let halt_final = pc == halt_final_pc;

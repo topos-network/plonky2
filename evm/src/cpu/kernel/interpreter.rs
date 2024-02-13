@@ -48,7 +48,6 @@ pub(crate) struct Interpreter<'a> {
     prover_inputs_map: &'a HashMap<usize, ProverInputFn>,
     pub(crate) halt_offsets: Vec<usize>,
     pub(crate) debug_offsets: Vec<usize>,
-    running: bool,
     opcode_count: [usize; 0x100],
     memops: Vec<InterpreterMemOpKind>,
     preinitialized_segments: HashMap<Segment, MemorySegmentState>,
@@ -123,7 +122,7 @@ pub(crate) fn generate_segment(
     max_cpu_len: usize,
     index: usize,
     inputs: &GenerationInputs,
-) -> anyhow::Result<(RegistersState, RegistersState, MemoryState, MemoryState)> {
+) -> anyhow::Result<(RegistersState, RegistersState, MemoryState)> {
     let main_label = KERNEL.global_labels["main"];
     let initial_registers = RegistersState::new_with_main_label();
     let interpreter_inputs = GenerationInputs { ..inputs.clone() };
@@ -133,7 +132,6 @@ pub(crate) fn generate_segment(
     let (mut registers_before, mut memory_before) = (initial_registers, MemoryState::default());
 
     if index > 0 {
-        println!("Running for index 1...");
         let num_cycles_before = max_cpu_len - NUM_EXTRA_CYCLES_AFTER
             + (index - 1) * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE));
         (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
@@ -168,17 +166,9 @@ pub(crate) fn generate_segment(
         .collect::<Vec<_>>();
 
     interpreter.set_memory_multi_addresses(&registers_before_fields);
-    println!("Running for segment {}...", index);
-    let (registers_after, memory_after) =
-        interpreter.run(Some(max_cpu_len - NUM_EXTRA_CYCLES_AFTER))?;
-    println!("Done for segment {}.", index);
+    let (registers_after, _) = interpreter.run(Some(max_cpu_len - NUM_EXTRA_CYCLES_AFTER))?;
 
-    Ok((
-        registers_before,
-        registers_after,
-        memory_before,
-        memory_after,
-    ))
+    Ok((registers_before, registers_after, memory_before))
 }
 
 #[derive(Debug)]
@@ -226,7 +216,6 @@ impl<'a> Interpreter<'a> {
             // while the label `halt` is the halting label in the kernel.
             halt_offsets: vec![DEFAULT_HALT_OFFSET, KERNEL.global_labels["halt_final"]],
             debug_offsets: vec![],
-            running: false,
             opcode_count: [0; 256],
             memops: vec![],
             preinitialized_segments: HashMap::default(),
@@ -563,16 +552,17 @@ impl<'a> Interpreter<'a> {
         &mut self,
         max_cpu_len: Option<usize>,
     ) -> anyhow::Result<(RegistersState, MemoryState)> {
-        self.running = true;
         let mut cpu_counter = 0;
         let mut final_registers = self.generation_state.registers;
         let mut final_mem = self.generation_state.memory.clone();
-        while self.running {
+        let mut running = true;
+        loop {
             let pc = self.generation_state.registers.program_counter;
-
-            if self.is_kernel() && pc == KERNEL.global_labels["halt"]
-                || (max_cpu_len.is_some() && cpu_counter == max_cpu_len.unwrap() - 1)
+            if running
+                && (self.is_kernel() && pc == KERNEL.global_labels["halt"]
+                    || (max_cpu_len.is_some() && cpu_counter == max_cpu_len.unwrap() - 1))
             {
+                running = false;
                 final_registers = self.generation_state.registers;
 
                 // Write final registers.
@@ -595,14 +585,11 @@ impl<'a> Interpreter<'a> {
                     })
                     .collect::<Vec<_>>();
                 self.set_memory_multi_addresses(&registers_after_fields);
-
                 let checkpoint = self.checkpoint();
                 self.run_exception(6);
                 self.apply_memops(checkpoint.mem_len);
-                println!("Exc_stop at cycle {}", cpu_counter);
             };
             if self.is_kernel() && self.halt_offsets.contains(&pc) {
-                println!("Final stop at {}...", cpu_counter);
                 final_mem = self.generation_state.memory.clone();
                 return Ok((final_registers, final_mem));
             }
@@ -940,8 +927,6 @@ impl<'a> Interpreter<'a> {
             .byte(0);
         self.opcode_count[opcode as usize] += 1;
         self.incr(1);
-
-        // println!("{}, stack: {:?}", get_mnemonic(opcode), self.stack());
 
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge nothing.
@@ -1281,7 +1266,6 @@ impl<'a> Interpreter<'a> {
         let bytes = (offset..offset + size.as_usize())
             .map(|i| self.mload_queue(context, segment, i).byte(0))
             .collect::<Vec<_>>();
-        // println!("Hashing {:?}", &bytes);
         let hash = keccak(bytes);
         self.interpreter_push_no_write(U256::from_big_endian(hash.as_bytes()))
     }
@@ -1606,7 +1590,6 @@ impl<'a> Interpreter<'a> {
             + (U256::from(self.generation_state.registers.gas_used) << 192);
 
         self.interpreter_push_with_write(exc_info)?;
-
         // Set registers before pushing to the stack; in particular, we need to set kernel mode so we
         // can't incorrectly trigger a stack overflow. However, note that we have to do it _after_ we
         // make `exc_info`, which should contain the old values.

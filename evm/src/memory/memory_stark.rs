@@ -180,10 +180,6 @@ pub(crate) fn generate_first_change_flags_and_rc<F: RichField>(
         let address_changed =
             row[CONTEXT_FIRST_CHANGE] + row[SEGMENT_FIRST_CHANGE] + row[VIRTUAL_FIRST_CHANGE];
         row[INITIALIZE_AUX] = next_segment * address_changed * next_is_read;
-
-        if idx == 8388607 || idx == 8388608 {
-            println!("Memory row: {:?}", row);
-        }
     }
 }
 
