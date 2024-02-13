@@ -297,6 +297,7 @@ impl<F: RichField + Extendable<D>, const D: usize> MemoryStark<F, D> {
             filter: false,
             kind: Read,
             address: padding_addr,
+            timestamp: last_op.timestamp + 1,
             value: U256::zero(),
             ..last_op
         };
