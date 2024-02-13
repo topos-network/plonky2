@@ -103,7 +103,7 @@ where
         let mut res = vec![];
         for ctx in 0..memory_before.contexts.len() {
             for segment in 0..memory_before.contexts[ctx].segments.len() {
-                if segment == 13 {
+                if ctx == 0 && segment == 13 {
                     res.push((
                         MemoryAddress::new(0, Segment::RlpRaw, 0xFFFFFFFF),
                         0x80.into(),
