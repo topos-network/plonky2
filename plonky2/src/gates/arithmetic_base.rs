@@ -23,8 +23,9 @@ use crate::plonk::vars::{
 };
 use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
-/// A gate which can perform a weighted multiply-add, i.e. `result = c0.x.y + c1.z`. If the config
-/// has enough routed wires, it can support several such operations in one gate.
+/// A gate which can perform a weighted multiply-add, i.e. `result = c0.x.y +
+/// c1.z`. If the config has enough routed wires, it can support several such
+/// operations in one gate.
 #[derive(Debug, Clone)]
 pub struct ArithmeticGate {
     /// Number of arithmetic operations performed by an arithmetic gate.
@@ -38,7 +39,8 @@ impl ArithmeticGate {
         }
     }
 
-    /// Determine the maximum number of operations that can fit in one gate for the given config.
+    /// Determine the maximum number of operations that can fit in one gate for
+    /// the given config.
     pub(crate) const fn num_ops(config: &CircuitConfig) -> usize {
         let wires_per_op = 4;
         config.num_routed_wires / wires_per_op

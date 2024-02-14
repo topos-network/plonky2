@@ -20,7 +20,8 @@ use crate::util::timing::TimingTree;
 /// Builds a FRI proof.
 pub fn fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     initial_merkle_trees: &[&MerkleTree<F, C::Hasher>],
-    // Coefficients of the polynomial on which the LDT is performed. Only the first `1/rate` coefficients are non-zero.
+    // Coefficients of the polynomial on which the LDT is performed. Only the first `1/rate`
+    // coefficients are non-zero.
     lde_polynomial_coeffs: PolynomialCoeffs<F::Extension>,
     // Evaluation of the polynomial on the large domain.
     lde_polynomial_values: PolynomialValues<F::Extension>,
@@ -112,28 +113,33 @@ fn fri_committed_trees<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
     (trees, coeffs)
 }
 
-/// Performs the proof-of-work (a.k.a. grinding) step of the FRI protocol. Returns the PoW witness.
+/// Performs the proof-of-work (a.k.a. grinding) step of the FRI protocol.
+/// Returns the PoW witness.
 fn fri_proof_of_work<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     challenger: &mut Challenger<F, C::Hasher>,
     config: &FriConfig,
 ) -> F {
     let min_leading_zeros = config.proof_of_work_bits + (64 - F::order().bits()) as u32;
 
-    // The easiest implementation would be repeatedly clone our Challenger. With each clone, we'd
-    // observe an incrementing PoW witness, then get the PoW response. If it contained sufficient
-    // leading zeros, we'd end the search, and store this clone as our new challenger.
+    // The easiest implementation would be repeatedly clone our Challenger. With
+    // each clone, we'd observe an incrementing PoW witness, then get the PoW
+    // response. If it contained sufficient leading zeros, we'd end the search,
+    // and store this clone as our new challenger.
     //
-    // However, performance is critical here. We want to avoid cloning Challenger, particularly
-    // since it stores vectors, which means allocations. We'd like a more compact state to clone.
+    // However, performance is critical here. We want to avoid cloning Challenger,
+    // particularly since it stores vectors, which means allocations. We'd like
+    // a more compact state to clone.
     //
-    // We know that a duplex will be performed right after we send the PoW witness, so we can ignore
-    // any output_buffer, which will be invalidated. We also know
-    // input_buffer.len() < H::Permutation::WIDTH, an invariant of Challenger.
+    // We know that a duplex will be performed right after we send the PoW witness,
+    // so we can ignore any output_buffer, which will be invalidated. We also
+    // know input_buffer.len() < H::Permutation::WIDTH, an invariant of
+    // Challenger.
     //
-    // We separate the duplex operation into two steps, one which can be performed now, and the
-    // other which depends on the PoW witness candidate. The first step is the overwrite our sponge
-    // state with any inputs (excluding the PoW witness candidate). The second step is to overwrite
-    // one more element of our sponge state with the candidate, then apply the permutation,
+    // We separate the duplex operation into two steps, one which can be performed
+    // now, and the other which depends on the PoW witness candidate. The first
+    // step is the overwrite our sponge state with any inputs (excluding the PoW
+    // witness candidate). The second step is to overwrite one more element of
+    // our sponge state with the candidate, then apply the permutation,
     // obtaining our duplex's post-state which contains the PoW response.
     let mut duplex_intermediate_state = challenger.sponge_state;
     let witness_input_pos = challenger.input_buffer.len();
@@ -152,7 +158,8 @@ fn fri_proof_of_work<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, c
         .map(F::from_canonical_u64)
         .expect("Proof of work failed. This is highly unlikely!");
 
-    // Recompute pow_response using our normal Challenger code, and make sure it matches.
+    // Recompute pow_response using our normal Challenger code, and make sure it
+    // matches.
     challenger.observe_element(pow_witness);
     let pow_response = challenger.get_challenge();
     let leading_zeros = pow_response.to_canonical_u64().leading_zeros();

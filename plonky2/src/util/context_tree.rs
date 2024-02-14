@@ -7,7 +7,8 @@ use alloc::{
 
 use log::{log, Level};
 
-/// The hierarchy of contexts, and the gate count contributed by each one. Useful for debugging.
+/// The hierarchy of contexts, and the gate count contributed by each one.
+/// Useful for debugging.
 pub(crate) struct ContextTree {
     /// The name of this scope.
     name: String,
@@ -15,7 +16,8 @@ pub(crate) struct ContextTree {
     level: log::Level,
     /// The gate count when this scope was created.
     enter_gate_count: usize,
-    /// The gate count when this scope was destroyed, or None if it has not yet been destroyed.
+    /// The gate count when this scope was destroyed, or None if it has not yet
+    /// been destroyed.
     exit_gate_count: Option<usize>,
     /// Any child contexts.
     children: Vec<ContextTree>,

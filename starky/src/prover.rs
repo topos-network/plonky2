@@ -202,7 +202,8 @@ where
         .map(|data| data.num_ctl_helper_polys())
         .unwrap_or_default();
 
-    // This is an expensive check, hence is only run when `debug_assertions` are enabled.
+    // This is an expensive check, hence is only run when `debug_assertions` are
+    // enabled.
     #[cfg(debug_assertions)]
     {
         check_constraints(
@@ -273,16 +274,18 @@ where
 
     let zeta = challenger.get_extension_challenge::<D>();
 
-    // To avoid leaking witness data, we want to ensure that our opening locations, `zeta` and
-    // `g * zeta`, are not in our subgroup `H`. It suffices to check `zeta` only, since
-    // `(g * zeta)^n = zeta^n`, where `n` is the order of `g`.
+    // To avoid leaking witness data, we want to ensure that our opening locations,
+    // `zeta` and `g * zeta`, are not in our subgroup `H`. It suffices to check
+    // `zeta` only, since `(g * zeta)^n = zeta^n`, where `n` is the order of
+    // `g`.
     let g = F::primitive_root_of_unity(degree_bits);
     ensure!(
         zeta.exp_power_of_2(degree_bits) != F::Extension::ONE,
         "Opening point is in the subgroup."
     );
 
-    // Compute all openings: evaluate all committed polynomials at `zeta` and, when necessary, at `g * zeta`.
+    // Compute all openings: evaluate all committed polynomials at `zeta` and, when
+    // necessary, at `g * zeta`.
     let openings = StarkOpeningSet::new(
         zeta,
         g,
@@ -327,8 +330,8 @@ where
     })
 }
 
-/// Computes the quotient polynomials `(sum alpha^i C_i(x)) / Z_H(x)` for `alpha` in `alphas`,
-/// where the `C_i`s are the STARK constraints.
+/// Computes the quotient polynomials `(sum alpha^i C_i(x)) / Z_H(x)` for
+/// `alpha` in `alphas`, where the `C_i`s are the STARK constraints.
 fn compute_quotient_polys<'a, F, P, C, S, const D: usize>(
     stark: &S,
     trace_commitment: &'a PolynomialBatch<F, C, D>,
@@ -359,7 +362,8 @@ where
         "Having constraints of degree higher than the rate is not supported yet."
     );
     let step = 1 << (rate_bits - quotient_degree_bits);
-    // When opening the `Z`s polys at the "next" point, need to look at the point `next_step` steps away.
+    // When opening the `Z`s polys at the "next" point, need to look at the point
+    // `next_step` steps away.
     let next_step = 1 << quotient_degree_bits;
 
     // Evaluation of the first Lagrange polynomial on the LDE domain.
@@ -383,8 +387,8 @@ where
         size,
     );
 
-    // We will step by `P::WIDTH`, and in each iteration, evaluate the quotient polynomial at
-    // a batch of `P::WIDTH` points.
+    // We will step by `P::WIDTH`, and in each iteration, evaluate the quotient
+    // polynomial at a batch of `P::WIDTH` points.
     let quotient_values = (0..size)
         .into_par_iter()
         .step_by(P::WIDTH)
@@ -509,13 +513,16 @@ where
 }
 
 /// Check that all constraints evaluate to zero on `H`.
-/// Can also be used to check the degree of the constraints by evaluating on a larger subgroup.
+/// Can also be used to check the degree of the constraints by evaluating on a
+/// larger subgroup.
 ///
 /// Debugging module, to assert that all constraints evaluate to zero on `H`.
-/// It can also be used to check the degree of the constraints by evaluating on a larger subgroup.
+/// It can also be used to check the degree of the constraints by evaluating on
+/// a larger subgroup.
 ///
-/// **Note**: this is an expensive check, hence is only available when the `debug_assertions`
-/// flag is activated, to not hinder performances with regular `release` build.
+/// **Note**: this is an expensive check, hence is only available when the
+/// `debug_assertions` flag is activated, to not hinder performances with
+/// regular `release` build.
 #[cfg(debug_assertions)]
 fn check_constraints<'a, F, C, S, const D: usize>(
     stark: &S,
@@ -558,7 +565,8 @@ fn check_constraints<'a, F, C, S, const D: usize>(
         transpose(&values)
     };
 
-    // Get batch evaluations of the trace and permutation polynomials over our subgroup.
+    // Get batch evaluations of the trace and permutation polynomials over our
+    // subgroup.
     let trace_subgroup_evals = get_subgroup_evals(trace_commitment);
     let auxiliary_subgroup_evals = auxiliary_commitment.as_ref().map(get_subgroup_evals);
 
@@ -586,7 +594,8 @@ fn check_constraints<'a, F, C, S, const D: usize>(
                 &trace_subgroup_evals[i_next],
                 public_inputs,
             );
-            // Get the local and next row evaluations for the current STARK's permutation argument.
+            // Get the local and next row evaluations for the current STARK's permutation
+            // argument.
             let lookup_vars = lookup_challenges.map(|challenges| LookupCheckVars {
                 local_values: auxiliary_subgroup_evals.as_ref().unwrap()[i][..num_lookup_columns]
                     .to_vec(),
@@ -596,7 +605,8 @@ fn check_constraints<'a, F, C, S, const D: usize>(
                 challenges: challenges.to_vec(),
             });
 
-            // Get the local and next row evaluations for the current STARK's CTL Z polynomials.
+            // Get the local and next row evaluations for the current STARK's CTL Z
+            // polynomials.
             let mut start_index = 0;
             let ctl_vars = ctl_data.map(|data| {
                 data.zs_columns

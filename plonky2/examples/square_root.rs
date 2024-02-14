@@ -21,8 +21,9 @@ use plonky2::util::serialization::{
 use plonky2::{get_generator_tag_impl, impl_generator_serializer, read_generator_impl};
 use plonky2_field::extension::Extendable;
 
-/// A generator used by the prover to calculate the square root (`x`) of a given value
-/// (`x_squared`), outside of the circuit, in order to supply it as an additional public input.
+/// A generator used by the prover to calculate the square root (`x`) of a given
+/// value (`x_squared`), outside of the circuit, in order to supply it as an
+/// additional public input.
 #[derive(Debug, Default)]
 struct SquareRootGenerator<F: RichField + Extendable<D>, const D: usize> {
     x: Target,

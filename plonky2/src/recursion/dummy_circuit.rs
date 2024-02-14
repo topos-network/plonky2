@@ -29,10 +29,11 @@ use crate::plonk::proof::{
 };
 use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
-/// Creates a dummy proof which is suitable for use as a base proof in a cyclic recursion tree.
-/// Such a base proof will not actually be verified, so most of its data is arbitrary. However, its
-/// public inputs which encode the cyclic verification key must be set properly, and this method
-/// takes care of that. It also allows the user to specify any other public inputs which should be
+/// Creates a dummy proof which is suitable for use as a base proof in a cyclic
+/// recursion tree. Such a base proof will not actually be verified, so most of
+/// its data is arbitrary. However, its public inputs which encode the cyclic
+/// verification key must be set properly, and this method takes care of that.
+/// It also allows the user to specify any other public inputs which should be
 /// set in this base proof.
 pub fn cyclic_base_proof<F, C, const D: usize>(
     common_data: &CommonCircuitData<F, D>,
@@ -56,8 +57,8 @@ where
             .extend((start..).zip(verifier_data.constants_sigmas_cap.0[i].elements));
     }
 
-    // TODO: A bit wasteful to build a dummy circuit here. We could potentially use a proof that
-    // just consists of zeros, apart from public inputs.
+    // TODO: A bit wasteful to build a dummy circuit here. We could potentially use
+    // a proof that just consists of zeros, apart from public inputs.
     dummy_proof::<F, C, D>(
         &dummy_circuit::<F, C, D>(common_data),
         nonzero_public_inputs,
@@ -65,9 +66,9 @@ where
     .unwrap()
 }
 
-/// Generate a proof for a dummy circuit. The `public_inputs` parameter let the caller specify
-/// certain public inputs (identified by their indices) which should be given specific values.
-/// The rest will default to zero.
+/// Generate a proof for a dummy circuit. The `public_inputs` parameter let the
+/// caller specify certain public inputs (identified by their indices) which
+/// should be given specific values. The rest will default to zero.
 pub(crate) fn dummy_proof<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -101,7 +102,8 @@ pub(crate) fn dummy_circuit<
     );
 
     // Number of `NoopGate`s to add to get a circuit of size `degree` in the end.
-    // Need to account for public input hashing, a `PublicInputGate` and a `ConstantGate`.
+    // Need to account for public input hashing, a `PublicInputGate` and a
+    // `ConstantGate`.
     let degree = common_data.degree();
     let num_noop_gate = degree - ceil_div_usize(common_data.num_public_inputs, 8) - 2;
 

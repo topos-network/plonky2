@@ -44,7 +44,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         multiplicand_1: Target,
         addend: Target,
     ) -> Target {
-        // If we're not configured to use the base arithmetic gate, just call arithmetic_extension.
+        // If we're not configured to use the base arithmetic gate, just call
+        // arithmetic_extension.
         if !self.config.use_base_arithmetic_gate {
             let multiplicand_0_ext = self.convert_to_ext(multiplicand_0);
             let multiplicand_1_ext = self.convert_to_ext(multiplicand_1);
@@ -80,7 +81,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             return result;
         }
 
-        // Otherwise, we must actually perform the operation using an ArithmeticExtensionGate slot.
+        // Otherwise, we must actually perform the operation using an
+        // ArithmeticExtensionGate slot.
         let result = self.add_base_arithmetic_operation(operation);
         self.base_arithmetic_results.insert(operation, result);
         result
@@ -242,7 +244,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 
     // TODO: Test
-    /// Exponentiates `base` to the power of `exponent`, given by its little-endian bits.
+    /// Exponentiates `base` to the power of `exponent`, given by its
+    /// little-endian bits.
     pub fn exp_from_bits(
         &mut self,
         base: Target,
@@ -267,7 +270,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 
     // TODO: Test
-    /// Exponentiates `base` to the power of `exponent`, where `exponent < 2^num_bits`.
+    /// Exponentiates `base` to the power of `exponent`, where `exponent <
+    /// 2^num_bits`.
     pub fn exp(&mut self, base: Target, exponent: Target, num_bits: usize) -> Target {
         let exponent_bits = self.split_le(exponent, num_bits);
 
@@ -345,13 +349,15 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         BoolTarget::new_unsafe(self.mul(b1.target, b2.target))
     }
 
-    /// Computes the logical OR through the arithmetic expression: `b1 + b2 - b1 * b2`.
+    /// Computes the logical OR through the arithmetic expression: `b1 + b2 - b1
+    /// * b2`.
     pub fn or(&mut self, b1: BoolTarget, b2: BoolTarget) -> BoolTarget {
         let res_minus_b2 = self.arithmetic(-F::ONE, F::ONE, b1.target, b2.target, b1.target);
         BoolTarget::new_unsafe(self.add(res_minus_b2, b2.target))
     }
 
-    /// Outputs `x` if `b` is true, and else `y`, through the formula: `b*x + (1-b)*y`.
+    /// Outputs `x` if `b` is true, and else `y`, through the formula: `b*x +
+    /// (1-b)*y`.
     pub fn _if(&mut self, b: BoolTarget, x: Target, y: Target) -> Target {
         let not_b = self.not(b);
         let maybe_x = self.mul(b.target, x);
@@ -423,7 +429,8 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D> for Equ
     }
 }
 
-/// Represents a base arithmetic operation in the circuit. Used to memoize results.
+/// Represents a base arithmetic operation in the circuit. Used to memoize
+/// results.
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub(crate) struct BaseArithmeticOperation<F: Field64> {
     const_0: F,

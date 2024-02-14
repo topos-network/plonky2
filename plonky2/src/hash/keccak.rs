@@ -14,9 +14,10 @@ pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
 pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
 
-/// Keccak-256 pseudo-permutation (not necessarily one-to-one) used in the challenger.
-/// A state `input: [F; 12]` is sent to the field representation of `H(input) || H(H(input)) || H(H(H(input)))`
-/// where `H` is the Keccak-256 hash.
+/// Keccak-256 pseudo-permutation (not necessarily one-to-one) used in the
+/// challenger. A state `input: [F; 12]` is sent to the field representation of
+/// `H(input) || H(H(input)) || H(H(H(input)))` where `H` is the Keccak-256
+/// hash.
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct KeccakPermutation<F: RichField> {
     state: [F; SPONGE_WIDTH],
@@ -80,8 +81,8 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
                 .collect_vec()
         });
 
-        // Parse field elements from u64 stream, using rejection sampling such that words that don't
-        // fit in F are ignored.
+        // Parse field elements from u64 stream, using rejection sampling such that
+        // words that don't fit in F are ignored.
         let hash_onion_elems = hash_onion_u64s
             .filter(|&word| word < F::ORDER)
             .map(F::from_canonical_u64);

@@ -74,7 +74,8 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     // Initialize the preprocessed circuits for the zkEVM.
     let all_circuits = AllRecursiveCircuits::<F, C, D>::new(
         &all_stark,
-        &[16..17, 9..11, 12..13, 14..15, 9..11, 12..13, 17..18], // Minimal ranges to prove an empty list
+        &[16..17, 9..11, 12..13, 14..15, 9..11, 12..13, 17..18], /* Minimal ranges to prove an
+                                                                  * empty list */
         &config,
     );
 
@@ -140,7 +141,8 @@ fn test_empty_txn_list() -> anyhow::Result<()> {
     let retrieved_public_values = PublicValues::from_public_inputs(&block_proof.public_inputs);
     assert_eq!(retrieved_public_values, block_public_values);
 
-    // Get the verifier associated to these preprocessed circuits, and have it verify the block_proof.
+    // Get the verifier associated to these preprocessed circuits, and have it
+    // verify the block_proof.
     let verifier = all_circuits.final_verifier_data();
     verifier.verify(block_proof)
 }

@@ -39,7 +39,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         claimed_element
     }
 
-    /// Like `random_access`, but with `ExtensionTarget`s rather than simple `Target`s.
+    /// Like `random_access`, but with `ExtensionTarget`s rather than simple
+    /// `Target`s.
     pub fn random_access_extension(
         &mut self,
         access_index: Target,
@@ -52,7 +53,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         ExtensionTarget(selected.try_into().unwrap())
     }
 
-    /// Like `random_access`, but with `HashOutTarget`s rather than simple `Target`s.
+    /// Like `random_access`, but with `HashOutTarget`s rather than simple
+    /// `Target`s.
     pub fn random_access_hash(
         &mut self,
         access_index: Target,
@@ -67,7 +69,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         selected.into()
     }
 
-    /// Like `random_access`, but with `MerkleCapTarget`s rather than simple `Target`s.
+    /// Like `random_access`, but with `MerkleCapTarget`s rather than simple
+    /// `Target`s.
     pub fn random_access_merkle_cap(
         &mut self,
         access_index: Target,
@@ -82,7 +85,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         MerkleCapTarget(selected)
     }
 
-    /// Like `random_access`, but with `VerifierCircuitTarget`s rather than simple `Target`s.
+    /// Like `random_access`, but with `VerifierCircuitTarget`s rather than
+    /// simple `Target`s.
     pub fn random_access_verifier_data(
         &mut self,
         access_index: Target,

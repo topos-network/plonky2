@@ -1,5 +1,5 @@
-//! Information about the structure of a FRI instance, in terms of the oracles and polynomials
-//! involved, and the points they are opened at.
+//! Information about the structure of a FRI instance, in terms of the oracles
+//! and polynomials involved, and the points they are opened at.
 
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
@@ -11,17 +11,21 @@ use crate::iop::ext_target::ExtensionTarget;
 
 /// Describes an instance of a FRI-based batch opening.
 pub struct FriInstanceInfo<F: RichField + Extendable<D>, const D: usize> {
-    /// The oracles involved, not counting oracles created during the commit phase.
+    /// The oracles involved, not counting oracles created during the commit
+    /// phase.
     pub oracles: Vec<FriOracleInfo>,
-    /// Batches of openings, where each batch is associated with a particular point.
+    /// Batches of openings, where each batch is associated with a particular
+    /// point.
     pub batches: Vec<FriBatchInfo<F, D>>,
 }
 
 /// Describes an instance of a FRI-based batch opening.
 pub struct FriInstanceInfoTarget<const D: usize> {
-    /// The oracles involved, not counting oracles created during the commit phase.
+    /// The oracles involved, not counting oracles created during the commit
+    /// phase.
     pub oracles: Vec<FriOracleInfo>,
-    /// Batches of openings, where each batch is associated with a particular point.
+    /// Batches of openings, where each batch is associated with a particular
+    /// point.
     pub batches: Vec<FriBatchInfoTarget<D>>,
 }
 

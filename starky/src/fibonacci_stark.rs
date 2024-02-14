@@ -1,6 +1,7 @@
-//! An example of generating and verifying STARK proofs for the Fibonacci sequence.
-//! The toy STARK system also includes two columns that are a permutation of the other,
-//! to highlight the use of the permutation argument with logUp.
+//! An example of generating and verifying STARK proofs for the Fibonacci
+//! sequence. The toy STARK system also includes two columns that are a
+//! permutation of the other, to highlight the use of the permutation argument
+//! with logUp.
 
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
@@ -20,8 +21,8 @@ use crate::stark::Stark;
 use crate::util::trace_rows_to_poly_values;
 
 /// Toy STARK system used for testing.
-/// Computes a Fibonacci sequence with state `[x0, x1]` using the state transition
-/// `x0' <- x1, x1' <- x0 + x1.
+/// Computes a Fibonacci sequence with state `[x0, x1]` using the state
+/// transition `x0' <- x1, x1' <- x0 + x1.
 #[derive(Copy, Clone)]
 struct FibonacciStark<F: RichField + Extendable<D>, const D: usize> {
     num_rows: usize,
@@ -33,8 +34,8 @@ impl<F: RichField + Extendable<D>, const D: usize> FibonacciStark<F, D> {
     const PI_INDEX_X0: usize = 0;
     // The second public input is `x1`.
     const PI_INDEX_X1: usize = 1;
-    // The third public input is the second element of the last row, which should be equal to the
-    // `num_rows`-th Fibonacci number.
+    // The third public input is the second element of the last row, which should be
+    // equal to the `num_rows`-th Fibonacci number.
     const PI_INDEX_RES: usize = 2;
 
     const fn new(num_rows: usize) -> Self {
@@ -132,10 +133,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FibonacciStar
     }
 }
 
-/// Similar system than above, but with extra columns to illustrate the permutation argument.
-/// Computes a Fibonacci sequence with state `[x0, x1, i, j]` using the state transition
-/// `x0' <- x1, x1' <- x0 + x1, i' <- i+1, j' <- j+1`.
-/// Note: The `i, j` columns are the columns used to test the permutation argument.
+/// Similar system than above, but with extra columns to illustrate the
+/// permutation argument. Computes a Fibonacci sequence with state `[x0, x1, i,
+/// j]` using the state transition `x0' <- x1, x1' <- x0 + x1, i' <- i+1, j' <-
+/// j+1`. Note: The `i, j` columns are the columns used to test the permutation
+/// argument.
 #[derive(Copy, Clone)]
 struct FibonacciWithPermutationStark<F: RichField + Extendable<D>, const D: usize> {
     num_rows: usize,
@@ -147,8 +149,8 @@ impl<F: RichField + Extendable<D>, const D: usize> FibonacciWithPermutationStark
     const PI_INDEX_X0: usize = 0;
     // The second public input is `x1`.
     const PI_INDEX_X1: usize = 1;
-    // The third public input is the second element of the last row, which should be equal to the
-    // `num_rows`-th Fibonacci number.
+    // The third public input is the second element of the last row, which should be
+    // equal to the `num_rows`-th Fibonacci number.
     const PI_INDEX_RES: usize = 2;
 
     const fn new(num_rows: usize) -> Self {
@@ -167,7 +169,8 @@ impl<F: RichField + Extendable<D>, const D: usize> FibonacciWithPermutationStark
                 acc[1] = tmp[0] + tmp[1];
                 acc[2] = tmp[2] + F::ONE;
                 acc[3] = tmp[3] + F::ONE;
-                // acc[4] (i.e. frequency column) remains unchanged, as we're permuting a strictly monotonous sequence.
+                // acc[4] (i.e. frequency column) remains unchanged, as we're permuting a
+                // strictly monotonous sequence.
                 Some(tmp)
             })
             .collect::<Vec<_>>();

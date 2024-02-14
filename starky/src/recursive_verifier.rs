@@ -160,7 +160,8 @@ pub fn verify_stark_proof_with_challenges_circuit<
     );
     let vanishing_polys_zeta = consumer.accumulators();
 
-    // Check each polynomial identity, of the form `vanishing(x) = Z_H(x) quotient(x)`, at zeta.
+    // Check each polynomial identity, of the form `vanishing(x) = Z_H(x)
+    // quotient(x)`, at zeta.
     let mut scale = ReducingFactorTarget::new(zeta_pow_deg);
     for (i, chunk) in quotient_polys
         .chunks(stark.quotient_degree_factor())
@@ -366,8 +367,8 @@ pub fn set_stark_proof_target<F, C: GenericConfig<D, F = F>, W, const D: usize>(
     set_fri_proof_target(witness, &proof_target.opening_proof, &proof.opening_proof);
 }
 
-/// Utility function to check that all lookups data wrapped in `Option`s are `Some` iff
-/// the STARK uses a permutation argument.
+/// Utility function to check that all lookups data wrapped in `Option`s are
+/// `Some` iff the STARK uses a permutation argument.
 fn check_lookup_options<F: RichField + Extendable<D>, S: Stark<F, D>, const D: usize>(
     stark: &S,
     proof: &StarkProofTarget<D>,

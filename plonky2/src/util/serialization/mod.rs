@@ -78,7 +78,8 @@ pub trait Remaining: Read {
 
 /// Similar to `std::io::Read`, but works with no_std.
 pub trait Read {
-    /// Reads exactly the length of `bytes` from `self` and writes it to `bytes`.
+    /// Reads exactly the length of `bytes` from `self` and writes it to
+    /// `bytes`.
     fn read_exact(&mut self, bytes: &mut [u8]) -> IoResult<()>;
 
     /// Reads a `bool` value from `self`.
@@ -151,7 +152,8 @@ pub trait Read {
         Ok(res)
     }
 
-    /// Reads a element from the field `F` with size less than `2^64` from `self.`
+    /// Reads a element from the field `F` with size less than `2^64` from
+    /// `self.`
     #[inline]
     fn read_field<F>(&mut self) -> IoResult<F>
     where
@@ -287,7 +289,8 @@ pub trait Read {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    /// Reads a value of type [`MerkleCap`] from `self` with the given `cap_height`.
+    /// Reads a value of type [`MerkleCap`] from `self` with the given
+    /// `cap_height`.
     #[inline]
     fn read_merkle_cap<F, H>(&mut self, cap_height: usize) -> IoResult<MerkleCap<F, H>>
     where
@@ -338,7 +341,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`OpeningSet`] from `self` with the given `common_data`.
+    /// Reads a value of type [`OpeningSet`] from `self` with the given
+    /// `common_data`.
     #[inline]
     fn read_opening_set<F, C, const D: usize>(
         &mut self,
@@ -426,7 +430,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`FriInitialTreeProof`] from `self` with the given `common_data`.
+    /// Reads a value of type [`FriInitialTreeProof`] from `self` with the given
+    /// `common_data`.
     #[inline]
     fn read_fri_initial_proof<F, C, const D: usize>(
         &mut self,
@@ -478,8 +483,8 @@ pub trait Read {
         Ok(FriInitialTreeProofTarget { evals_proofs })
     }
 
-    /// Reads a value of type [`FriQueryStep`] from `self` with the given `arity` and `compressed`
-    /// flag.
+    /// Reads a value of type [`FriQueryStep`] from `self` with the given
+    /// `arity` and `compressed` flag.
     #[inline]
     fn read_fri_query_step<F, C, const D: usize>(
         &mut self,
@@ -1006,7 +1011,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`ProofWithPublicInputs`] from `self` with `common_data`.
+    /// Reads a value of type [`ProofWithPublicInputs`] from `self` with
+    /// `common_data`.
     #[inline]
     fn read_proof_with_public_inputs<F, C, const D: usize>(
         &mut self,
@@ -1039,7 +1045,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`CompressedFriQueryRounds`] from `self` with `common_data`.
+    /// Reads a value of type [`CompressedFriQueryRounds`] from `self` with
+    /// `common_data`.
     #[inline]
     fn read_compressed_fri_query_rounds<F, C, const D: usize>(
         &mut self,
@@ -1087,7 +1094,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`CompressedFriProof`] from `self` with `common_data`.
+    /// Reads a value of type [`CompressedFriProof`] from `self` with
+    /// `common_data`.
     #[inline]
     fn read_compressed_fri_proof<F, C, const D: usize>(
         &mut self,
@@ -1114,7 +1122,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`CompressedProof`] from `self` with `common_data`.
+    /// Reads a value of type [`CompressedProof`] from `self` with
+    /// `common_data`.
     #[inline]
     fn read_compressed_proof<F, C, const D: usize>(
         &mut self,
@@ -1139,7 +1148,8 @@ pub trait Read {
         })
     }
 
-    /// Reads a value of type [`CompressedProofWithPublicInputs`] from `self` with `common_data`.
+    /// Reads a value of type [`CompressedProofWithPublicInputs`] from `self`
+    /// with `common_data`.
     #[inline]
     fn read_compressed_proof_with_public_inputs<F, C, const D: usize>(
         &mut self,
@@ -1282,7 +1292,8 @@ pub trait Write {
         Ok(())
     }
 
-    /// Writes a vector `v` of elements from the field extension of `F` to `self`.
+    /// Writes a vector `v` of elements from the field extension of `F` to
+    /// `self`.
     #[inline]
     fn write_field_ext_vec<F, const D: usize>(&mut self, v: &[F::Extension]) -> IoResult<()>
     where
@@ -1996,7 +2007,8 @@ pub trait Write {
         self.write_target_fri_proof::<D>(&proof.opening_proof)
     }
 
-    /// Writes a value `proof_with_pis` of type [`ProofWithPublicInputs`] to `self.`
+    /// Writes a value `proof_with_pis` of type [`ProofWithPublicInputs`] to
+    /// `self.`
     #[inline]
     fn write_proof_with_public_inputs<F, C, const D: usize>(
         &mut self,
@@ -2015,7 +2027,8 @@ pub trait Write {
         self.write_field_vec(public_inputs)
     }
 
-    /// Writes a value `proof_with_pis` of type [`ProofWithPublicInputsTarget`] to `self.`
+    /// Writes a value `proof_with_pis` of type [`ProofWithPublicInputsTarget`]
+    /// to `self.`
     #[inline]
     fn write_target_proof_with_public_inputs<const D: usize>(
         &mut self,
@@ -2092,7 +2105,8 @@ pub trait Write {
         self.write_compressed_fri_proof::<F, C, D>(&proof.opening_proof)
     }
 
-    /// Writes a value `proof_with_pis` of type [`CompressedProofWithPublicInputs`] to `self.`
+    /// Writes a value `proof_with_pis` of type
+    /// [`CompressedProofWithPublicInputs`] to `self.`
     #[inline]
     fn write_compressed_proof_with_public_inputs<F, C, const D: usize>(
         &mut self,

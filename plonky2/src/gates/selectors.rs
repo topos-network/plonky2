@@ -39,13 +39,16 @@ pub enum LookupSelectors {
     StartEnd,
 }
 
-/// Returns selector polynomials for each LUT. We have two constraint domains (remember that gates are stored upside down):
+/// Returns selector polynomials for each LUT. We have two constraint domains
+/// (remember that gates are stored upside down):
 /// - [last_lut_row, first_lut_row] (Sum and RE transition constraints),
 /// - [last_lu_row, last_lut_row - 1] (LDC column transition constraints).
 /// We also add two more:
-/// - {first_lut_row + 1} where we check the initial values of sum and RE (which are 0),
+/// - {first_lut_row + 1} where we check the initial values of sum and RE (which
+///   are 0),
 /// - {last_lu_row} where we check that the last value of LDC is 0.
-/// Conceptually they're part of the selector ends lookups, but since we can have one polynomial for *all* LUTs it's here.
+/// Conceptually they're part of the selector ends lookups, but since we can
+/// have one polynomial for *all* LUTs it's here.
 pub(crate) fn selectors_lookup<F: RichField + Extendable<D>, const D: usize>(
     _gates: &[GateRef<F, D>],
     instances: &[GateInstance<F, D>],
@@ -76,7 +79,8 @@ pub(crate) fn selectors_lookup<F: RichField + Extendable<D>, const D: usize>(
 }
 
 /// Returns selectors for checking the validity of the LUTs.
-/// Each selector equals one on its respective LUT's `last_lut_row`, and 0 elsewhere.
+/// Each selector equals one on its respective LUT's `last_lut_row`, and 0
+/// elsewhere.
 pub(crate) fn selector_ends_lookups<F: RichField + Extendable<D>, const D: usize>(
     lookup_rows: &[LookupWire],
     instances: &[GateInstance<F, D>],
@@ -99,9 +103,9 @@ pub(crate) fn selector_ends_lookups<F: RichField + Extendable<D>, const D: usize
 /// Returns the selector polynomials and related information.
 ///
 /// Selector polynomials are computed as follows:
-/// Partition the gates into (the smallest amount of) groups `{ G_i }`, such that for each group `G`
-/// `|G| + max_{g in G} g.degree() <= max_degree`. These groups are constructed greedily from
-/// the list of gates sorted by degree.
+/// Partition the gates into (the smallest amount of) groups `{ G_i }`, such
+/// that for each group `G` `|G| + max_{g in G} g.degree() <= max_degree`. These
+/// groups are constructed greedily from the list of gates sorted by degree.
 /// We build a selector polynomial `S_i` for each group `G_i`, with
 /// S_i\[j\] =
 ///     if j-th row gate=g_k in G_i
@@ -121,8 +125,8 @@ pub(crate) fn selector_polynomials<F: RichField + Extendable<D>, const D: usize>
 
     // Special case if we can use only one selector polynomial.
     if max_gate_degree + num_gates - 1 <= max_degree {
-        // We *want* `groups` to be a vector containing one Range (all gates are in one selector group),
-        // but Clippy doesn't trust us.
+        // We *want* `groups` to be a vector containing one Range (all gates are in one
+        // selector group), but Clippy doesn't trust us.
         #[allow(clippy::single_range_in_vec_init)]
         return (
             vec![PolynomialValues::new(
@@ -159,7 +163,8 @@ pub(crate) fn selector_polynomials<F: RichField + Extendable<D>, const D: usize>
 
     let group = |i| groups.iter().position(|range| range.contains(&i)).unwrap();
 
-    // `selector_indices[i] = j` iff the `i`-th gate uses the `j`-th selector polynomial.
+    // `selector_indices[i] = j` iff the `i`-th gate uses the `j`-th selector
+    // polynomial.
     let selector_indices = (0..num_gates).map(group).collect();
 
     // Placeholder value to indicate that a gate doesn't use a selector polynomial.

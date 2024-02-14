@@ -22,7 +22,8 @@ impl<C: GenericConfig<D>, const D: usize> VerifierOnlyCircuitData<C, D> {
     where
         C::Hasher: AlgebraicHasher<C::F>,
     {
-        // The structure of the public inputs is `[..., circuit_digest, constants_sigmas_cap]`.
+        // The structure of the public inputs is `[..., circuit_digest,
+        // constants_sigmas_cap]`.
         let cap_len = common_data.config.fri_config.num_cap_elements();
         let len = slice.len();
         ensure!(len >= 4 + 4 * cap_len, "Not enough public inputs");
@@ -87,19 +88,22 @@ impl VerifierCircuitTarget {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
-    /// If `condition` is true, recursively verify a proof for the same circuit as the one we're
-    /// currently building. Otherwise, verify `other_proof_with_pis`.
+    /// If `condition` is true, recursively verify a proof for the same circuit
+    /// as the one we're currently building. Otherwise, verify
+    /// `other_proof_with_pis`.
     ///
-    /// For a typical IVC use case, `condition` will be false for the very first proof in a chain,
-    /// i.e. the base case.
+    /// For a typical IVC use case, `condition` will be false for the very first
+    /// proof in a chain, i.e. the base case.
     ///
-    /// Note that this does not enforce that the inner circuit uses the correct verification key.
-    /// This is not possible to check in this recursive circuit, since we do not know the
-    /// verification key until after we build it. Verifiers must separately call
-    /// `check_cyclic_proof_verifier_data`, in addition to verifying a recursive proof, to check
-    /// that the verification key matches.
+    /// Note that this does not enforce that the inner circuit uses the correct
+    /// verification key. This is not possible to check in this recursive
+    /// circuit, since we do not know the verification key until after we
+    /// build it. Verifiers must separately call
+    /// `check_cyclic_proof_verifier_data`, in addition to verifying a recursive
+    /// proof, to check that the verification key matches.
     ///
-    /// WARNING: Do not register any public input after calling this! TODO: relax this
+    /// WARNING: Do not register any public input after calling this! TODO:
+    /// relax this
     pub fn conditionally_verify_cyclic_proof<C: GenericConfig<D, F = F>>(
         &mut self,
         condition: BoolTarget,
@@ -126,7 +130,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             &cyclic_proof_with_pis.public_inputs,
             common_data,
         )?;
-        // Connect previous verifier data to current one. This guarantees that every proof in the cycle uses the same verifier data.
+        // Connect previous verifier data to current one. This guarantees that every
+        // proof in the cycle uses the same verifier data.
         self.connect_hashes(
             inner_cyclic_pis.circuit_digest,
             verifier_data.circuit_digest,
@@ -136,7 +141,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             &verifier_data.constants_sigmas_cap,
         );
 
-        // Verify the cyclic proof if `condition` is set to true, otherwise verify the other proof.
+        // Verify the cyclic proof if `condition` is set to true, otherwise verify the
+        // other proof.
         self.conditionally_verify_proof::<C>(
             condition,
             cyclic_proof_with_pis,
@@ -176,8 +182,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
-/// Additional checks to be performed on a cyclic recursive proof in addition to verifying the proof.
-/// Checks that the purported verifier data in the public inputs match the real verifier data.
+/// Additional checks to be performed on a cyclic recursive proof in addition to
+/// verifying the proof. Checks that the purported verifier data in the public
+/// inputs match the real verifier data.
 pub fn check_cyclic_proof_verifier_data<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -287,17 +294,18 @@ mod tests {
         let inner_cyclic_latest_hash = HashOutTarget::try_from(&inner_cyclic_pis[4..8]).unwrap();
         let inner_cyclic_counter = inner_cyclic_pis[8];
 
-        // Connect our initial hash to that of our inner proof. (If there is no inner proof, the
-        // initial hash will be unconstrained, which is intentional.)
+        // Connect our initial hash to that of our inner proof. (If there is no inner
+        // proof, the initial hash will be unconstrained, which is intentional.)
         builder.connect_hashes(initial_hash_target, inner_cyclic_initial_hash);
 
-        // The input hash is the previous hash output if we have an inner proof, or the initial hash
-        // if this is the base case.
+        // The input hash is the previous hash output if we have an inner proof, or the
+        // initial hash if this is the base case.
         let actual_hash_in =
             builder.select_hash(condition, inner_cyclic_latest_hash, initial_hash_target);
         builder.connect_hashes(current_hash_in, actual_hash_in);
 
-        // Our chain length will be inner_counter + 1 if we have an inner proof, or 1 if not.
+        // Our chain length will be inner_counter + 1 if we have an inner proof, or 1 if
+        // not.
         let new_counter = builder.mul_add(condition.target, inner_cyclic_counter, one);
         builder.connect(counter, new_counter);
 

@@ -11,9 +11,9 @@ use crate::plonk::circuit_builder::CircuitBuilder;
 
 /// `Target`s representing an element of an extension field.
 ///
-/// This is typically used in recursion settings, where the outer circuit must verify
-/// a proof satisfying an inner circuit's statement, which is verified using arithmetic
-/// in an extension of the base field.
+/// This is typically used in recursion settings, where the outer circuit must
+/// verify a proof satisfying an inner circuit's statement, which is verified
+/// using arithmetic in an extension of the base field.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ExtensionTarget<const D: usize>(pub [Target; D]);
 
@@ -142,7 +142,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
-/// Flatten the slice by sending every extension target to its D-sized canonical representation.
+/// Flatten the slice by sending every extension target to its D-sized canonical
+/// representation.
 pub fn flatten_target<const D: usize>(l: &[ExtensionTarget<D>]) -> Vec<Target> {
     l.iter()
         .flat_map(|x| x.to_target_array().to_vec())

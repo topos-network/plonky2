@@ -10,23 +10,28 @@ use crate::plonk::circuit_data::CircuitConfig;
 
 /// A location in the witness.
 ///
-/// Targets can either be placed at a specific location, or be "floating" around,
-/// serving as intermediary value holders, and copied to other locations whenever needed.
+/// Targets can either be placed at a specific location, or be "floating"
+/// around, serving as intermediary value holders, and copied to other locations
+/// whenever needed.
 ///
-/// When generating a proof for a given circuit, the prover will "set" the values of some
-/// (or all) targets, so that they satisfy the circuit constraints.  This is done through
+/// When generating a proof for a given circuit, the prover will "set" the
+/// values of some (or all) targets, so that they satisfy the circuit
+/// constraints.  This is done through
 /// the [PartialWitness](crate::iop::witness::PartialWitness) interface.
 ///
-/// There are different "variants" of the `Target` type, namely [`ExtensionTarget`],
+/// There are different "variants" of the `Target` type, namely
+/// [`ExtensionTarget`],
 /// [ExtensionAlgebraTarget](crate::iop::ext_target::ExtensionAlgebraTarget).
-/// The `Target` type is the default one for most circuits verifying some simple statement.
+/// The `Target` type is the default one for most circuits verifying some simple
+/// statement.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub enum Target {
-    /// A target that has a fixed location in the witness (seen as a `degree x num_wires` grid).
+    /// A target that has a fixed location in the witness (seen as a `degree x
+    /// num_wires` grid).
     Wire(Wire),
-    /// A target that doesn't have any inherent location in the witness (but it can be copied to
-    /// another target that does). This is useful for representing intermediate values in witness
-    /// generation.
+    /// A target that doesn't have any inherent location in the witness (but it
+    /// can be copied to another target that does). This is useful for
+    /// representing intermediate values in witness generation.
     VirtualTarget { index: usize },
 }
 
@@ -67,12 +72,14 @@ impl Target {
     }
 }
 
-/// A `Target` which has already been constrained such that it can only be 0 or 1.
+/// A `Target` which has already been constrained such that it can only be 0 or
+/// 1.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 #[allow(clippy::manual_non_exhaustive)]
 pub struct BoolTarget {
     pub target: Target,
-    /// This private field is here to force all instantiations to go through `new_unsafe`.
+    /// This private field is here to force all instantiations to go through
+    /// `new_unsafe`.
     _private: (),
 }
 
