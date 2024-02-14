@@ -129,74 +129,59 @@ pub(crate) fn generate_segment(
     let mut interpreter =
         Interpreter::new_with_generation_inputs_and_kernel(main_label, vec![], interpreter_inputs);
 
-    let (mut registers_before_previous, mut registers_before, mut memory_before) =
-        (initial_registers, initial_registers, MemoryState::default());
+    let (
+        mut registers_before_previous,
+        mut registers_before,
+        mut registers_after,
+        mut before_mem_values,
+        mut after_mem_values,
+    ) = (
+        initial_registers,
+        initial_registers,
+        initial_registers,
+        MemoryState::default(),
+        MemoryState::default(),
+    );
 
-    if index > 0 {
-        let num_cycles_before = max_cpu_len - NUM_EXTRA_CYCLES_AFTER
-            + (index - 1) * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE - 1));
-        (registers_before_previous, registers_before, memory_before) =
-            interpreter.run_before_segment(max_cpu_len, index)?;
-    }
-    interpreter.generation_state.registers = RegistersState {
-        program_counter: main_label,
-        is_kernel: true,
-        ..registers_before
-    };
-
-    // Write initial registers.
-    let registers_before_values = [
-        registers_before.program_counter.into(),
-        (registers_before.is_kernel as usize).into(),
-        registers_before.stack_len.into(),
-        registers_before.stack_top,
-        registers_before.context.into(),
-        registers_before.gas_used.into(),
-    ];
-    let registers_before_fields = (0..registers_before_values.len())
-        .map(|i| {
-            (
-                MemoryAddress::new_u256s(
-                    0.into(),
-                    (Segment::RegistersStates.unscale()).into(),
-                    i.into(),
+    for i in 0..index + 1 {
+        if index > 0 && i == index - 1 {
+            registers_before_previous = registers_after;
+        }
+        // Write initial registers.
+        let registers_before_field_values = [
+            registers_after.program_counter.into(),
+            (registers_after.is_kernel as usize).into(),
+            registers_after.stack_len.into(),
+            registers_after.stack_top,
+            registers_after.context.into(),
+            registers_after.gas_used.into(),
+        ];
+        let registers_before_fields = (0..registers_before_field_values.len())
+            .map(|i| {
+                (
+                    MemoryAddress::new_u256s(
+                        0.into(),
+                        (Segment::RegistersStates.unscale()).into(),
+                        i.into(),
+                    )
+                    .unwrap(),
+                    registers_before_field_values[i],
                 )
-                .unwrap(),
-                registers_before_values[i],
-            )
-        })
-        .collect::<Vec<_>>();
-    interpreter.set_memory_multi_addresses(&registers_before_fields);
+            })
+            .collect::<Vec<_>>();
 
-    // Also write initial registers in memory_before.
-    let registers_before_previous_values = [
-        registers_before_previous.program_counter.into(),
-        (registers_before_previous.is_kernel as usize).into(),
-        registers_before_previous.stack_len.into(),
-        registers_before_previous.stack_top,
-        registers_before_previous.context.into(),
-        registers_before_previous.gas_used.into(),
-    ];
-    let registers_before_previous_fields = (0..registers_before_previous_values.len())
-        .map(|i| {
-            (
-                MemoryAddress::new_u256s(
-                    0.into(),
-                    (Segment::RegistersStates.unscale()).into(),
-                    i.into(),
-                )
-                .unwrap(),
-                registers_before_previous_values[i],
-            )
-        })
-        .collect::<Vec<_>>();
-    for (address, value) in registers_before_previous_fields {
-        memory_before.set(address, value);
+        interpreter.set_memory_multi_addresses(&registers_before_fields);
+
+        (registers_before, before_mem_values) = (registers_after, after_mem_values);
+        interpreter.generation_state.registers = registers_before;
+        interpreter.generation_state.registers.program_counter = main_label;
+        interpreter.generation_state.registers.is_kernel = true;
+
+        (registers_after, after_mem_values) =
+            interpreter.run(Some(max_cpu_len - NUM_EXTRA_CYCLES_AFTER))?;
     }
 
-    let (registers_after, _) = interpreter.run(Some(max_cpu_len - NUM_EXTRA_CYCLES_AFTER))?;
-
-    Ok((registers_before, registers_after, memory_before))
+    Ok((registers_before, registers_after, before_mem_values))
 }
 
 #[derive(Debug)]
@@ -257,7 +242,6 @@ impl<'a> Interpreter<'a> {
                 .iter()
                 .map(|&elt| Some(elt))
                 .collect::<Vec<_>>();
-            // result.stack_segment_mut().truncate(initial_stack_len - 1);
         }
 
         result
