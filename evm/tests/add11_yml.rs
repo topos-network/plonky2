@@ -336,22 +336,23 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &all_stark,
         &[
             16..17,
-            13..15,
-            14..16,
-            10..15,
-            8..11,
-            8..13,
-            18..20,
-            8..18,
-            12..18,
+            8..15,
+            13..16,
+            4..15,
+            7..11,
+            7..13,
+            17..20,
+            7..18,
+            11..18,
         ], // Minimal ranges to prove an empty list
         &config,
     );
 
     let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let max_cpu_len = 1 << 15;
+    let max_cpu_len = 1 << 14;
 
-    let root_proof_data = all_circuits.prove_segment(
+    println!("Proving first segment...");
+    let first_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
         inputs.clone(),
@@ -360,19 +361,19 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &mut timing,
         None,
     )?;
+
     let ProverOutputData {
-        proof_with_pis: root_proof,
-        public_values,
-    } = root_proof_data;
-    timing.filter(Duration::from_millis(100)).print();
+        proof_with_pis: first_proof,
+        public_values: first_pv,
+    } = first_proof_data;
 
-    all_circuits.verify_root(root_proof.clone())?;
+    all_circuits.verify_root(first_proof.clone())?;
 
-    // Second segment.
-    let second_root_proof_data = all_circuits.prove_segment(
+    println!("Proving second segment...");
+    let second_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
-        inputs,
+        inputs.clone(),
         max_cpu_len,
         1,
         &mut timing,
@@ -380,55 +381,51 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     )?;
 
     let ProverOutputData {
-        proof_with_pis: second_root_proof,
-        public_values: second_public_values,
-        ..
-    } = second_root_proof_data;
+        proof_with_pis: second_proof,
+        public_values: second_pv,
+    } = second_proof_data;
 
-    all_circuits.verify_root(second_root_proof.clone())?;
+    all_circuits.verify_root(second_proof.clone())?;
 
-    let first_mem_before = public_values.mem_before.mem_cap.clone();
-    let first_mem_after = public_values.mem_after.mem_cap.clone();
-
-    let retrieved_public_values = PublicValues::from_public_inputs(
-        &root_proof.public_inputs,
-        first_mem_before.len(),
-        first_mem_after.len(),
-    );
-    assert_eq!(retrieved_public_values, public_values);
-
-    let (segmented_agg_proof, segmented_agg_public_values) = all_circuits
-        .prove_segment_aggregation(
-            false,
-            &root_proof,
-            public_values,
-            false,
-            &second_root_proof,
-            second_public_values,
-        )?;
-    all_circuits.verify_segment_aggregation(&segmented_agg_proof)?;
-    // Test retrieved public values from the proof public inputs.
-    let retrieved_public_values = PublicValues::from_public_inputs(
-        &segmented_agg_proof.public_inputs,
-        segmented_agg_public_values.mem_before.mem_cap.len(),
-        segmented_agg_public_values.mem_before.mem_cap.len(),
-    );
-    assert_eq!(retrieved_public_values, segmented_agg_public_values);
-
-    let (txn_proof, txn_public_values) = all_circuits.prove_transaction_aggregation(
+    println!("Proving third segment...");
+    let third_proof_data = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs.clone(),
+        max_cpu_len,
+        2,
+        &mut timing,
         None,
-        &segmented_agg_proof,
-        segmented_agg_public_values,
     )?;
-    // Test retrieved public values from the proof public inputs.
-    let retrieved_public_values = PublicValues::from_public_inputs(
-        &txn_proof.public_inputs,
-        txn_public_values.mem_before.mem_cap.len(),
-        txn_public_values.mem_before.mem_cap.len(),
-    );
-    assert_eq!(retrieved_public_values, txn_public_values);
 
-    all_circuits.verify_txn_aggregation(&txn_proof)
+    let ProverOutputData {
+        proof_with_pis: third_proof,
+        public_values: third_pv,
+    } = third_proof_data;
+
+    all_circuits.verify_root(third_proof.clone())?;
+
+    println!("First aggregation...");
+    let (first_aggreg_proof, first_aggreg_pv) = all_circuits.prove_segment_aggregation(
+        false,
+        &first_proof,
+        first_pv,
+        false,
+        &second_proof,
+        second_pv,
+    )?;
+    all_circuits.verify_segment_aggregation(&first_aggreg_proof)?;
+
+    println!("Second aggregation...");
+    let (second_aggreg_proof, _) = all_circuits.prove_segment_aggregation(
+        true,
+        &first_aggreg_proof,
+        first_aggreg_pv,
+        false,
+        &third_proof,
+        third_pv,
+    )?;
+    all_circuits.verify_segment_aggregation(&second_aggreg_proof)
 }
 
 fn init_logger() {

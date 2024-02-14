@@ -129,12 +129,14 @@ pub(crate) fn generate_segment(
     let mut interpreter =
         Interpreter::new_with_generation_inputs_and_kernel(main_label, vec![], interpreter_inputs);
 
-    let (mut registers_before, mut memory_before) = (initial_registers, MemoryState::default());
+    let (mut registers_before_previous, mut registers_before, mut memory_before) =
+        (initial_registers, initial_registers, MemoryState::default());
 
     if index > 0 {
         let num_cycles_before = max_cpu_len - NUM_EXTRA_CYCLES_AFTER
-            + (index - 1) * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE));
-        (registers_before, memory_before) = interpreter.run(Some(num_cycles_before))?;
+            + (index - 1) * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE - 1));
+        (registers_before_previous, registers_before, memory_before) =
+            interpreter.run_before_segment(max_cpu_len, index)?;
     }
     interpreter.generation_state.registers = RegistersState {
         program_counter: main_label,
@@ -164,8 +166,34 @@ pub(crate) fn generate_segment(
             )
         })
         .collect::<Vec<_>>();
-
     interpreter.set_memory_multi_addresses(&registers_before_fields);
+
+    // Also write initial registers in memory_before.
+    let registers_before_previous_values = [
+        registers_before_previous.program_counter.into(),
+        (registers_before_previous.is_kernel as usize).into(),
+        registers_before_previous.stack_len.into(),
+        registers_before_previous.stack_top,
+        registers_before_previous.context.into(),
+        registers_before_previous.gas_used.into(),
+    ];
+    let registers_before_previous_fields = (0..registers_before_previous_values.len())
+        .map(|i| {
+            (
+                MemoryAddress::new_u256s(
+                    0.into(),
+                    (Segment::RegistersStates.unscale()).into(),
+                    i.into(),
+                )
+                .unwrap(),
+                registers_before_previous_values[i],
+            )
+        })
+        .collect::<Vec<_>>();
+    for (address, value) in registers_before_previous_fields {
+        memory_before.set(address, value);
+    }
+
     let (registers_after, _) = interpreter.run(Some(max_cpu_len - NUM_EXTRA_CYCLES_AFTER))?;
 
     Ok((registers_before, registers_after, memory_before))
@@ -547,7 +575,124 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Generates a segment by returning the state and memory values after `MAX_SIZE` CPU rows.
+    /// Specialized for segment generation.
+    /// Returns the registers before the previous segment, the registers before the given segment,
+    /// and the memory state before the given statement.
+    pub(crate) fn run_before_segment(
+        &mut self,
+        max_cpu_len: usize,
+        segment_index: usize,
+    ) -> anyhow::Result<(RegistersState, RegistersState, MemoryState)> {
+        let mut previous_before_registers = RegistersState::new_with_main_label();
 
+        // If segment_index is 0, you don't need to run the interpreter.
+        assert!(segment_index > 0);
+
+        let num_cycles_previous_before = if segment_index >= 2 {
+            max_cpu_len - NUM_EXTRA_CYCLES_AFTER
+                + (segment_index - 2)
+                    * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE - 1))
+        }
+        // If segment_index is 1, then previous_before is just default and won't be updated.
+        else {
+            usize::MAX
+        };
+        let num_cycles_before = max_cpu_len - NUM_EXTRA_CYCLES_AFTER
+            + (segment_index - 1)
+                * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE - 1));
+
+        let mut cpu_counter = 0;
+        let mut previous_registers = self.generation_state.registers;
+        let mut previous_mem = self.generation_state.memory.clone();
+        let mut running = true;
+        loop {
+            let pc = self.generation_state.registers.program_counter;
+            if cpu_counter == num_cycles_previous_before {
+                previous_before_registers = self.generation_state.registers;
+            }
+            if running
+                && (self.is_kernel() && pc == KERNEL.global_labels["halt"]
+                    || (cpu_counter == num_cycles_before - 1))
+            {
+                running = false;
+                previous_registers = self.generation_state.registers;
+
+                // Write final registers.
+                let registers_before = [
+                    previous_registers.program_counter.into(),
+                    (previous_registers.is_kernel as usize).into(),
+                    previous_registers.stack_len.into(),
+                    previous_registers.stack_top,
+                    previous_registers.context.into(),
+                    previous_registers.gas_used.into(),
+                ];
+
+                let length = registers_before.len();
+                let registers_after_fields = (0..length)
+                    .map(|i| {
+                        (
+                            MemoryAddress::new(0, Segment::RegistersStates, length + i),
+                            registers_before[i],
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                self.set_memory_multi_addresses(&registers_after_fields);
+                let checkpoint = self.checkpoint();
+                self.run_exception(6);
+                self.apply_memops(checkpoint.mem_len);
+            };
+            if self.is_kernel() && self.halt_offsets.contains(&pc) {
+                previous_mem = self.generation_state.memory.clone();
+                return Ok((previous_before_registers, previous_registers, previous_mem));
+            }
+
+            if self.generation_state.registers.is_stack_top_read {
+                self.memops.push(InterpreterMemOpKind::Read(
+                    match self.stack_top() {
+                        Ok(val) => val,
+                        Err(e) => 0.into(),
+                    },
+                    MemoryAddress {
+                        context: self.context(),
+                        segment: Segment::Stack.unscale(),
+                        virt: self.stack_len() - 1,
+                    },
+                ));
+                self.generation_state.registers.is_stack_top_read = false;
+            }
+            if self.generation_state.registers.check_overflow {
+                self.generation_state.registers.check_overflow = false;
+            }
+
+            let checkpoint = self.checkpoint();
+            let result = self.run_opcode();
+
+            match result {
+                Ok(()) => self.apply_memops(checkpoint.mem_len),
+                Err(e) => {
+                    if self.is_kernel() {
+                        let offset_name =
+                            KERNEL.offset_name(self.generation_state.registers.program_counter);
+                        bail!(
+                            "{:?} in kernel at pc={}, stack={:?}, memory={:?} (cycle: {})",
+                            e,
+                            offset_name,
+                            self.generation_state.stack(),
+                            self.generation_state.memory.contexts[0].segments
+                                [Segment::KernelGeneral.unscale()]
+                            .content,
+                            cpu_counter,
+                        );
+                    }
+                    self.rollback(checkpoint);
+                    self.handle_error(e)
+                }
+            }?;
+            cpu_counter += 1;
+        }
+    }
+
+    /// Generates a segment by returning the state and memory values after `MAX_SIZE` CPU rows.
     pub(crate) fn run(
         &mut self,
         max_cpu_len: Option<usize>,
@@ -622,13 +767,14 @@ impl<'a> Interpreter<'a> {
                         let offset_name =
                             KERNEL.offset_name(self.generation_state.registers.program_counter);
                         bail!(
-                            "{:?} in kernel at pc={}, stack={:?}, memory={:?}",
+                            "{:?} in kernel at pc={}, stack={:?}, memory={:?} (cycle: {})",
                             e,
                             offset_name,
                             self.generation_state.stack(),
                             self.generation_state.memory.contexts[0].segments
                                 [Segment::KernelGeneral.unscale()]
                             .content,
+                            cpu_counter,
                         );
                     }
                     self.rollback(checkpoint);
