@@ -85,18 +85,6 @@ impl<F: RichField + Extendable<D>, const D: usize> MemBeforeStark<F, D> {
             row
         }));
 
-        println!("Mem_before:");
-        for (i, row) in rows.iter().enumerate() {
-            println!("{:?}", row);
-            let next = (i + 1) % rows.len();
-            if (i < rows.len() - 1)
-                && (row[ADDR_SEGMENT] != rows[next][ADDR_SEGMENT]
-                    || row[ADDR_CONTEXT] != rows[next][ADDR_CONTEXT])
-            {
-                println!("");
-            }
-        }
-
         let num_rows = rows.len();
         let num_rows_padded = max(16, num_rows.next_power_of_two());
         for _ in num_rows..num_rows_padded {
