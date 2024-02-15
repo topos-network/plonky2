@@ -15,7 +15,7 @@ use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::fixed_recursive_verifier::ProverOutputData;
 use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::{BlockHashes, BlockMetadata, PublicValues, TrieRoots};
+use plonky2_evm::proof::{BlockHashes, BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::{AllRecursiveCircuits, Node};
@@ -337,10 +337,10 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
         &[
             16..17,
             8..15,
-            13..16,
+            8..16,
             4..15,
             7..11,
-            7..13,
+            4..13,
             17..20,
             7..18,
             11..18,
@@ -405,6 +405,24 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     all_circuits.verify_root(third_proof.clone())?;
 
+    println!("Proving fourth segment...");
+    let fourth_proof_data = all_circuits.prove_segment(
+        &all_stark,
+        &config,
+        inputs.clone(),
+        max_cpu_len,
+        3,
+        &mut timing,
+        None,
+    )?;
+
+    let ProverOutputData {
+        proof_with_pis: fourth_proof,
+        public_values: fourth_pv,
+    } = fourth_proof_data;
+
+    all_circuits.verify_root(fourth_proof.clone())?;
+
     println!("First aggregation...");
     let (first_aggreg_proof, first_aggreg_pv) = all_circuits.prove_segment_aggregation(
         false,
@@ -417,15 +435,31 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     all_circuits.verify_segment_aggregation(&first_aggreg_proof)?;
 
     println!("Second aggregation...");
-    let (second_aggreg_proof, _) = all_circuits.prove_segment_aggregation(
+    let (second_aggreg_proof, second_aggreg_pv) = all_circuits.prove_segment_aggregation(
         true,
         &first_aggreg_proof,
         first_aggreg_pv,
         false,
         &third_proof,
-        third_pv,
+        third_pv.clone(),
     )?;
-    all_circuits.verify_segment_aggregation(&second_aggreg_proof)
+    all_circuits.verify_segment_aggregation(&second_aggreg_proof)?;
+
+    println!("Third aggregation...");
+    let (third_aggreg_proof, third_aggreg_pv) = all_circuits.prove_segment_aggregation(
+        true,
+        &second_aggreg_proof,
+        second_aggreg_pv,
+        false,
+        &fourth_proof,
+        fourth_pv,
+    )?;
+    all_circuits.verify_segment_aggregation(&third_aggreg_proof)?;
+
+    println!("Prove txn aggregation...");
+    let (txn_aggreg_proof, _) =
+        all_circuits.prove_transaction_aggregation(None, &third_aggreg_proof, third_aggreg_pv)?;
+    all_circuits.verify_txn_aggregation(&txn_aggreg_proof)
 }
 
 fn init_logger() {

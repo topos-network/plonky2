@@ -25,7 +25,7 @@ use crate::generation::mpt::load_all_mpts;
 use crate::generation::prover_input::ProverInputFn;
 use crate::generation::rlp::all_rlp_prover_inputs_reversed;
 use crate::generation::state::{self, all_withdrawals_prover_inputs_reversed, GenerationState};
-use crate::generation::{GenerationInputs, NUM_EXTRA_CYCLES_AFTER, NUM_EXTRA_CYCLES_BEFORE};
+use crate::generation::{GenerationInputs, NUM_EXTRA_CYCLES_AFTER};
 use crate::memory::segments::{Segment, SEGMENT_SCALING_FACTOR};
 use crate::util::{h2u, u256_to_u8, u256_to_usize};
 use crate::witness::errors::{ProgramError, ProverInputError};
@@ -616,124 +616,6 @@ impl<'a, F: Field> Interpreter<'a, F> {
 
         self.run_exception(exc_code)
             .map_err(|_| anyhow::Error::msg("error handling errored..."))
-    }
-
-    /// Generates a segment by returning the state and memory values after
-    /// `MAX_SIZE` CPU rows. Specialized for segment generation.
-    /// Returns the registers before the previous segment, the registers before
-    /// the given segment, and the memory state before the given statement.
-    pub(crate) fn run_before_segment(
-        &mut self,
-        max_cpu_len: usize,
-        segment_index: usize,
-    ) -> anyhow::Result<(RegistersState, RegistersState, MemoryState)> {
-        let mut previous_before_registers = RegistersState::new_with_main_label();
-
-        // If segment_index is 0, you don't need to run the interpreter.
-        assert!(segment_index > 0);
-
-        let num_cycles_previous_before = if segment_index >= 2 {
-            max_cpu_len - NUM_EXTRA_CYCLES_AFTER
-                + (segment_index - 2)
-                    * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE - 1))
-        }
-        // If segment_index is 1, then previous_before is just default and won't be updated.
-        else {
-            usize::MAX
-        };
-        let num_cycles_before = max_cpu_len - NUM_EXTRA_CYCLES_AFTER
-            + (segment_index - 1)
-                * (max_cpu_len - (NUM_EXTRA_CYCLES_AFTER + NUM_EXTRA_CYCLES_BEFORE - 1));
-
-        let mut cpu_counter = 0;
-        let mut previous_registers = self.generation_state.registers;
-        let mut previous_mem = self.generation_state.memory.clone();
-        let mut running = true;
-        loop {
-            let pc = self.generation_state.registers.program_counter;
-            if cpu_counter == num_cycles_previous_before {
-                previous_before_registers = self.generation_state.registers;
-            }
-            if running
-                && (self.is_kernel() && pc == KERNEL.global_labels["halt"]
-                    || (cpu_counter == num_cycles_before - 1))
-            {
-                running = false;
-                previous_registers = self.generation_state.registers;
-
-                // Write final registers.
-                let registers_before = [
-                    previous_registers.program_counter.into(),
-                    (previous_registers.is_kernel as usize).into(),
-                    previous_registers.stack_len.into(),
-                    previous_registers.stack_top,
-                    previous_registers.context.into(),
-                    previous_registers.gas_used.into(),
-                ];
-
-                let length = registers_before.len();
-                let registers_after_fields = (0..length)
-                    .map(|i| {
-                        (
-                            MemoryAddress::new(0, Segment::RegistersStates, length + i),
-                            registers_before[i],
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                self.set_memory_multi_addresses(&registers_after_fields);
-                let checkpoint = self.checkpoint();
-                self.run_exception(6);
-                self.apply_memops(checkpoint.mem_len);
-            };
-            if self.is_kernel() && self.halt_offsets.contains(&pc) {
-                previous_mem = self.generation_state.memory.clone();
-                return Ok((previous_before_registers, previous_registers, previous_mem));
-            }
-
-            if self.generation_state.registers.is_stack_top_read {
-                self.memops.push(InterpreterMemOpKind::Read(
-                    match self.stack_top() {
-                        Ok(val) => val,
-                        Err(e) => 0.into(),
-                    },
-                    MemoryAddress {
-                        context: self.context(),
-                        segment: Segment::Stack.unscale(),
-                        virt: self.stack_len() - 1,
-                    },
-                ));
-                self.generation_state.registers.is_stack_top_read = false;
-            }
-            if self.generation_state.registers.check_overflow {
-                self.generation_state.registers.check_overflow = false;
-            }
-
-            let checkpoint = self.checkpoint();
-            let result = self.run_opcode();
-
-            match result {
-                Ok(()) => self.apply_memops(checkpoint.mem_len),
-                Err(e) => {
-                    if self.is_kernel() {
-                        let offset_name =
-                            KERNEL.offset_name(self.generation_state.registers.program_counter);
-                        bail!(
-                            "{:?} in kernel at pc={}, stack={:?}, memory={:?} (cycle: {})",
-                            e,
-                            offset_name,
-                            self.generation_state.stack(),
-                            self.generation_state.memory.contexts[0].segments
-                                [Segment::KernelGeneral.unscale()]
-                            .content,
-                            cpu_counter,
-                        );
-                    }
-                    self.rollback(checkpoint);
-                    self.handle_error(e)
-                }
-            }?;
-            cpu_counter += 1;
-        }
     }
 
     /// Generates a segment by returning the state and memory values after
@@ -1457,6 +1339,9 @@ impl<'a, F: Field> Interpreter<'a, F> {
     fn run_shl(&mut self) -> anyhow::Result<(), ProgramError> {
         let vals = self.interpreter_pop::<2>()?;
         let (shift, value) = (vals[0], vals[1]);
+        if shift.bits() <= 32 {
+            self.mload_queue(0, Segment::ShiftTable, shift.low_u32() as usize);
+        }
         self.interpreter_push_no_write(if shift < U256::from(256usize) {
             value << shift
         } else {
@@ -1467,6 +1352,9 @@ impl<'a, F: Field> Interpreter<'a, F> {
     fn run_shr(&mut self) -> anyhow::Result<(), ProgramError> {
         let vals = self.interpreter_pop::<2>()?;
         let (shift, value) = (vals[0], vals[1]);
+        if shift.bits() <= 32 {
+            self.mload_queue(0, Segment::ShiftTable, shift.low_u32() as usize);
+        }
         self.interpreter_push_no_write(value >> shift)
     }
 

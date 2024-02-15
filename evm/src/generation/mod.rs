@@ -46,7 +46,6 @@ use self::mpt::{load_all_mpts, TrieRootPtrs};
 use crate::witness::util::{mem_write_log, mem_write_log_timestamp_zero, stack_peek};
 
 pub const NUM_EXTRA_CYCLES_AFTER: usize = 78;
-pub const NUM_EXTRA_CYCLES_BEFORE: usize = 64;
 /// Memory values used to initialize `MemBefore`.
 pub type MemBeforeValues = Vec<(MemoryAddress, U256)>;
 
