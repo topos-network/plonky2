@@ -157,11 +157,11 @@ pub(crate) fn generate_segment<F: Field>(
     index: usize,
     inputs: &GenerationInputs,
 ) -> anyhow::Result<(RegistersState, RegistersState, MemoryState)> {
-    let main_label = KERNEL.global_labels["main"];
+    let init_label = KERNEL.global_labels["init"];
     let initial_registers = RegistersState::new_with_main_label();
     let interpreter_inputs = GenerationInputs { ..inputs.clone() };
     let mut interpreter = Interpreter::<F>::new_with_generation_inputs_and_kernel(
-        main_label,
+        init_label,
         vec![],
         interpreter_inputs,
     );
@@ -211,7 +211,7 @@ pub(crate) fn generate_segment<F: Field>(
 
         (registers_before, before_mem_values) = (registers_after, after_mem_values);
         interpreter.generation_state.registers = registers_before;
-        interpreter.generation_state.registers.program_counter = main_label;
+        interpreter.generation_state.registers.program_counter = init_label;
         interpreter.generation_state.registers.is_kernel = true;
 
         (registers_after, after_mem_values) =
