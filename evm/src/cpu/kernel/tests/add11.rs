@@ -291,11 +291,6 @@ fn test_add11_yml_with_exception() {
         block_bloom: [0.into(); 8],
     };
 
-    let mut registers_after = RegistersState::default();
-    registers_after.program_counter = KERNEL.global_labels["halt"];
-    registers_after.stack_top = 146028888070u64.into();
-    registers_after.stack_len = 0;
-    registers_after.gas_used = 31848;
     let tries_inputs = GenerationInputs {
         signed_txn: Some(txn.to_vec()),
         withdrawals: vec![],

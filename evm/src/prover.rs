@@ -71,6 +71,7 @@ where
     timed!(timing, "build kernel", Lazy::force(&KERNEL));
     let (registers_before, registers_after, mut memory_before) =
         generate_segment::<F>(max_cpu_len, segment_index, &inputs)?;
+    println!("Generate done...");
 
     let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code)
         .map_err(|err| anyhow!("Failed to parse all the initial prover inputs: {:?}", err))?;

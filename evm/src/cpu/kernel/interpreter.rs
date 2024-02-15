@@ -53,6 +53,7 @@ pub(crate) struct Interpreter<'a, F: Field> {
     memops: Vec<InterpreterMemOpKind>,
     jumpdest_table: HashMap<usize, BTreeSet<usize>>,
     preinitialized_segments: HashMap<Segment, MemorySegmentState>,
+    is_jumpdest_analysis: bool,
 }
 
 /// Structure storing the state of the interpreter's registers.
@@ -138,7 +139,7 @@ pub(crate) fn simulate_cpu_and_get_user_jumps<F: Field>(
 
             interpreter.run(None);
 
-            log::debug!("jdt = {:?}", interpreter.jumpdest_table);
+            println!("jdt = {:?}", interpreter.jumpdest_table);
 
             interpreter
                 .generation_state
@@ -271,6 +272,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
             memops: vec![],
             jumpdest_table: HashMap::new(),
             preinitialized_segments: HashMap::default(),
+            is_jumpdest_analysis: false,
         };
         result.generation_state.registers.program_counter = initial_offset;
         let initial_stack_len = initial_stack.len();
@@ -301,6 +303,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
             memops: vec![],
             jumpdest_table: HashMap::new(),
             preinitialized_segments: HashMap::new(),
+            is_jumpdest_analysis: true,
         }
     }
 
@@ -992,10 +995,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
     fn run_opcode(&mut self) -> Result<(), ProgramError> {
         // Jumpdest analysis is performed natively by the interpreter and not
         // using the non-deterministic Kernel assembly code.
-        if self.is_kernel()
-            && self.generation_state.registers.program_counter
-                == KERNEL.global_labels["jumpdest_analysis"]
-        {
+        if self.is_kernel() && self.is_jumpdest_analysis {
             self.generation_state.registers.program_counter =
                 KERNEL.global_labels["jumpdest_analysis_end"];
             self.generation_state
@@ -1472,18 +1472,24 @@ impl<'a, F: Field> Interpreter<'a, F> {
     }
 
     fn run_jump(&mut self) -> anyhow::Result<(), ProgramError> {
-        let x = self.interpreter_pop::<1>()?[0];
+        let offset = self.interpreter_pop::<1>()?[0];
 
-        let x: usize = u256_to_usize(x)?;
+        let offset: usize = offset
+            .try_into()
+            .map_err(|_| ProgramError::InvalidJumpiDestination)?;
 
-        let jumpdest_bit = self.get_jumpdest_bit(x);
+        if !self.is_kernel() && self.is_jumpdest_analysis {
+            self.add_jumpdest_offset(offset);
+        } else {
+            let jumpdest_bit = self.get_jumpdest_bit(offset);
 
-        // Check that the destination is valid.
-        if !self.is_kernel() && jumpdest_bit != U256::one() {
-            return Err(ProgramError::InvalidJumpDestination);
+            // Check that the destination is valid.
+            if !self.is_kernel() && jumpdest_bit != U256::one() {
+                return Err(ProgramError::InvalidJumpDestination);
+            }
         }
 
-        self.jump_to(x as usize, false)
+        self.jump_to(offset as usize, false)
     }
 
     fn run_jumpi(&mut self) -> anyhow::Result<(), ProgramError> {
@@ -1494,15 +1500,20 @@ impl<'a, F: Field> Interpreter<'a, F> {
             .try_into()
             .map_err(|_| ProgramError::InvalidJumpiDestination)?;
 
-        let jumpdest_bit = self.get_jumpdest_bit(offset);
+        if !cond.is_zero() {
+            if !self.is_kernel() && self.is_jumpdest_analysis {
+                self.add_jumpdest_offset(offset);
+            } else {
+                let jumpdest_bit = self.get_jumpdest_bit(offset);
 
-        if !cond.is_zero() && (self.is_kernel() || jumpdest_bit == U256::one()) {
+                // Check that the destination is valid.
+                if !self.is_kernel() && jumpdest_bit != U256::one() {
+                    return Err(ProgramError::InvalidJumpDestination);
+                }
+            }
             self.jump_to(offset, true)?;
         }
 
-        if !cond.is_zero() && !self.is_kernel() && jumpdest_bit != U256::one() {
-            return Err(ProgramError::InvalidJumpiDestination);
-        }
         Ok(())
     }
 
