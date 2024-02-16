@@ -135,7 +135,11 @@ pub(crate) fn simulate_cpu_and_get_user_jumps<F: Field>(
             let mut interpreter =
                 Interpreter::new_with_state_and_halt_condition(state, halt_pc, initial_context);
 
-            log::debug!("Simulating CPU for jumpdest analysis.");
+            interpreter.generation_state.registers.program_counter -= 1;
+            println!(
+                "Simulating CPU for jumpdest analysis (pc {}).",
+                state.registers.program_counter
+            );
 
             interpreter.run(None);
 
@@ -145,7 +149,7 @@ pub(crate) fn simulate_cpu_and_get_user_jumps<F: Field>(
                 .generation_state
                 .set_jumpdest_analysis_inputs(interpreter.jumpdest_table);
 
-            log::debug!("Simulated CPU for jumpdest analysis halted.");
+            println!("Simulated CPU for jumpdest analysis halted.");
             interpreter.generation_state.jumpdest_table
         }
     }
@@ -616,9 +620,11 @@ impl<'a, F: Field> Interpreter<'a, F> {
             ProgramError::StackOverflow => 5,
             _ => bail!("TODO: figure out what to do with this..."),
         };
-
+        let checkpoint = self.checkpoint();
         self.run_exception(exc_code)
-            .map_err(|_| anyhow::Error::msg("error handling errored..."))
+            .map_err(|_| anyhow::Error::msg("error handling errored..."))?;
+        self.apply_memops(checkpoint.mem_len);
+        Ok(())
     }
 
     /// Generates a segment by returning the state and memory values after
@@ -633,6 +639,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
         let mut running = true;
         loop {
             let pc = self.generation_state.registers.program_counter;
+
             if running
                 && (self.is_kernel() && pc == KERNEL.global_labels["halt"]
                     || (max_cpu_len.is_some() && cpu_counter == max_cpu_len.unwrap() - 1))
@@ -665,8 +672,15 @@ impl<'a, F: Field> Interpreter<'a, F> {
                 self.apply_memops(checkpoint.mem_len);
             };
             if self.is_kernel() && self.halt_offsets.contains(&pc) {
-                final_mem = self.generation_state.memory.clone();
-                return Ok((final_registers, final_mem));
+                if let Some(halt_context) = self.halt_context {
+                    if self.context() == halt_context {
+                        // Only happens during jumpdest analysis, we don't care about the output.
+                        return Ok((final_registers, final_mem));
+                    }
+                } else {
+                    final_mem = self.generation_state.memory.clone();
+                    return Ok((final_registers, final_mem));
+                }
             }
 
             if self.generation_state.registers.is_stack_top_read {
@@ -995,7 +1009,21 @@ impl<'a, F: Field> Interpreter<'a, F> {
     fn run_opcode(&mut self) -> Result<(), ProgramError> {
         // Jumpdest analysis is performed natively by the interpreter and not
         // using the non-deterministic Kernel assembly code.
-        if self.is_kernel() && self.is_jumpdest_analysis {
+        if self.is_kernel()
+            && self.is_jumpdest_analysis
+            && self.generation_state.registers.program_counter
+                == KERNEL.global_labels["jumpdest_analysis"]
+        {
+            let opcode = self
+                .code()
+                .get(self.generation_state.registers.program_counter)
+                .byte(0);
+
+            println!(
+                "Skipping jumpdest analysis... (pc {}, opcode {})",
+                self.generation_state.registers.program_counter,
+                get_mnemonic(opcode)
+            );
             self.generation_state.registers.program_counter =
                 KERNEL.global_labels["jumpdest_analysis_end"];
             self.generation_state
@@ -1017,7 +1045,18 @@ impl<'a, F: Field> Interpreter<'a, F> {
         #[cfg(debug_assertions)]
         if !self.is_kernel() {
             println!(
-                "User instruction {:?}, stack = {:?}, ctx = {}",
+                "########## User instruction {:?}, stack = {:?}, ctx = {}",
+                op,
+                {
+                    let mut stack = self.stack();
+                    stack.reverse();
+                    stack
+                },
+                self.generation_state.registers.context
+            );
+        } else {
+            println!(
+                "Kernel instruction {:?}, stack = {:?}, ctx = {}",
                 op,
                 {
                     let mut stack = self.stack();
@@ -1476,7 +1515,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
 
         let offset: usize = offset
             .try_into()
-            .map_err(|_| ProgramError::InvalidJumpiDestination)?;
+            .map_err(|_| ProgramError::InvalidJumpDestination)?;
 
         if !self.is_kernel() && self.is_jumpdest_analysis {
             self.add_jumpdest_offset(offset);
@@ -1505,10 +1544,18 @@ impl<'a, F: Field> Interpreter<'a, F> {
                 self.add_jumpdest_offset(offset);
             } else {
                 let jumpdest_bit = self.get_jumpdest_bit(offset);
+                // println!("{:?}", self.generation_state.jumpdest_table);
 
                 // Check that the destination is valid.
                 if !self.is_kernel() && jumpdest_bit != U256::one() {
-                    return Err(ProgramError::InvalidJumpDestination);
+                    println!("Are we here?");
+                    println!(
+                        "Offset: {}, Jumpdest bits {:?}, context {}",
+                        offset,
+                        self.get_jumpdest_bits(self.context()),
+                        self.context(),
+                    );
+                    return Err(ProgramError::InvalidJumpiDestination);
                 }
             }
             self.jump_to(offset, true)?;
@@ -1545,6 +1592,10 @@ impl<'a, F: Field> Interpreter<'a, F> {
             let tip_u256 = stack_peek(&self.generation_state, 0)?;
             let tip_h256 = H256::from_uint(&tip_u256);
             self.generation_state.observe_contract(tip_h256)?;
+        }
+
+        if !self.is_kernel() {
+            self.add_jumpdest_offset(offset);
         }
 
         Ok(())
