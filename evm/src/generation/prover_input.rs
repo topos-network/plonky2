@@ -252,16 +252,9 @@ impl<F: Field> GenerationState<F> {
     /// Returns the next used jump address.
     fn run_next_jumpdest_table_address(&mut self) -> Result<U256, ProgramError> {
         let context = u256_to_usize(stack_peek(self, 0)? >> CONTEXT_SCALING_FACTOR)?;
-        // println!(
-        //     "In run_next, ctx = {}, jumpdest segment: {:?}",
-        //     context,
-        //     self.memory.contexts[context].segments[Segment::JumpdestBits.unscale()].content
-        // );
-        // println!("Current jdt = {:?}\n", self.jumpdest_table);
 
         if self.jumpdest_table.is_none() {
             self.generate_jumpdest_table()?;
-            println!("in run_next_jumpdest, jdt = {:?}", self.jumpdest_table);
         }
 
         let Some(jumpdest_table) = &mut self.jumpdest_table else {
@@ -275,11 +268,6 @@ impl<F: Field> GenerationState<F> {
         if let Some(ctx_jumpdest_table) = jumpdest_table.get_mut(&context)
             && let Some(next_jumpdest_address) = ctx_jumpdest_table.pop()
         {
-            log::debug!(
-                "jumpdest_table_len = {:?}, ctx_jumpdest_table.len = {:?}",
-                jd_len,
-                ctx_jumpdest_table.len()
-            );
             Ok((next_jumpdest_address + 1).into())
         } else {
             jumpdest_table.remove(&context);

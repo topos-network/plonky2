@@ -351,7 +351,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let max_cpu_len = 1 << 14;
 
-    println!("Proving first segment...");
     let first_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
@@ -369,7 +368,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     all_circuits.verify_root(first_proof.clone())?;
 
-    println!("Proving second segment...");
     let second_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
@@ -387,7 +385,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     all_circuits.verify_root(second_proof.clone())?;
 
-    println!("Proving third segment...");
     let third_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
@@ -405,7 +402,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     all_circuits.verify_root(third_proof.clone())?;
 
-    println!("Proving fourth segment...");
     let fourth_proof_data = all_circuits.prove_segment(
         &all_stark,
         &config,
@@ -423,7 +419,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
 
     all_circuits.verify_root(fourth_proof.clone())?;
 
-    println!("First aggregation...");
     let (first_aggreg_proof, first_aggreg_pv) = all_circuits.prove_segment_aggregation(
         false,
         &first_proof,
@@ -434,7 +429,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     )?;
     all_circuits.verify_segment_aggregation(&first_aggreg_proof)?;
 
-    println!("Second aggregation...");
     let (second_aggreg_proof, second_aggreg_pv) = all_circuits.prove_segment_aggregation(
         true,
         &first_aggreg_proof,
@@ -445,7 +439,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     )?;
     all_circuits.verify_segment_aggregation(&second_aggreg_proof)?;
 
-    println!("Third aggregation...");
     let (third_aggreg_proof, third_aggreg_pv) = all_circuits.prove_segment_aggregation(
         true,
         &second_aggreg_proof,
@@ -456,7 +449,6 @@ fn add11_segments_aggreg() -> anyhow::Result<()> {
     )?;
     all_circuits.verify_segment_aggregation(&third_aggreg_proof)?;
 
-    println!("Prove txn aggregation...");
     let (txn_aggreg_proof, _) =
         all_circuits.prove_transaction_aggregation(None, &third_aggreg_proof, third_aggreg_pv)?;
     all_circuits.verify_txn_aggregation(&txn_aggreg_proof)

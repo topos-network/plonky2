@@ -135,21 +135,12 @@ pub(crate) fn simulate_cpu_and_get_user_jumps<F: Field>(
             let mut interpreter =
                 Interpreter::new_with_state_and_halt_condition(state, halt_pc, initial_context);
 
-            // interpreter.generation_state.registers.program_counter -= 1;
-            println!(
-                "Simulating CPU for jumpdest analysis (pc {}).",
-                state.registers.program_counter
-            );
-
             interpreter.run(None);
-
-            println!("jdt = {:?}", interpreter.jumpdest_table);
 
             interpreter
                 .generation_state
                 .set_jumpdest_analysis_inputs(interpreter.jumpdest_table);
 
-            println!("Simulated CPU for jumpdest analysis halted.");
             interpreter.generation_state.jumpdest_table
         }
     }
@@ -1019,11 +1010,6 @@ impl<'a, F: Field> Interpreter<'a, F> {
                 .get(self.generation_state.registers.program_counter)
                 .byte(0);
 
-            println!(
-                "Skipping jumpdest analysis... (pc {}, opcode {})",
-                self.generation_state.registers.program_counter,
-                get_mnemonic(opcode)
-            );
             self.generation_state.registers.program_counter =
                 KERNEL.global_labels["jumpdest_analysis_end"];
             self.generation_state
@@ -1034,27 +1020,16 @@ impl<'a, F: Field> Interpreter<'a, F> {
             .code()
             .get(self.generation_state.registers.program_counter)
             .byte(0);
-
+        println!("opcode {:?}", get_mnemonic(opcode));
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge
             // nothing.
             .unwrap_or(Operation::ProverInput);
 
-        // #[cfg(debug_assertions)]
+        #[cfg(debug_assertions)]
         if !self.is_kernel() {
-            println!(
+            log::debug!(
                 "########## User instruction {:?}, stack = {:?}, ctx = {}",
-                op,
-                {
-                    let mut stack = self.stack();
-                    stack.reverse();
-                    stack
-                },
-                self.generation_state.registers.context
-            );
-        } else {
-            println!(
-                "Kernel instruction {:?}, stack = {:?}, ctx = {}",
                 op,
                 {
                     let mut stack = self.stack();
@@ -1066,7 +1041,9 @@ impl<'a, F: Field> Interpreter<'a, F> {
         }
 
         if let Some(special_len) = get_op_special_length(op) {
-            self.generation_state.registers.is_stack_top_read = true;
+            if self.stack_len() != special_len {
+                self.generation_state.registers.is_stack_top_read = true;
+            }
         };
         match opcode {
             0x00 => self.run_syscall(opcode, 0, false), // "STOP",
@@ -1217,7 +1194,11 @@ impl<'a, F: Field> Interpreter<'a, F> {
         }
 
         self.opcode_count[opcode as usize] += 1;
-        self.incr(1);
+        if self.generation_state.registers.program_counter == usize::MAX {
+            self.generation_state.registers.program_counter = 0;
+        } else {
+            self.incr(1)
+        };
 
         Ok(())
     }
@@ -1465,8 +1446,12 @@ impl<'a, F: Field> Interpreter<'a, F> {
         let syscall_info = U256::from(self.generation_state.registers.program_counter + 1)
             + U256::from((self.is_kernel() as usize) << 32)
             + (U256::from(self.generation_state.registers.gas_used) << 192);
-        // -1 because the PC will be incremented at the end of run_opcode.
-        self.generation_state.registers.program_counter = new_program_counter - 1;
+        // -1 because the PC will be incremented at the end of run_opcode
+        self.generation_state.registers.program_counter = if new_program_counter == 0 {
+            usize::MAX
+        } else {
+            new_program_counter - 1
+        };
 
         self.set_is_kernel(true);
         self.generation_state.registers.gas_used = 0;
@@ -1546,17 +1531,9 @@ impl<'a, F: Field> Interpreter<'a, F> {
                 self.add_jumpdest_offset(offset);
             } else {
                 let jumpdest_bit = self.get_jumpdest_bit(offset);
-                // println!("{:?}", self.generation_state.jumpdest_table);
 
                 // Check that the destination is valid.
                 if !self.is_kernel() && jumpdest_bit != U256::one() {
-                    println!("Are we here?");
-                    println!(
-                        "Offset: {}, Jumpdest bits {:?}, context {}",
-                        offset,
-                        self.get_jumpdest_bits(self.context()),
-                        self.context(),
-                    );
                     return Err(ProgramError::InvalidJumpiDestination);
                 }
             }
@@ -1712,11 +1689,11 @@ impl<'a, F: Field> Interpreter<'a, F> {
         if self.stack_len() != 2 {
             self.generation_state.registers.is_stack_top_read = true;
         }
-
         let vals = self.interpreter_pop::<2>()?;
         let (value, addr) = (vals[0], vals[1]);
         let (context, segment, offset) = unpack_address!(addr);
         self.mstore_queue(context, segment, offset, value);
+
         Ok(())
     }
 
@@ -1749,7 +1726,12 @@ impl<'a, F: Field> Interpreter<'a, F> {
         TryInto::<u64>::try_into(gas_used_val).map_err(|_| ProgramError::GasLimitError)?;
 
         // -1 because the PC will be incremented at the end of run_opcode.
-        self.generation_state.registers.program_counter = program_counter - 1;
+        self.generation_state.registers.program_counter = if program_counter == 0 {
+            usize::MAX
+        } else {
+            program_counter - 1
+        };
+
         self.set_is_kernel(is_kernel_mode);
         self.generation_state.registers.gas_used = gas_used_val;
 
