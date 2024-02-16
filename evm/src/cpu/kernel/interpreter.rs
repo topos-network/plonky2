@@ -135,7 +135,7 @@ pub(crate) fn simulate_cpu_and_get_user_jumps<F: Field>(
             let mut interpreter =
                 Interpreter::new_with_state_and_halt_condition(state, halt_pc, initial_context);
 
-            interpreter.generation_state.registers.program_counter -= 1;
+            // interpreter.generation_state.registers.program_counter -= 1;
             println!(
                 "Simulating CPU for jumpdest analysis (pc {}).",
                 state.registers.program_counter
@@ -749,7 +749,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
 
     fn code_slice(&self, n: usize) -> Vec<u8> {
         let pc = self.generation_state.registers.program_counter;
-        self.code().content[pc..pc + n]
+        self.code().content[pc + 1..pc + n + 1]
             .iter()
             .map(|u256| u256.unwrap_or_default().byte(0))
             .collect::<Vec<_>>()
@@ -1034,15 +1034,13 @@ impl<'a, F: Field> Interpreter<'a, F> {
             .code()
             .get(self.generation_state.registers.program_counter)
             .byte(0);
-        self.opcode_count[opcode as usize] += 1;
-        self.incr(1);
 
         let op = decode(self.generation_state.registers, opcode)
             // We default to prover inputs, as those are kernel-only instructions that charge
             // nothing.
             .unwrap_or(Operation::ProverInput);
 
-        #[cfg(debug_assertions)]
+        // #[cfg(debug_assertions)]
         if !self.is_kernel() {
             println!(
                 "########## User instruction {:?}, stack = {:?}, ctx = {}",
@@ -1217,6 +1215,9 @@ impl<'a, F: Field> Interpreter<'a, F> {
         if might_overflow_op(op) {
             self.generation_state.registers.check_overflow = true;
         }
+
+        self.opcode_count[opcode as usize] += 1;
+        self.incr(1);
 
         Ok(())
     }
@@ -1416,7 +1417,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
     fn run_prover_input(&mut self) -> Result<(), ProgramError> {
         let prover_input_fn = self
             .prover_inputs_map
-            .get(&(self.generation_state.registers.program_counter - 1))
+            .get(&self.generation_state.registers.program_counter)
             .ok_or(ProgramError::ProverInputError(
                 ProverInputError::InvalidMptInput,
             ))?;
@@ -1461,10 +1462,11 @@ impl<'a, F: Field> Interpreter<'a, F> {
         let new_program_counter =
             u256_to_usize(handler_addr).map_err(|_| ProgramError::IntegerTooLarge)?;
 
-        let syscall_info = U256::from(self.generation_state.registers.program_counter)
+        let syscall_info = U256::from(self.generation_state.registers.program_counter + 1)
             + U256::from((self.is_kernel() as usize) << 32)
             + (U256::from(self.generation_state.registers.gas_used) << 192);
-        self.generation_state.registers.program_counter = new_program_counter;
+        // -1 because the PC will be incremented at the end of run_opcode.
+        self.generation_state.registers.program_counter = new_program_counter - 1;
 
         self.set_is_kernel(true);
         self.generation_state.registers.gas_used = 0;
@@ -1565,14 +1567,7 @@ impl<'a, F: Field> Interpreter<'a, F> {
     }
 
     fn run_pc(&mut self) -> anyhow::Result<(), ProgramError> {
-        self.interpreter_push_with_write(
-            (self
-                .generation_state
-                .registers
-                .program_counter
-                .saturating_sub(1))
-            .into(),
-        )
+        self.interpreter_push_with_write(self.generation_state.registers.program_counter.into())
     }
 
     fn run_jumpdest(&mut self) -> anyhow::Result<(), ProgramError> {
@@ -1581,7 +1576,8 @@ impl<'a, F: Field> Interpreter<'a, F> {
     }
 
     fn jump_to(&mut self, offset: usize, is_jumpi: bool) -> anyhow::Result<(), ProgramError> {
-        self.generation_state.registers.program_counter = offset;
+        // -1 because the PC will be incremented at the end of run_opcode.
+        self.generation_state.registers.program_counter = offset - 1;
 
         if offset == KERNEL.global_labels["observe_new_address"] {
             let tip_u256 = stack_peek(&self.generation_state, 0)?;
@@ -1752,7 +1748,8 @@ impl<'a, F: Field> Interpreter<'a, F> {
         let gas_used_val = kexit_info.0[3];
         TryInto::<u64>::try_into(gas_used_val).map_err(|_| ProgramError::GasLimitError)?;
 
-        self.generation_state.registers.program_counter = program_counter;
+        // -1 because the PC will be incremented at the end of run_opcode.
+        self.generation_state.registers.program_counter = program_counter - 1;
         self.set_is_kernel(is_kernel_mode);
         self.generation_state.registers.gas_used = gas_used_val;
 
